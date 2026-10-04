@@ -27,6 +27,7 @@ export interface LevelOutcome {
 }
 
 export interface RunState {
+    id: string;
     levels: GeneratedLevel[];
     rules: RunRules;
     levelIndex: number;
@@ -74,6 +75,8 @@ function settleNode(state: RunState): RunState {
     };
 }
 
+let nextRunId = 0;
+
 export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFAULT_RULES, random = Math.random): RunState {
     validateRules(rules);
     const levels = selectLevels(pool);
@@ -89,6 +92,7 @@ export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFA
     const first = levels[0];
     if (!first) throw new Error('No scored levels are available.');
     return settleNode({
+        id: globalThis.crypto?.randomUUID?.() ?? `run-${Date.now()}-${++nextRunId}`,
         levels, rules: structuredClone(rules), levelIndex: 0, node: first.root, phase: 'decision', result: null,
         health: rules.startingHealth, score: 0, decisionsMade: 0, bestMoveStreak: 0, lastHealthBonus: 0,
         moveCounts: { best: 0, good: 0, inaccuracy: 0, bad: 0 }, levelsCompleted: 0,

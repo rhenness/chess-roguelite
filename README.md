@@ -14,7 +14,50 @@ Requires Node.js 22 or newer. Install dependencies with `npm install` (or
 npm start
 ```
 
-Open the local URL printed by Vite to begin a fresh run immediately. The game loads the
+Open the local URL printed by Vite and choose **Default**, **Obsidian Order**, or **Gilded Court**
+to begin a run. The **Choose your set** popup shows both colors of each set,
+its name, and a short line with starting hearts and the initial square bonus;
+selecting a card starts immediately. **New run** and the result screen open the
+same chooser, pausing the current game until a set is chosen or the chooser is
+dismissed. Obsidian uses custom faceted SVG pieces with crimson inlays, 2 starting
+health, and alternating ×1.0/×1.3 multipliers. Default retains 3 starting health
+and ×1.0/×1.1 multipliers. Gilded Court uses ivory/dark green enamel SVGs with
+gold trim and emerald inlays, 3 starting health, and just four ×1.5 starting
+squares in the center (d4, e4, d5, e5); the other 60 squares start at ×1.0.
+Its card says "Limited ×1.5 multis." Each set keeps its own square upgrades. On narrow screens the cards
+stack as horizontal rows, with piece previews beside their benefits. Compact
+previews show the king, queen, and knight in both colors. No separate start button
+is needed.
+
+Default is available immediately. Obsidian Order unlocks after **3 finished runs**,
+and Gilded Court after **8**. Wins and deaths count; abandoning a run does not.
+Locked cards show a lock and a small finished-run counter. A newly unlocked set
+gets a board notification after the payout, before the final score modal.
+Progress saves when the run ends, even if the remaining animation is skipped.
+The versioned `knightfall.progression.v1` localStorage entry keeps the finished-run
+count and last counted run ID across refreshes. If storage is unavailable,
+progression continues in memory for the current session.
+
+The chooser shows a shared coin wallet. Use the sparkle icon beside an unlocked
+set to open its upgrade board without starting a run. All 64 multipliers are
+visible before selection; tap a square to see its current value, next value, and
+coin price, then tap the price to buy +0.1x. Close to return to set selection.
+Higher multipliers have stronger coloring, and purchases use the shared board
+notification without moving the board or checkout controls.
+
+Finished runs earn 1 coin per 25 base points (rounded down), plus 20 coins when
+all selected levels are successfully completed. Deaths retain earned coins;
+abandoned runs and console previews earn nothing. Each square's paid upgrades
+cost 30, 40, 50 coins, and so on. Starting bonuses and free random upgrades do
+not increase that price. Balance constants live in [`src/game/economy.ts`](src/game/economy.ts).
+The wallet and paid increments save together in `knightfall.progression.v1`,
+with separate square counts for each set. Existing unlock saves begin with zero
+coins; existing free-upgrade boards remain intact. Paid increments are added to
+those boards for display and payouts. A finished run snapshots its board before
+shopping, so purchases cannot change an already-earned payout. The free random
+upgrade for completing all 10 levels still applies.
+
+The game loads the
 precomputed JSON files in `src/levels`, skips unscored files (`difficulty: -1`),
 and randomly picks 10 distinct scored levels for each new run, then plays those
 levels in ascending difficulty order. If fewer than 10 playable levels are
@@ -22,7 +65,11 @@ available, the run uses them all. New runs draw a fresh selection from the catal
 Malformed files are skipped with a warning. Equal scores use a stable ID order.
 The board faces the level's player color. Four colored buttons match the arrows
 on the board, following the `fourced-move` UI. Hover or focus a button to highlight
-its move. Select it once, then select the green button again to play. Choice order
+its move. Select it once, then select the green button again to play. You can also
+tap a piece and one of its highlighted destinations to play an offered move
+directly. Other moves are ignored; tap the selected piece again to deselect it.
+If multiple offered promotions share a destination, choose a promotion piece
+from the colored buttons. Choice order
 is shuffled for each decision; move quality is revealed after confirmation.
 Segmented bars between the board and health/score row show past levels in green,
 the current level in gold, and future levels in gray. Level numbers and side labels
@@ -30,7 +77,7 @@ are hidden. Difficulty is used only for level ordering and is never displayed.
 Use **Flip board** to change the view and **?** for the rules. Move history
 shows the current level's played moves, including replies only after playback.
 
-Runs begin with 3 health. Best/Good/Inaccuracy/Bad moves award 100/75/25/0 points
+Default and Gilded Court runs begin with 3 health; Obsidian Order begins with 2. Best/Good/Inaccuracy/Bad moves award 100/75/25/0 points
 and cost 0/0/1/2 health. Every four consecutive Best moves earn one extra health
 point, including streaks spanning levels. Other move qualities break the streak;
 a new run resets it. A fire icon and the current Best streak appear beside health
@@ -61,7 +108,9 @@ or `danger`. Every call restarts the animation, and the global object is removed
 when the app unmounts.
 
 Every ended run gets a board payout, including runs that end at zero health.
-The 64 squares start as a checkerboard of ×1.0 and ×1.1. At payout time, the
+The 64 squares start as a checkerboard of ×1.0 and ×1.1 for Default, or ×1.0
+and ×1.3 for Obsidian Order. Gilded Court starts with ×1.5 on the four central
+squares (d4, e4, d5, e5) and ×1.0 elsewhere. At payout time, the
 existing board clears its pieces and reveals the square multipliers. A highlight hops
 between squares, slows down, and lands on a square chosen before the animation.
 Its multiplier is applied to the base score, rounded once, and shown using the
@@ -73,9 +122,14 @@ upgrade. Runs with fewer than ten completed levels still get a payout, but earn
 no upgrade. The current payout uses the pre-upgrade multipliers. The upgrade is
 saved once as soon as the payout starts so starting a new run cannot lose or
 duplicate it; its notification plays after the payout notification. Multipliers
-are stored in tenths under `knightfall.multipliers.v1` in this browser's
+are stored in tenths under `knightfall.multipliers.v1` (Default) or
+`knightfall.multipliers.obsidian.v1` (Obsidian Order), or
+`knightfall.multipliers.gilded.v1` (Gilded Court) in this browser's
 `localStorage`, and stay attached to square coordinates when the board is flipped.
-Refreshing starts a new game while preserving these square upgrades.
+Refreshing returns to the set chooser while preserving each set's square upgrades,
+including Default upgrades earned before piece sets were added.
+Older Gilded saves migrate to the four central bonus squares while retaining
+earned +0.1 upgrades on their original coordinates.
 
 `knightfall.payout()` pauses gameplay for a temporary preview and restores the
 board afterward. It never changes scores or saved upgrades. Starting a new run
@@ -97,9 +151,10 @@ completed levels, decisions, and all
 four move-quality counts. The board and controls keep their positions during
 playback and level transitions. Both the result and rules open as modal overlays
 so mobile gameplay fits the viewport without page scrolling. Select
-**Start new run** to reset the run. Rules are configurable through `DEFAULT_RULES`
+**Start new run** to choose a set and reset the run. Rules are configurable through `DEFAULT_RULES`
 and `RunRules` in [`src/game/run.ts`](src/game/run.ts), or by supplying the `rules`
-prop to `App`. Runs are held in memory; refreshing the page starts over.
+prop to `App`; Obsidian overrides starting health to 2. Active runs are held in memory;
+refreshing the page returns to set selection while retaining saved unlocks and square upgrades.
 
 Gameplay uses React, chess.js, and react-chessboard. It follows only the selected
 precomputed branch and performs no Stockfish analysis. Level JSON is never modified

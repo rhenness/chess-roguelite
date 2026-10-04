@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, Trophy } from 'lucide-react';
 import type { BoardNotice } from '../components/BoardNotification';
 import { RUN_LEVEL_COUNT, type RunState } from './run';
+import type { PieceSetId } from './pieceSets';
+import { applyPaidUpgrades, type PaidUpgradeCounts } from './economy';
 import {
-    applyPayoutUpgrade, createPayout, formatMultiplier, loadMultiplierProfile, PAYOUT_NOTICE_DURATION,
-    payoutHopDelay, payoutPath, saveMultiplierProfile, type MultiplierBoard, type PayoutResult,
+    applyPayoutUpgrade, createPayout, formatMultiplier, loadMultiplierProfile, migrateMultiplierProfile, PAYOUT_NOTICE_DURATION,
+    payoutHopDelay, payoutPath, saveMultiplierProfile, type MultiplierBoard, type MultiplierProfile, type PayoutResult,
 } from './multipliers';
 
 export interface PayoutPreviewOptions {
@@ -12,6 +14,7 @@ export interface PayoutPreviewOptions {
     completed?: boolean;
 }
 interface PayoutSequence {
+    setId: PieceSetId;
     outcome: PayoutResult;
     board: MultiplierBoard;
     path: ReturnType<typeof payoutPath>;
@@ -21,43 +24,61 @@ interface PayoutSequence {
 }
 
 const prefersReducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+const EMPTY_PAID_UPGRADES: PaidUpgradeCounts = {};
 
-function makeSequence(board: MultiplierBoard, score: number, completed: boolean, preview: boolean): PayoutSequence {
+function makeSequence(setId: PieceSetId, board: MultiplierBoard, score: number, completed: boolean, preview: boolean): PayoutSequence {
     const outcome = createPayout(board, score, completed);
     const reducedMotion = prefersReducedMotion();
     return {
-        outcome, board: { ...board }, path: reducedMotion ? [outcome.square] : payoutPath(outcome.square),
+        setId, outcome, board: { ...board }, path: reducedMotion ? [outcome.square] : payoutPath(outcome.square),
         step: 0, phase: reducedMotion ? 'landed' : 'spinning', preview,
     };
 }
 
 /** The payout presentation has its own lifecycle; gameplay totals stay unchanged. */
-export function useBoardPayout(run: RunState | null, waitingForNotice: boolean) {
-    const [profile, setProfile] = useState(loadMultiplierProfile);
+export function useBoardPayout(run: RunState | null, waitingForNotice: boolean, setId: PieceSetId = 'default', paused = false,
+    paidUpgrades: PaidUpgradeCounts = EMPTY_PAID_UPGRADES) {
+    // Cache each set so upgrades also survive switching when browser storage is unavailable.
+    const profiles = useRef<Partial<Record<PieceSetId, MultiplierProfile>>>({});
+    const [profile, setProfile] = useState(() => {
+        const initial = loadMultiplierProfile(setId);
+        profiles.current[setId] = initial;
+        return initial;
+    });
     const [result, setResult] = useState<PayoutResult | null>(null);
     const [sequence, setSequence] = useState<PayoutSequence | null>(null);
     const started = useRef(false);
     const committedUpgrade = useRef<string | null>(null);
+    const finishedBoard = useRef<{ id: string; board: MultiplierBoard } | null>(null);
+    const effectiveBoard = useMemo(() => applyPaidUpgrades(profile.board, paidUpgrades[setId]), [profile, paidUpgrades, setId]);
 
     useEffect(() => {
-        if (run?.phase !== 'finished' || waitingForNotice || sequence || started.current) return;
+        // Purchases made while the payout is paused only affect later runs.
+        if (run?.phase === 'finished' && finishedBoard.current?.id !== run.id) {
+            finishedBoard.current = { id: run.id, board: effectiveBoard };
+        }
+    }, [run, effectiveBoard]);
+
+    useEffect(() => {
+        if (paused || run?.phase !== 'finished' || waitingForNotice || sequence || started.current) return;
         started.current = true;
         const completed = run.result === 'complete' && run.levelsCompleted === RUN_LEVEL_COUNT;
-        setSequence(makeSequence(profile.board, run.score, completed, false));
-    }, [run, waitingForNotice, sequence, profile]);
+        setSequence(makeSequence(setId, finishedBoard.current!.board, run.score, completed, false));
+    }, [run, waitingForNotice, sequence, effectiveBoard, setId, paused]);
 
     useEffect(() => {
         if (!sequence || sequence.preview || !sequence.outcome.upgrade || committedUpgrade.current === sequence.outcome.id) return;
         // Save the earned upgrade once, even if New run skips the remaining animation.
         // The sequence's board snapshot keeps this payout on the old multipliers.
         committedUpgrade.current = sequence.outcome.id;
-        const upgraded = applyPayoutUpgrade(profile, sequence.outcome);
-        saveMultiplierProfile(upgraded);
+        const upgraded = applyPayoutUpgrade(profiles.current[sequence.setId]!, sequence.outcome);
+        profiles.current[sequence.setId] = upgraded;
+        saveMultiplierProfile(upgraded, sequence.setId);
         setProfile(upgraded);
     }, [sequence, profile]);
 
     useEffect(() => {
-        if (sequence?.phase !== 'spinning') return;
+        if (paused || sequence?.phase !== 'spinning') return;
         if (prefersReducedMotion()) {
             setSequence({ ...sequence, step: sequence.path.length - 1, phase: 'landed' });
             return;
@@ -70,13 +91,13 @@ export function useBoardPayout(run: RunState | null, waitingForNotice: boolean) 
             });
         }, payoutHopDelay(sequence.step));
         return () => window.clearTimeout(timer);
-    }, [sequence]);
+    }, [sequence, paused]);
 
     useEffect(() => {
-        if (sequence?.phase !== 'done') return;
+        if (paused || sequence?.phase !== 'done') return;
         if (!sequence.preview) setResult(sequence.outcome);
         setSequence(null);
-    }, [sequence]);
+    }, [sequence, paused]);
 
     const advanceNotice = useCallback(() => {
         setSequence(current => {
@@ -85,17 +106,26 @@ export function useBoardPayout(run: RunState | null, waitingForNotice: boolean) 
         });
     }, []);
 
-    const reset = useCallback(() => {
-        started.current = false;
-        committedUpgrade.current = null;
-        setSequence(null);
-        setResult(null);
+    const profileFor = useCallback((set: PieceSetId) => {
+        const cached = profiles.current[set];
+        const nextProfile = cached ? migrateMultiplierProfile(cached, set) : loadMultiplierProfile(set);
+        profiles.current[set] = nextProfile;
+        return nextProfile;
     }, []);
 
+    const reset = useCallback((nextSet: PieceSetId = 'default') => {
+        started.current = false;
+        committedUpgrade.current = null;
+        finishedBoard.current = null;
+        setSequence(null);
+        setResult(null);
+        setProfile(profileFor(nextSet));
+    }, [profileFor]);
+
     const preview = useCallback((options: PayoutPreviewOptions = {}) => {
-        if (sequence) return;
-        setSequence(makeSequence(profile.board, options.score ?? 1200, options.completed ?? true, true));
-    }, [sequence, profile]);
+        if (sequence || paused) return;
+        setSequence(makeSequence(setId, effectiveBoard, options.score ?? 1200, options.completed ?? true, true));
+    }, [sequence, effectiveBoard, setId, paused]);
 
     const notice = useMemo<BoardNotice | null>(() => {
         if (!sequence || sequence.phase === 'spinning' || sequence.phase === 'done') return null;
@@ -113,7 +143,7 @@ export function useBoardPayout(run: RunState | null, waitingForNotice: boolean) 
     }, [sequence]);
 
     const upgrade = sequence?.phase === 'upgrading' || sequence?.phase === 'done' ? sequence.outcome.upgrade : null;
-    const board = sequence ? (upgrade ? { ...sequence.board, [upgrade.square]: upgrade.after } : sequence.board) : profile.board;
+    const board = sequence ? (upgrade ? { ...sequence.board, [upgrade.square]: upgrade.after } : sequence.board) : effectiveBoard;
     const highlightedSquare = sequence ? (upgrade?.square ?? sequence.path[sequence.step]!) : result?.square;
-    return { result, sequence, board, highlightedSquare, notice, advanceNotice, reset, preview };
+    return { result, sequence, board, highlightedSquare, notice, advanceNotice, reset, preview, profileFor };
 }

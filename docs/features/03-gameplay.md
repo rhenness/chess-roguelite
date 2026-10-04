@@ -6,7 +6,39 @@ As a player, I want to continuously play through precomputed chess levels in inc
 
 The game should load precomputed level JSON files and use them to create a continuous gameplay run.
 
-The player begins the run with a fixed amount of health.
+Before each run, show a modal with three visual cards: Default, Obsidian Order, and Gilded Court.
+Show a visible "Choose your set" title, both colors of each set, and a short
+benefit line with starting hearts and the initial square bonus. Preview all six
+pieces on larger screens; compact previews show the king, queen, and knight in
+both colors. On narrow mobile screens, stack landscape cards with previews beside
+the name and benefits. Selecting a card begins the run immediately, without a
+separate start button.
+The initial chooser requires selection; during a run it can be dismissed to resume
+play. Pause playback, notifications, and payout hopping while it is open and keep
+the board dimensions and footer space unchanged.
+
+Default uses the package's existing pieces, 3 starting health, and ×1.0/×1.1
+square multipliers. Obsidian Order uses faceted silver/charcoal SVG pieces with
+crimson gem inlays, 2 starting health, and ×1.0/×1.3 multipliers. Maintain separate
+persistent square upgrades for each set and preserve existing Default saves.
+Gilded Court uses ivory/dark green enamel SVGs, gold trim, ornamental engraving,
+and emerald inlays. It starts with 3 health, ×1.5 on the four central squares
+(d4, e4, d5, e5), and ×1.0 on the other 60 squares. Its description says
+"Limited ×1.5 multis." Migrate earlier Gilded saves to this layout
+while preserving all earned +0.1 upgrades at their original coordinates.
+Keep Gilded upgrades separate. Fit all three cards in the mobile viewport and
+keep benefit descriptions brief.
+
+Default is available immediately. Unlock Obsidian Order after 3 finished runs and
+Gilded Court after 8. Count both completed runs and deaths, but never abandoned
+runs or console previews. Keep locked cards visible with muted previews, a lock,
+and a compact counter such as `2/3`; disable their selection. Save the finished-run
+count and last counted run ID in the versioned `knightfall.progression.v1`
+localStorage entry as soon as a run ends, so skipping payout cannot lose credit.
+Each run counts once, including on rerenders and when reopening the score modal.
+If storage is unavailable, retain progression in memory for the session. Show a
+shared board notification for a newly unlocked set after payout and any square
+upgrade, before opening the final score modal.
 
 Each run randomly selects 10 distinct scored levels, or all playable levels if fewer are available, then sorts the selection in ascending difficulty order. The player starts with the easiest selected level and progresses through increasingly difficult levels while health and score persist across the entire run.
 
@@ -96,7 +128,12 @@ At each `DecisionNode`:
 
 - Display the board using the node's FEN.
 - Present the four available player choices.
-- Allow the player to select one move.
+- Allow the player to select a colored option and confirm it with a second tap,
+  or tap a piece followed by a destination belonging to an offered move.
+- Highlight only that piece's offered destinations, ignore other moves, and let
+  the player switch pieces or tap the selected piece again to deselect it.
+- When offered promotions share a source and destination, show promotion pieces
+  in the existing colored buttons and require an explicit piece choice.
 - Play the selected move on the board.
 - Reveal the move's quality:
     - Best
@@ -121,7 +158,7 @@ Health belongs to the run and persists across levels.
 
 Suggested POC rules:
 
-- Start each run with 3 health.
+- Start Default and Gilded Court runs with 3 health and Obsidian Order runs with 2 health.
 - Best: lose 0 health.
 - Good: lose 0 health.
 - Inaccuracy: lose 1 health.
@@ -181,11 +218,44 @@ The player should be able to start a new run from the result screen.
 
 ## Persistent Board Multipliers
 
-All 64 squares initially alternate between ×1.0 and ×1.1. Every ended run, including a defeat, receives one score payout. On lethal damage, show a skull and "Run over" notification instead of a numeric health-loss badge. After the notification completes, clear the board's pieces, reveal the multipliers using the existing board, and animate a highlight between squares before landing. Keep gameplay's stored position intact so new runs and console previews restore their pieces. Select the landing square once before animating and apply its pre-upgrade multiplier to the base score.
+Default initially alternates between ×1.0 and ×1.1, and Obsidian Order between ×1.0 and ×1.3. Gilded Court starts with ×1.5 on d4, e4, d5, and e5, and ×1.0 on the other 60 squares. Every ended run, including a defeat, receives one score payout. On lethal damage, show a skull and "Run over" notification instead of a numeric health-loss badge. After the notification completes, clear the board's pieces, reveal the multipliers using the existing board, and animate a highlight between squares before landing. Keep gameplay's stored position intact so new runs and console previews restore their pieces. Select the landing square once before animating and apply its pre-upgrade multiplier to the base score.
 
 Completing all ten levels successfully earns one random square a permanent +0.1 upgrade. Fewer than ten completed levels earns no upgrade. Keep the current payout separate from the upgrade so a newly upgraded square only improves future payouts. Store the square multipliers as integer tenths in versioned localStorage and apply each earned upgrade once, including when the score modal is reopened or the remaining animation is skipped for a new run.
 
 Use the shared board notification for the multiplier result and then for the upgraded square. Open the final score modal after the sequence finishes. Preserve the board dimensions throughout, keep multipliers attached to square coordinates when flipping, and skip hopping when reduced motion is preferred. A console preview should play the sequence without modifying gameplay or persistent progression.
+
+## Coins and Purchased Upgrades
+
+Show one shared coin balance in the set chooser and a separate upgrade icon beside
+each unlocked card. Selecting the card starts a run; selecting its upgrade icon
+opens a modal without starting or resetting gameplay. Locked sets have no upgrade
+action and retain the same gray styling.
+
+Display all 64 square multipliers immediately, with pieces cleared and stronger
+coloring for higher values. Initially select no square. Tapping a square highlights
+it and shows its current multiplier, the value after +0.1x, and a coin-price button.
+Require a separate purchase tap. Disable purchasing without enough coins; keep
+the board and checkout dimensions fixed through selection and purchase. Use the
+shared board notification for purchases. Closing the modal returns to set selection.
+
+When a run ends, award floor(base score / 25) coins, plus 20 if all its selected
+levels were successfully completed. Deaths retain score-based coins. Unfinished
+runs, abandoned runs, and console previews earn nothing. Credit coins with the
+finished-run count once, before payout presentation, and show the earned amount
+in the final score modal. The score multiplier never increases coin rewards.
+
+Each square's first paid +0.1x costs 30 coins; later purchases on the same square
+cost 40, 50, and so on. Price depends on paid purchases, not starting bonuses or
+free upgrades. Keep paid counts per square and set, while sharing the wallet.
+Save the debit and purchased increment together in `knightfall.progression.v1`.
+Preserve existing run-count saves and free-upgrade boards; older saves start with
+zero coins and no paid increments. Retain purchases in memory if storage is blocked.
+
+Combine purchased increments with each set's saved free-upgrade board for display
+and payouts. Snapshot a finished run's multipliers even while its death notification
+or chooser pauses payout, so shopping cannot alter that result. Completing all
+10 levels still gives the existing free random upgrade, without double-counting
+paid increments when that free upgrade is saved.
 
 ## Basic Gameplay Flow
 
@@ -251,7 +321,7 @@ This story does not include:
 - Random difficulty-based run generation.
 - Acts.
 - Boss levels.
-- Relics and additional progression systems beyond square multipliers.
+- Relics and additional progression systems beyond square multipliers, coins, and set unlocks.
 - Accounts.
 - Leaderboards.
 - Custom artwork or advanced visual effects.
