@@ -103,7 +103,7 @@ describe('player profile interface', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
         const editor = screen.getByRole('dialog', { name: 'Edit profile' });
         expect(screen.getAllByRole('dialog')).toHaveLength(1);
-        expect(screen.getByRole('textbox', { name: 'Display name' })).toHaveFocus();
+        expect(screen.getByRole('textbox', { name: 'Display name' })).not.toHaveFocus();
         fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Castle Keeper' } });
         fireEvent.click(screen.getByRole('button', { name: 'Rook avatar' }));
         fireEvent.click(screen.getByRole('button', { name: 'Sapphire avatar background' }));

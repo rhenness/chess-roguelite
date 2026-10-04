@@ -33,7 +33,7 @@ export function ProfileEditor({ profile, onSave, onCancel }: {
             <div className="profile-name-field">
                 <label htmlFor="profile-name">Display name</label>
                 <input id="profile-name" value={draft.displayName} maxLength={DISPLAY_NAME_LIMIT}
-                    autoComplete="nickname" data-modal-focus aria-invalid={nameTouched && !!error}
+                    autoComplete="nickname" aria-invalid={nameTouched && !!error}
                     aria-describedby={nameTouched && error ? 'profile-name-error' : undefined}
                     onBlur={() => setNameTouched(true)}
                     onChange={event => setDraft({ ...draft, displayName: event.target.value })} />
