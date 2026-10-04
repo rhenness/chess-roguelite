@@ -1,0 +1,42 @@
+{
+  "name": "chess-roguelite",
+  "version": "1.0.0",
+  "description": "Precomputed branching chess levels for a chess roguelite",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "vite",
+    "build": "tsc --noEmit -p tsconfig.app.json && vite build --configLoader runner",
+    "preview": "vite preview",
+    "generate:tree": "tsx src/scripts/tree-generator/cli.ts",
+    "generate:levels": "tsx src/scripts/level-batch/cli.ts fens.txt",
+    "score:levels": "tsx src/scripts/difficulty-scorer/cli.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.app.json",
+    "test": "vitest run && npm run test:scripts",
+    "test:watch": "vitest",
+    "test:scripts": "tsx --test src/scripts/tree-generator/*.test.ts src/scripts/difficulty-scorer/*.test.ts src/scripts/level-batch/*.test.ts"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chess.js": "^1.4.0",
+    "lucide-react": "^1.49.0",
+    "react": "^19.1.1",
+    "react-chessboard": "^5.12.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.2",
+    "jsdom": "^26.1.0",
+    "stockfish": "^19.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^7.1.4",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,0 +1,151 @@
+import type { ChessMove, GeneratedLevel, MoveQuality, PlayerChoice, TreeNode } from '../types/level';
+import { selectLevels } from './levels';
+
+export const QUALITY_LABELS: Record<MoveQuality, string> = {
+    best: 'Best', good: 'Good', inaccuracy: 'Inaccuracy', bad: 'Bad',
+};
+export const QUALITY_ORDER: MoveQuality[] = ['best', 'good', 'inaccuracy', 'bad'];
+export const BEST_MOVE_STREAK_LENGTH = 4;
+export const RUN_LEVEL_COUNT = 10;
+
+export interface RunRules {
+    startingHealth: number;
+    damage: Record<MoveQuality, number>;
+    points: Record<MoveQuality, number>;
+}
+
+export const DEFAULT_RULES: RunRules = {
+    startingHealth: 3,
+    damage: { best: 0, good: 0, inaccuracy: 1, bad: 2 },
+    points: { best: 100, good: 75, inaccuracy: 25, bad: 0 },
+};
+
+export interface LevelOutcome {
+    id: string;
+    difficulty: number;
+    status: 'completed' | 'failed';
+}
+
+export interface RunState {
+    levels: GeneratedLevel[];
+    rules: RunRules;
+    levelIndex: number;
+    node: TreeNode;
+    phase: 'decision' | 'reveal' | 'reply' | 'level-ended' | 'finished';
+    result: 'defeat' | 'complete' | null;
+    health: number;
+    score: number;
+    decisionsMade: number;
+    bestMoveStreak: number;
+    lastHealthBonus: number;
+    moveCounts: Record<MoveQuality, number>;
+    levelsCompleted: number;
+    highestDifficultyReached: number;
+    highestDifficultyCompleted: number | null;
+    outcomes: LevelOutcome[];
+    lastChoice: PlayerChoice | null;
+    history: { levelId: string; playerMove: ChessMove; opponentReply: ChessMove | null }[];
+}
+
+function validateRules(rules: RunRules): void {
+    if (!Number.isInteger(rules.startingHealth) || rules.startingHealth <= 0) {
+        throw new Error('Starting health must be a positive integer.');
+    }
+    for (const quality of QUALITY_ORDER) {
+        if (![rules.damage[quality], rules.points[quality]].every(value => Number.isInteger(value) && value >= 0)) {
+            throw new Error('Damage and points must be nonnegative integers for every move quality.');
+        }
+    }
+}
+
+function settleNode(state: RunState): RunState {
+    if (state.node.kind === 'decision') return { ...state, phase: 'decision' };
+    const level = state.levels[state.levelIndex]!;
+    const completed = state.node.kind === 'depth-limit'
+        || state.node.result === 'draw' || state.node.result === level.playerColor;
+    const lastLevel = state.levelIndex === state.levels.length - 1;
+    return {
+        ...state,
+        phase: lastLevel ? 'finished' : 'level-ended',
+        result: lastLevel ? 'complete' : null,
+        levelsCompleted: state.levelsCompleted + Number(completed),
+        highestDifficultyCompleted: completed ? level.difficulty : state.highestDifficultyCompleted,
+        outcomes: [...state.outcomes, { id: level.id, difficulty: level.difficulty, status: completed ? 'completed' : 'failed' }],
+    };
+}
+
+export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFAULT_RULES, random = Math.random): RunState {
+    validateRules(rules);
+    const levels = selectLevels(pool);
+    if (levels.length > RUN_LEVEL_COUNT) {
+        // Sample uniformly without replacement, then restore difficulty progression.
+        for (let i = 0; i < RUN_LEVEL_COUNT; i++) {
+            const j = i + Math.floor(random() * (levels.length - i));
+            [levels[i], levels[j]] = [levels[j]!, levels[i]!];
+        }
+        levels.length = RUN_LEVEL_COUNT;
+        levels.sort((a, b) => a.difficulty - b.difficulty || a.id.localeCompare(b.id));
+    }
+    const first = levels[0];
+    if (!first) throw new Error('No scored levels are available.');
+    return settleNode({
+        levels, rules: structuredClone(rules), levelIndex: 0, node: first.root, phase: 'decision', result: null,
+        health: rules.startingHealth, score: 0, decisionsMade: 0, bestMoveStreak: 0, lastHealthBonus: 0,
+        moveCounts: { best: 0, good: 0, inaccuracy: 0, bad: 0 }, levelsCompleted: 0,
+        highestDifficultyReached: first.difficulty, highestDifficultyCompleted: null, outcomes: [], lastChoice: null, history: [],
+    });
+}
+
+/** Only a move offered by the current node can change the run. */
+export function chooseMove(state: RunState, uci: string): RunState {
+    if (state.phase !== 'decision' || state.node.kind !== 'decision') return state;
+    const choice = state.node.choices.find(candidate => candidate.playerMove.uci === uci);
+    if (!choice) return state;
+    const bestMoveStreak = choice.quality === 'best' ? (state.bestMoveStreak ?? 0) + 1 : 0;
+    const lastHealthBonus = bestMoveStreak > 0 && bestMoveStreak % BEST_MOVE_STREAK_LENGTH === 0 ? 1 : 0;
+    const health = Math.max(0, state.health - state.rules.damage[choice.quality] + lastHealthBonus);
+    return {
+        ...state, health, bestMoveStreak, lastHealthBonus, score: state.score + state.rules.points[choice.quality],
+        decisionsMade: state.decisionsMade + 1,
+        moveCounts: { ...state.moveCounts, [choice.quality]: state.moveCounts[choice.quality] + 1 },
+        lastChoice: choice, phase: health === 0 ? 'finished' : 'reveal', result: health === 0 ? 'defeat' : null,
+        history: [...state.history, { levelId: state.levels[state.levelIndex]!.id, playerMove: choice.playerMove, opponentReply: null }],
+    };
+}
+
+/** Separate playback steps make the player move and stored opponent reply visible. */
+export function advancePlayback(state: RunState): RunState {
+    if (!state.lastChoice) return state;
+    if (state.phase === 'reveal' && state.lastChoice.opponentReply) return {
+        ...state, phase: 'reply',
+        history: state.history.map((entry, index) => index === state.history.length - 1
+            ? { ...entry, opponentReply: state.lastChoice!.opponentReply } : entry),
+    };
+    if (state.phase !== 'reveal' && state.phase !== 'reply') return state;
+    return settleNode({ ...state, node: state.lastChoice.next });
+}
+
+export function nextLevel(state: RunState): RunState {
+    if (state.phase !== 'level-ended') return state;
+    const levelIndex = state.levelIndex + 1;
+    const level = state.levels[levelIndex]!;
+    return settleNode({
+        ...state, levelIndex, node: level.root, lastChoice: null, lastHealthBonus: 0,
+        highestDifficultyReached: level.difficulty,
+    });
+}
+
+export function boardFen(state: RunState): string {
+    if (state.lastChoice && (state.phase === 'reveal' || state.result === 'defeat')) return state.lastChoice.fenAfterPlayerMove;
+    if (state.phase === 'reply' && state.lastChoice) return state.lastChoice.next.fen;
+    return state.node.fen;
+}
+
+export function shuffleChoices(choices: readonly PlayerChoice[], random = Math.random): PlayerChoice[] {
+    const shuffled = [...choices];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
+    }
+    return shuffled;
+}
