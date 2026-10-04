@@ -64,9 +64,9 @@ export function loadLevelCatalog(files: Record<string, unknown>): LevelCatalog {
     for (const [file, value] of Object.entries(files).sort(([a], [b]) => a.localeCompare(b))) {
         if (object(value) && value.difficulty === -1) continue;
         if (!isPlayableLevel(value)) {
-            warnings.push(`${file.split('/').pop()}: invalid level data.`);
+            warnings.push(`${file.split('/').pop()}: invalid floor data.`);
         } else if (seen.has(value.id)) {
-            warnings.push(`${file.split('/').pop()}: duplicate level ID.`);
+            warnings.push(`${file.split('/').pop()}: duplicate floor ID.`);
         } else {
             seen.add(value.id);
             levels.push(value);

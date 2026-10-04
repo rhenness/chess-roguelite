@@ -38,7 +38,7 @@ describe('level selection', () => {
             '/levels/invalid.json': {}, '/levels/unscored.json': makeLevel('new', -1),
         });
         expect(catalog.levels.map(level => level.id)).toEqual(['easy']);
-        expect(catalog.warnings).toEqual(['duplicate.json: duplicate level ID.', 'invalid.json: invalid level data.']);
+        expect(catalog.warnings).toEqual(['duplicate.json: duplicate floor ID.', 'invalid.json: invalid floor data.']);
     });
 
     it('loads the existing bundled JSON files as a scored, ascending catalog', () => {

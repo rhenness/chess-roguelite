@@ -186,7 +186,7 @@ describe('run state', () => {
     });
 
     it('reports an empty pool and rejects invalid rules', () => {
-        expect(() => startRun([makeLevel('unscored', -1)])).toThrow('No scored levels');
+        expect(() => startRun([makeLevel('unscored', -1)])).toThrow('No scored floors');
         expect(() => startRun([makeLevel()], { ...DEFAULT_RULES, startingHealth: 0 })).toThrow('Starting health');
         expect(() => startRun([makeLevel()], { ...DEFAULT_RULES, damage: { ...DEFAULT_RULES.damage, bad: -1 } })).toThrow('Damage and points');
     });

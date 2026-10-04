@@ -91,7 +91,7 @@ export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFA
         levels.sort((a, b) => a.difficulty - b.difficulty || a.id.localeCompare(b.id));
     }
     const first = levels[0];
-    if (!first) throw new Error('No scored levels are available.');
+    if (!first) throw new Error('No scored floors are available.');
     return settleNode({
         id: globalThis.crypto?.randomUUID?.() ?? `run-${Date.now()}-${++nextRunId}`,
         levels, rules: structuredClone(rules), levelIndex: 0, node: first.root, phase: 'decision', result: null,

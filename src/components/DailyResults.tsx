@@ -15,7 +15,7 @@ export function DailyResults({ run, payout, rank }: { run: RunState; payout: Pay
         <DailyRewardReceipt run={run} payout={payout} />
         <details className="reward-details"><summary>Run details</summary>
             <p className="daily-score-calculation">{payout.baseScore.toLocaleString()} points / {payout.square.toUpperCase()} / {formatMultiplier(payout.multiplier)}</p>
-            <dl className="daily-result-stats"><div><dt>Levels completed</dt><dd>{run.levelsCompleted} / {run.levels.length}</dd></div>
+            <dl className="daily-result-stats"><div><dt>Floors completed</dt><dd>{run.levelsCompleted} / {run.levels.length}</dd></div>
                 <div><dt>Decisions</dt><dd>{run.decisionsMade}</dd></div></dl>
             <div className="quality-counts" aria-label="Daily move counts">
                 {QUALITY_ORDER.map(quality => <div key={quality}><strong>{run.moveCounts[quality]}</strong><span>{QUALITY_LABELS[quality]}</span></div>)}

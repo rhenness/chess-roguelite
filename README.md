@@ -39,6 +39,21 @@ Artwork generation details and the original prompt are in
 
 ## Play a run
 
+### Main menu
+
+The main menu at `#/play` shows your wallet, profile and help shortcuts, **New run**,
+and **Daily dungeon**. **Continue** resumes the most recently played unfinished
+run, with its mode and level shown beneath the action. Other active runs remain
+accessible from their mode's setup page. Daily checkpoints also offer Continue
+after refresh. New run opens regular set selection without replacing an active run.
+The daily card shows the countdown and coin bonus, or your final score and rank
+after finishing. **Menu** and the header logo return here while pausing gameplay.
+The menu fits a phone screen and adapts to landscape. When there is no active
+run, New run sits directly below the logo and title without an empty Continue slot.
+The home page uses a torchlit chess-hall background, with a portrait companion
+for phones, ivory lettering, and green controls. Artwork and generation prompts
+are documented in [`docs/main-menu-artwork.md`](docs/main-menu-artwork.md).
+
 ### Player profile
 
 Open the avatar button in the header to edit your profile.
@@ -55,7 +70,7 @@ move playback while open.
 
 ### Daily dungeon
 
-Choose **Daily dungeon** on the **Play** page, choose an unlocked set, and press
+Choose **Daily dungeon** on the main menu, choose an unlocked set, and press
 **Enter dungeon**. Set selection does not consume the attempt. Each UTC day has
 the same seeded ten-level selection for everyone, with one attempt per local player.
 Your set's health, rules, and personal multiplier board are frozen at entry.
@@ -72,7 +87,7 @@ The daily page uses **Dungeon** and **Leaderboard** tabs. Set selection and resu
 stay in Dungeon, with Enter or Resume pinned beneath the scrollable content.
 Leaderboard shows every player in one scrollable list: stable mock players plus
 your actual multiplied score. Ties share ranks; your row is highlighted and pinned.
-Switching tabs preserves selection and scroll position. **Modes** stays in the
+Switching tabs preserves selection and scroll position. **Menu** stays in the
 header, alongside the profile shortcut. The trophy shortcut appears only in daily
 games and opens standings in a modal; closing it returns to the same game and
 move selection. Profile editing preserves standings and returns focus to your row.
@@ -91,12 +106,12 @@ See [development phases and rules](docs/features/04-daily-dungeon-profile.md).
 npm start
 ```
 
-Open the local URL printed by Vite, choose **Regular run**, select **Default**,
+Open the local URL printed by Vite, choose **New run**, select **Default**,
 **Obsidian Order**, or **Gilded Court**, and press **Start run**. Set cards show
 both colors, the name, starting hearts, and the initial square bonus. Selecting a
-card changes your selection without starting or replacing a run. **Modes** opens
-the mode chooser and pauses playback; **Resume regular run** returns to the
-existing run. The logo also returns to the mode chooser. Browser Back and Forward
+card changes your selection without starting or replacing a run. **Menu** opens
+the main menu and pauses playback; **Resume regular run** returns to the
+existing run from set selection. The logo also returns to the main menu. Browser Back and Forward
 follow pages without starting a run. Obsidian uses custom faceted SVG pieces with crimson inlays, 2 starting
 health, and alternating ×1.0/×1.3 multipliers. Default retains 3 starting health
 and ×1.0/×1.1 multipliers. Gilded Court uses ivory/dark green enamel SVGs with

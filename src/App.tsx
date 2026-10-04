@@ -122,7 +122,7 @@ function RunSummary({ run, payout, restart, onChangeSet }: {
             <Coins size={17} aria-hidden="true" /><strong>+{runCoinReward(run).toLocaleString()}</strong>
         </span>
         <details className="reward-details"><summary>Run details</summary><dl className="summary-stats">
-            <div><dt>Levels completed</dt><dd>{run.levelsCompleted} / {run.levels.length}</dd></div>
+            <div><dt>Floors completed</dt><dd>{run.levelsCompleted} / {run.levels.length}</dd></div>
             <div><dt>Total decisions</dt><dd>{run.decisionsMade}</dd></div>
         </dl>
         <div className="quality-counts" aria-label="Move counts">
@@ -182,7 +182,6 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const payout = useBoardPayout(run, boardNotice !== null, pieceSet, paused,
         progression.profile.paidUpgrades, activeDaily?.multipliers, activeDaily?.payout);
     const helpButton = useRef<HTMLButtonElement>(null);
-    const newRunButton = useRef<HTMLButtonElement>(null);
     const profileButton = useRef<HTMLButtonElement>(null);
     const leaderboardButton = useRef<HTMLButtonElement>(null);
     const profileReturnFocus = useRef<HTMLButtonElement | null>(null);
@@ -192,6 +191,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const standings = useMemo(() => leaderboardDungeon ? dailyLeaderboard(leaderboardDungeon.day, playerProfile,
         leaderboardDungeon.attempt?.status === 'finished' ? leaderboardDungeon.attempt.payout?.finalScore ?? null : null) : [],
     [leaderboardDungeon?.day, leaderboardDungeon?.attempt?.payout, playerProfile]);
+    const savedDailyRun = useMemo(() => page === 'play' && daily.today?.attempt?.status === 'active' ? restoreDailyRun(daily.today) : null, [page, daily.today]);
     const level = run ? run.levels[run.levelIndex] : pool[0];
     const node = run?.node;
     const choices = useMemo(() => node?.kind === 'decision' ? shuffleChoices(node.choices) : [], [node]);
@@ -301,7 +301,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         setRun(next);
         if (next.phase === 'level-ended' && run?.phase !== 'level-ended'
             && next.outcomes.at(-1)?.status === 'completed') {
-            const label = `Level ${next.levelIndex + 2}`;
+            const label = `Floor ${next.levelIndex + 2}`;
             setBoardNotice({
                 id: `level-${next.id}-${next.levelIndex + 2}`, visual: <ArrowUp strokeWidth={1.5} />,
                 label, announcement: label, tone: 'reward',
@@ -341,7 +341,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         setRun(startRun(pool, set === 'default' ? rules : { ...rules, startingHealth: PIECE_SETS[set].startingHealth }));
     }
 
-    function requestNewRun() {
+    function openMenu() {
         setShowRules(false);
         setUpgradeSet(null);
         navigate({ page: 'play' });
@@ -515,14 +515,22 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     }
 
     const resumableRegular = run && !run.daily && (run.phase !== 'finished' || !payout.result) ? { run, set: pieceSet } : regularRun.current;
-    return <main className="app-shell">
-        <header className="topbar">
-            <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); if (!expirationActive) requestNewRun(); }}><img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="34" height="38" /><strong>Knightfall</strong></a>
+    const resumableDaily = daily.today && daily.now < daily.today.expiresAt ? savedDailyRun : null;
+    const continueDaily = !!resumableDaily && (!!run?.daily || !resumableRegular);
+    const continueRun = continueDaily ? resumableDaily : resumableRegular?.run;
+    return <main className={`app-shell${page === 'play' ? ' main-menu-shell' : ''}`}>
+        <header className={`topbar${page === 'play' ? ' main-menu-topbar' : ''}`}>
+            {page !== 'play' && <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); if (!expirationActive) openMenu(); }}><img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="34" height="38" /><strong>Knightfall</strong></a>}
             <div className="top-actions">
-                <button ref={helpButton} disabled={!!payout.sequence || expirationActive} className="text-button help-button" aria-label="How to play" aria-expanded={showRules} aria-controls="game-rules" onClick={() => setShowRules(value => !value)}>?</button>
-                {page !== 'play' && <button ref={newRunButton} className="primary-small" disabled={expirationActive} onClick={requestNewRun}>Modes</button>}
                 {page === 'game' && run?.daily && <button ref={leaderboardButton} className="leaderboard-button" disabled={!leaderboardDungeon || expirationActive}
                     aria-label="Daily leaderboard" title="Daily leaderboard" onClick={openLeaderboard}><Trophy size={18} aria-hidden="true" /></button>}
+                <button ref={helpButton} disabled={!!payout.sequence || expirationActive} className="text-button help-button" aria-label="How to play" aria-expanded={showRules} aria-controls="game-rules" onClick={() => setShowRules(value => !value)}>?</button>
+                <span className="coin-balance" aria-label={`Coins: ${progression.profile.coins}`} title={`${progression.profile.coins.toLocaleString()} coins`}>
+                    <Coins size={17} aria-hidden="true" />
+                    <strong className="coin-amount">{progression.profile.coins.toLocaleString()}</strong>
+                    <strong className="coin-amount-compact" aria-hidden="true">{progression.profile.coins.toLocaleString(undefined,
+                        progression.profile.coins >= 10_000 ? { notation: 'compact', maximumFractionDigits: 1 } : undefined)}</strong>
+                </span>
                 <button ref={profileButton} className="profile-button" disabled={expirationActive} aria-label="Edit profile" title="Edit profile" onClick={() => editProfile()}>
                     <PlayerAvatar profile={playerProfile} />
                 </button>
@@ -540,18 +548,19 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         {showRules && !payout.sequence && !showProfile && <Modal className="rules-panel" titleId="game-rules" onClose={() => setShowRules(false)} returnFocus={helpButton}>
             <h2 id="game-rules">How to play</h2>
             <p>Tap a piece, then an offered destination. Or tap a colored option twice.</p>
-            <p>Start with {activeRules.startingHealth} health. Health and score carry across levels.</p>
+            <p>Start with {activeRules.startingHealth} health. Health and score carry across floors.</p>
             <p>{BEST_MOVE_STREAK_LENGTH} Best in a row: +1 HP.</p>
-            <p>Every run ends with a square multiplier. Complete all 10 levels to permanently upgrade one square.</p>
+            <p>Every run ends with a square multiplier. Complete all 10 floors to permanently upgrade one square.</p>
             <ul>{QUALITY_ORDER.map(quality => <li key={quality}><strong>{QUALITY_LABELS[quality]}</strong><span>+{activeRules.points[quality]} points / {activeRules.damage[quality]} health lost</span></li>)}</ul>
             <button className="primary-small" data-modal-focus autoFocus onClick={() => setShowRules(false)}>Got it</button>
         </Modal>}
         <div className={`page-content${page === 'game' && !showingResult ? ' game-content' : page === 'daily' ? ' daily-content' : ''}`} ref={content}>
         {page === 'play' && <PlayMenu daily={daily.today} now={daily.now} available={!!pool.length}
             onRegular={() => navigate({ page: 'regular' })} onDaily={() => navigate({ page: 'daily' })}
-            onResumeRegular={resumableRegular ? resumeRegular : undefined} onResumeDaily={resumeDaily} />}
+            dailyRank={standings.find(entry => entry.id === 'you')?.rank}
+            continuation={continueRun ? { mode: continueDaily ? 'daily' : 'regular', level: Math.min(continueRun.levelIndex + 1, continueRun.levels.length), onContinue: continueDaily ? resumeDaily : resumeRegular } : undefined} />}
         {page === 'regular' && <section className="regular-page" aria-labelledby="regular-page-title">
-            <header className="page-heading"><h1 id="regular-page-title" tabIndex={-1} data-page-focus>Regular run</h1><span className="coin-balance" aria-label={`Coins: ${progression.profile.coins}`}><Coins size={17} aria-hidden="true" />{progression.profile.coins.toLocaleString()}</span></header>
+            <header className="page-heading"><h1 id="regular-page-title" tabIndex={-1} data-page-focus>Regular run</h1></header>
             <PieceSetPicker showHeading={false} selectionOnly selectedSet={regularSelectedSet} onSelect={setRegularSelectedSet}
                 onUpgrade={openUpgrades} progression={progression.profile} defaultStartingHealth={rules.startingHealth} />
             <div className="setup-actions">{resumableRegular && <button className="text-button" onClick={resumeRegular}>Resume regular run</button>}
@@ -569,13 +578,13 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                 {run?.daily && <div className="daily-run-label"><span className="daily-run-banner"><DoorOpen size={14} aria-hidden="true" />DAILY DUNGEON</span>
                     <time aria-label="Time until dungeon expires">{formatCountdown(run.daily.expiresAt, daily.now)}</time></div>}
                 <div className="board-wrap">
-                    {fen && level ? <Chessboard options={boardOptions} /> : <div className="empty-board">No playable levels</div>}
+                    {fen && level ? <Chessboard options={boardOptions} /> : <div className="empty-board">No playable floors</div>}
                     {visibleNotice && <BoardNotification key={visibleNotice.id} notice={visibleNotice}
                         onComplete={expirationActive ? completeExpiration : payout.notice ? payout.advanceNotice : boardNotice ? dismissBoardNotice : progression.advanceUnlock} />}
                 </div>
                 <div className="level-progress" role={run ? 'progressbar' : undefined} aria-label={run ? 'Run progress' : undefined}
                     aria-valuemin={run ? 1 : undefined} aria-valuemax={run?.levels.length} aria-valuenow={run ? run.levelIndex + 1 : undefined}
-                    aria-valuetext={run ? `Level ${run.levelIndex + 1} of ${run.levels.length}` : undefined}>
+                    aria-valuetext={run ? `Floor ${run.levelIndex + 1} of ${run.levels.length}` : undefined}>
                     {(run?.levels ?? pool.slice(0, RUN_LEVEL_COUNT)).map((item, index) => <span key={item.id} aria-hidden="true"
                         className={run ? index < run.levelIndex ? 'past' : index === run.levelIndex ? 'current' : 'future' : 'future'} />)}
                 </div>
@@ -589,7 +598,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             </div>
             <aside className="play-panel">
                 <div className="options-area">
-                    {!pool.length && <div className="empty-state" role="status">No scored, playable levels.</div>}
+                    {!pool.length && <div className="empty-state" role="status">No scored, playable floors.</div>}
                     {playing && <div className="move-picker"><div className="move-options" role="group" aria-label="Available moves">
                         {choices.map((choice, index) => {
                             const pending = pendingChoice === choice.playerMove.uci;
@@ -618,7 +627,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                         <strong>{payout.sequence.phase === 'spinning' ? '…' : formatMultiplier(payout.sequence.outcome.multiplier)}</strong>
                     </div>}
                     {!payout.sequence && run && (run.phase === 'reveal' || run.phase === 'reply') && <Feedback run={run} />}
-                    {!payout.sequence && run?.phase === 'level-ended' && <div className="finished-card"><h2>{currentOutcome?.status === 'completed' ? 'Level completed' : 'Level lost'}</h2></div>}
+                    {!payout.sequence && run?.phase === 'level-ended' && <div className="finished-card"><h2>{currentOutcome?.status === 'completed' ? 'Floor completed' : 'Floor lost'}</h2></div>}
                 </div>
                 <section className="history-section">
                     <div className="section-title">Move history</div>
@@ -629,7 +638,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             </aside>
         </section>}
         {showingResult && !run!.daily && <RunSummary run={run!} payout={payout.result!} restart={() => beginRun(pieceSet)} onChangeSet={() => navigate({ page: 'regular' })} />}
-        {levelWarnings.length > 0 && <details className="catalog-warnings"><summary>{levelWarnings.length} level file(s) could not be loaded</summary><ul>{levelWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
+        {levelWarnings.length > 0 && <details className="catalog-warnings"><summary>{levelWarnings.length} floor file(s) could not be loaded</summary><ul>{levelWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
         </div>
         {profileSaveMessage && <p className="profile-save-toast" role="status">{profileSaveMessage}</p>}
     </main>;

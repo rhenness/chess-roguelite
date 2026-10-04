@@ -1,7 +1,7 @@
 import { PIECE_SET_IDS, PIECE_SETS, type PieceSetId } from '../game/pieceSets';
 import { formatMultiplier } from '../game/multipliers';
 import { PIECE_RENDERERS } from './pieces/pieceRenderers';
-import { Coins, Lock, Sparkles } from 'lucide-react';
+import { Lock, Sparkles } from 'lucide-react';
 import { isPieceSetUnlocked, type UserProgression } from '../game/progression';
 
 const PREVIEW_PIECES = [
@@ -44,9 +44,6 @@ export function PieceSetPicker({
         <>
             {showHeading && <div className="piece-set-heading">
                 <h2 id="piece-set-title">{title}</h2>
-                <div className="piece-set-heading-actions"><span className="coin-balance" aria-label={`Coins: ${progression.coins}`}>
-                    <Coins size={17} aria-hidden="true" /><strong>{progression.coins.toLocaleString()}</strong>
-                </span></div>
             </div>}
             {!hideSets && <div className="piece-set-options">
                 {PIECE_SET_IDS.map((id, index) => {

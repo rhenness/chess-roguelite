@@ -1,6 +1,7 @@
-import { Clock3, DoorOpen, Play } from 'lucide-react';
+import { ChevronRight, Clock3, Coins, DoorOpen, Play, Trophy } from 'lucide-react';
 import type { DailyDungeon } from '../game/daily';
 import './DailyDungeon.css';
+import './PlayMenu.css';
 
 export const formatDailyDate = (day: string) => new Intl.DateTimeFormat('en-US', {
     month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
@@ -11,32 +12,42 @@ export function formatCountdown(expiresAt: number, now: number): string {
         .map(value => String(value).padStart(2, '0')).join(':');
 }
 
-export function PlayMenu({ daily, now, onRegular, onDaily, onResumeRegular, onResumeDaily, available }: {
-    daily: DailyDungeon | undefined; now: number; available: boolean;
+export function PlayMenu({ daily, now, onRegular, onDaily, continuation, dailyRank, available }: {
+    daily: DailyDungeon | undefined; now: number; available: boolean; dailyRank?: number;
     onRegular: () => void; onDaily: () => void;
-    onResumeRegular?: () => void; onResumeDaily: () => void;
+    continuation?: { mode: 'regular' | 'daily'; level: number; onContinue: () => void };
 }) {
     const status = daily?.attempt?.status;
-    return <section className="play-page" aria-labelledby="play-title">
-        <h1 id="play-title" tabIndex={-1} data-page-focus>Play</h1>
-        <div className="mode-options">
-            <article className="mode-option">
-                <Play size={28} aria-hidden="true" />
-                <h2><button className="mode-select" disabled={!available} onClick={onRegular}>Regular run</button></h2>
-                {onResumeRegular && <div className="mode-actions"><button className="primary-small" onClick={onResumeRegular}>Resume regular run</button></div>}
-            </article>
-            <article className="mode-option daily-mode-option">
-                <DoorOpen size={28} aria-hidden="true" />
-                <h2><button className="mode-select" disabled={!daily} onClick={onDaily}>Daily dungeon</button></h2>
-                <div className="mode-meta">
-                    <span className="daily-reward-badge">5× coins</span>
-                    {daily && <span><Clock3 size={14} aria-hidden="true" />{formatCountdown(daily.expiresAt, now)}</span>}
-                    {status === 'finished' && <span>Attempt finished</span>}
-                    {status === 'expired' && <span>Attempt expired</span>}
-                </div>
-                {status === 'active' && <div className="mode-actions"><button className="primary-small" onClick={onResumeDaily}>Resume dungeon</button></div>}
-            </article>
+    const score = daily?.attempt?.payout?.finalScore;
+    return <section className="play-page main-menu" aria-labelledby="play-title">
+        <div className="menu-identity">
+            <img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="72" height="80" />
+            <h1 id="play-title" tabIndex={-1} data-page-focus>Knightfall</h1>
         </div>
-        {!available && <p className="empty-state" role="status">No scored, playable levels.</p>}
+        <div className="menu-actions">
+            {continuation && <div className="menu-continue-slot">
+                <button className="menu-continue menu-action" aria-label="Continue" aria-describedby="menu-run-context" onClick={continuation.onContinue}>
+                    <Play size={22} aria-hidden="true" />
+                    <span><strong>Continue</strong><span id="menu-run-context" className="menu-run-context">{continuation.mode === 'daily' ? 'Daily dungeon' : 'Regular run'} · Floor {continuation.level}</span></span>
+                    <ChevronRight size={20} aria-hidden="true" />
+                </button>
+            </div>}
+            <button className={`menu-new-run menu-action${continuation ? '' : ' menu-primary'}`} disabled={!available} onClick={onRegular}>
+                <Play size={20} aria-hidden="true" /><strong>New run</strong><ChevronRight size={20} aria-hidden="true" />
+            </button>
+            <button className="menu-daily menu-action" aria-label="Daily dungeon" aria-describedby="menu-daily-summary" disabled={!daily} onClick={onDaily}>
+                <DoorOpen size={24} aria-hidden="true" />
+                <span className="menu-daily-content"><strong>Daily dungeon</strong>
+                    <span id="menu-daily-summary" className="menu-daily-meta">
+                        {score !== undefined ? <><span aria-label={`Final score: ${score}`}><Trophy size={14} aria-hidden="true" />{score.toLocaleString()}</span>{dailyRank !== undefined && <span aria-label={`Rank ${dailyRank}`}>#{dailyRank}</span>}</>
+                            : status === 'active' ? <span>In progress</span> : status === 'finished' ? <span>Finished</span> : status === 'expired' ? <span>Expired</span>
+                                : <span className="daily-reward-badge" aria-label="5 times coins"><Coins size={14} aria-hidden="true" />×5</span>}
+                        {daily && <span aria-label="Time until daily dungeon closes"><Clock3 size={14} aria-hidden="true" />{now >= daily.expiresAt ? 'Closed' : formatCountdown(daily.expiresAt, now)}</span>}
+                    </span>
+                </span>
+                <ChevronRight size={20} aria-hidden="true" />
+            </button>
+        </div>
+        {!available && <p className="empty-state" role="status">No scored, playable floors.</p>}
     </section>;
 }
