@@ -8,6 +8,8 @@ export interface ScoringConfig {
     levelWeights: { mean: number; peak: number };
     peakPercentile: number;
     branchProbabilities: Record<MoveQuality, number>;
+    /** Per-decision depth multiplier; 1 disables the discount. */
+    depthDiscount: number;
     ambiguityScaleCp: number;
     separationLossCp: number;
     acceptableLossCp: number;
@@ -24,6 +26,7 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
     levelWeights: { mean: 0.80, peak: 0.20 },
     peakPercentile: 0.90,
     branchProbabilities: { best: 0.40, good: 0.35, inaccuracy: 0.20, bad: 0.05 },
+    depthDiscount: 0.50,
     ambiguityScaleCp: 100,
     separationLossCp: 80,
     acceptableLossCp: 50,
@@ -63,6 +66,7 @@ export function resolveScoringConfig(overrides: unknown = {}): ScoringConfig {
         if (Math.abs(Object.values(weights).reduce((sum, value) => sum + value, 0) - 1) > 1e-9) throw new Error(`${name} must sum to 1.`);
     }
     range('peakPercentile', config.peakPercentile, Number.EPSILON, 1);
+    range('depthDiscount', config.depthDiscount, Number.EPSILON, 1);
     range('storedEvaluationWeight', config.storedEvaluationWeight, 0, 1);
     range('ambiguityScaleCp', config.ambiguityScaleCp, Number.EPSILON);
     range('separationLossCp', config.separationLossCp, Number.EPSILON);

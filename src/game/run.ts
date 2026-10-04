@@ -65,9 +65,15 @@ function settleNode(state: RunState): RunState {
     const level = state.levels[state.levelIndex]!;
     const completed = state.node.kind === 'depth-limit'
         || state.node.result === 'draw' || state.node.result === level.playerColor;
+    const earlyMate = state.node.kind === 'terminal' && state.node.reason === 'checkmate'
+        && state.node.result === level.playerColor && state.node.decisionsTaken > 0;
+    // Credit unplayed decisions as Best points without recording moves or extending the streak.
+    const mateBonus = earlyMate
+        ? Math.max(0, level.generation.decisionDepth - state.node.decisionsTaken) * state.rules.points.best : 0;
     const lastLevel = state.levelIndex === state.levels.length - 1;
     return {
         ...state,
+        score: state.score + mateBonus,
         phase: lastLevel ? 'finished' : 'level-ended',
         result: lastLevel ? 'complete' : null,
         levelsCompleted: state.levelsCompleted + Number(completed),

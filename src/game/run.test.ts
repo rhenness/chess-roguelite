@@ -161,9 +161,71 @@ describe('run state', () => {
         choice.next = { kind: 'terminal', fen: choice.fenAfterPlayerMove, decisionsTaken: 1, reason: 'checkmate', result: 'white' };
         const selected = chooseQuality(startRun([level]), 'best');
         const finished = advancePlayback(selected);
-        expect(finished).toMatchObject({ phase: 'finished', result: 'complete', levelsCompleted: 1 });
+        expect(finished).toMatchObject({ phase: 'finished', result: 'complete', levelsCompleted: 1, score: 100 });
         expect(boardFen(finished)).toBe(choice.fenAfterPlayerMove);
         expect(advancePlayback(finished)).toBe(finished);
+    });
+
+    it.each(['white', 'black'] as const)('credits unplayed decisions once when the %s player mates on move two of four', playerColor => {
+        const level = makeLevel('early-mate', 20, 4, playerColor);
+        const secondNode = decision(level).choices[0]!.next;
+        if (secondNode.kind !== 'decision') throw new Error('Expected a second decision.');
+        const matingChoice = secondNode.choices[0]!;
+        matingChoice.opponentReply = null;
+        matingChoice.next = { kind: 'terminal', fen: matingChoice.fenAfterPlayerMove,
+            decisionsTaken: 2, reason: 'checkmate', result: playerColor };
+        const first = finishDecision(startRun([level]));
+        const selected = chooseQuality(first, 'best');
+        expect(selected.score).toBe(200);
+        const finished = advancePlayback(selected);
+        expect(finished).toMatchObject({ phase: 'finished', result: 'complete', score: 400,
+            decisionsMade: 2, bestMoveStreak: 2, lastHealthBonus: 0, health: 3, levelsCompleted: 1 });
+        expect(finished.moveCounts).toEqual({ best: 2, good: 0, inaccuracy: 0, bad: 0 });
+        expect(finished.history).toHaveLength(2);
+        expect(advancePlayback(finished)).toBe(finished);
+        expect(nextLevel(finished)).toBe(finished);
+    });
+
+    it('uses the configured floor depth and Best points, preserving the mate bonus across floor advancement', () => {
+        const level = makeLevel('early-mate', 20, 3);
+        const secondNode = decision(level).choices[0]!.next;
+        if (secondNode.kind !== 'decision') throw new Error('Expected a second decision.');
+        const matingChoice = secondNode.choices[1]!;
+        matingChoice.opponentReply = null;
+        matingChoice.next = { kind: 'terminal', fen: matingChoice.fenAfterPlayerMove,
+            decisionsTaken: 2, reason: 'checkmate', result: 'white' };
+        const rules = { ...DEFAULT_RULES, points: { ...DEFAULT_RULES.points, best: 80, good: 50 } };
+        const first = finishDecision(startRun([level, makeLevel('next', 40)], rules));
+        const ended = finishDecision(first, 'good');
+        expect(ended).toMatchObject({ phase: 'level-ended', score: 210, decisionsMade: 2,
+            bestMoveStreak: 0, health: 3, levelsCompleted: 1 });
+        expect(ended.moveCounts).toEqual({ best: 1, good: 1, inaccuracy: 0, bad: 0 });
+        expect(advancePlayback(ended)).toBe(ended);
+        const next = nextLevel(ended);
+        expect(next).toMatchObject({ phase: 'decision', levelIndex: 1, score: 210 });
+        expect(nextLevel(next)).toBe(next);
+    });
+
+    it.each([
+        ['draw', 'draw'], ['stalemate', 'draw'], ['checkmate', 'black'],
+    ] as const)('does not award unplayed Best points for %s resulting in %s', (reason, result) => {
+        const level = makeLevel('early-end', 20, 2);
+        const choice = decision(level).choices[0]!;
+        choice.opponentReply = null;
+        choice.next = { kind: 'terminal', fen: choice.fenAfterPlayerMove, decisionsTaken: 1, reason, result };
+        const finished = finishDecision(startRun([level]));
+        expect(finished.score).toBe(100);
+        expect(finished.decisionsMade).toBe(1);
+    });
+
+    it('does not award a mate bonus if the selected move exhausts health', () => {
+        const level = makeLevel('early-mate', 20, 2);
+        const choice = decision(level).choices[3]!;
+        choice.opponentReply = null;
+        choice.next = { kind: 'terminal', fen: choice.fenAfterPlayerMove,
+            decisionsTaken: 1, reason: 'checkmate', result: 'white' };
+        const finished = finishDecision(startRun([level], { ...DEFAULT_RULES, startingHealth: 1 }), 'bad');
+        expect(finished).toMatchObject({ phase: 'finished', result: 'defeat', score: 0, levelsCompleted: 0 });
     });
 
     it('settles a level with no decisions and resets all stats in a new run', () => {

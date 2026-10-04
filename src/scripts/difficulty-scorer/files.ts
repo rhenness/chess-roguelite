@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import type { GeneratedLevel } from '../../types/level.js';
 import type { AnalysisEngine } from '../tree-generator/stockfish.js';
-import { scoreLevel, validateScorableLevel, type ScoringOptions, type ScoringResult } from './index.js';
+import { integerOption } from '../tree-generator/index.js';
+import { scoreLevel, validateScorableLevel, type NodeDifficulty, type ScoringOptions, type ScoringResult } from './index.js';
 import { resolveScoringConfig } from './config.js';
 import { scoredLevelPath } from '../level-files.js';
 
@@ -42,8 +43,11 @@ export function replaceDifficulty(source: string, difficulty: number): string {
 }
 
 export interface FileScoringOptions extends ScoringOptions {
+    /** Maximum simultaneous files. Defaults to 1; each file owns its engine process. */
+    concurrency?: number;
     rescore?: boolean;
     dryRun?: boolean;
+    onFileProgress?: (file: string, node: NodeDifficulty, decisionsScored: number) => void;
     onResult?: (result: FileScoringResult) => void;
 }
 
@@ -73,11 +77,15 @@ async function writeDifficulty(file: string, destination: string, source: string
     } finally { await rm(temporary, { force: true }); }
 }
 
-/** Failures leave the source untouched and do not stop other files. */
+/** Bounded parallel scoring retains input order; failures do not stop other files. */
 export async function scoreLevelFiles(files: string[], options: FileScoringOptions = {}, engine?: AnalysisEngine): Promise<FileScoringResult[]> {
     const config = resolveScoringConfig(options.config);
-    const results: FileScoringResult[] = [];
-    for (const file of new Set(files.map(file => resolve(file)))) {
+    const concurrency = integerOption('concurrency', options.concurrency ?? 1, 1, 32);
+    if (engine && concurrency > 1) {
+        throw new Error('A supplied engine cannot be shared by concurrent scoring jobs. Use concurrency 1 or omit the supplied engine.');
+    }
+    const uniqueFiles = [...new Set(files.map(file => resolve(file)))];
+    async function processFile(file: string): Promise<FileScoringResult> {
         let outcome: FileScoringResult;
         try {
             const source = await readFile(file, 'utf8');
@@ -87,7 +95,10 @@ export async function scoreLevelFiles(files: string[], options: FileScoringOptio
             replaceDifficulty(source, 0);
             if (level.difficulty !== -1 && !options.rescore) outcome = { file, status: 'skipped', difficulty: level.difficulty };
             else {
-                const result = await scoreLevel(level, { ...options, config }, engine);
+                const result = await scoreLevel(level, { ...options, config, onProgress: (node, count) => {
+                    options.onProgress?.(node, count);
+                    options.onFileProgress?.(file, node, count);
+                } }, engine);
                 const destination = options.dryRun ? file : scoredLevelPath(file, result.difficulty, level.id);
                 if (!options.dryRun) await writeDifficulty(file, destination, source, replaceDifficulty(source, result.difficulty));
                 outcome = { file: destination, status: 'scored', result };
@@ -95,8 +106,22 @@ export async function scoreLevelFiles(files: string[], options: FileScoringOptio
         } catch (error) {
             outcome = { file, status: 'failed', error: error instanceof Error ? error.message : String(error) };
         }
-        results.push(outcome);
-        options.onResult?.(outcome);
+        return outcome;
     }
+    const results = new Array<FileScoringResult>(uniqueFiles.length);
+    let nextFile = 0;
+    async function worker(): Promise<void> {
+        while (nextFile < uniqueFiles.length) {
+            // Claim before awaiting so each file is processed by exactly one worker.
+            const index = nextFile++;
+            const outcome = await processFile(uniqueFiles[index]!);
+            results[index] = outcome;
+            options.onResult?.(outcome);
+        }
+    }
+    // Wait for owned engines to finish and close even if a caller's callback throws.
+    const workers = await Promise.allSettled(Array.from({ length: Math.min(concurrency, uniqueFiles.length) }, worker));
+    const failedWorker = workers.find(result => result.status === 'rejected');
+    if (failedWorker?.status === 'rejected') throw failedWorker.reason;
     return results;
 }

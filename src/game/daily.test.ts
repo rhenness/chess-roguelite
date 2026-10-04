@@ -25,6 +25,22 @@ describe('daily dungeon', () => {
         expect(expireDailyDungeon(saved, entered.dungeon.expiresAt)).toBe(saved);
         expect(restoreDailyRun(saved)?.phase).toBe('finished');
     });
+
+    it('includes early checkmate points in payouts and reconstructs them once from saved decisions', () => {
+        const level = makeLevel('early-mate', 20, 2);
+        const choice = decision(level).choices[0]!;
+        choice.opponentReply = null;
+        choice.next = { kind: 'terminal', fen: choice.fenAfterPlayerMove,
+            decisionsTaken: 1, reason: 'checkmate', result: 'white' };
+        const entered = enterDailyDungeon(createDailyDungeon([level], now), 'default', DEFAULT_RULES, board, now);
+        const saved = recordDailyRun(entered.dungeon, best(entered.run), now, () => 0);
+        expect(saved.attempt?.payout?.baseScore).toBe(200);
+        expect(restoreDailyRun(saved)).toMatchObject({ phase: 'finished', score: 200, decisionsMade: 1, bestMoveStreak: 1 });
+        expect(saveDailyArchive(storeDailyDungeon(initialDailyArchive(), saved))).toBe(true);
+        const loaded = loadDailyArchive([level]).days[saved.day]!;
+        expect(loaded.attempt?.payout?.baseScore).toBe(200);
+        expect(restoreDailyRun(loaded)).toEqual(restoreDailyRun(saved));
+    });
     it('uses UTC boundaries and selects the same ten levels independent of pool order', () => {
         const first = createDailyDungeon(pool, now);
         const second = createDailyDungeon([...pool].reverse(), now + 3600000);

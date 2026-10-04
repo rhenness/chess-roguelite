@@ -1045,9 +1045,56 @@ describe('gameplay interface', () => {
         selectQuality(level, 'best');
         expect(screen.queryByRole('button', { name: 'Show opponent reply' })).not.toBeInTheDocument();
         act(() => { vi.advanceTimersByTime(1400); });
+        expect(screen.queryByRole('status', { name: 'Checkmate' })).not.toBeInTheDocument();
         finishPayout();
         expect(screen.getByRole('heading', { name: 'Run complete' })).toBeInTheDocument();
         expect(summaryValue('Floors completed')).toBe('1 / 1');
+    });
+
+    it.each(['white', 'black'] as const)('shows the %s player a Checkmate notice and preserves points when advancing floors', playerColor => {
+        vi.useFakeTimers();
+        const level = makeLevel('early-mate', 10, 4, playerColor);
+        const choice = decision(level).choices[0]!;
+        choice.opponentReply = null;
+        choice.next = { kind: 'terminal', fen: choice.fenAfterPlayerMove,
+            decisionsTaken: 1, reason: 'checkmate', result: playerColor };
+        const next = makeLevel('next', 30);
+        renderGame(<App levels={[level, next]} />);
+        selectQuality(level, 'best');
+        expect(screen.getByLabelText('Score: 100')).toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(1400); });
+        expect(screen.getByRole('heading', { name: 'Floor completed' })).toBeInTheDocument();
+        const notice = screen.getByRole('status', { name: 'Checkmate' });
+        expect(notice).toHaveTextContent('Checkmate');
+        expect(notice.parentElement).toContainElement(screen.getByTestId('board'));
+        expect(screen.queryByRole('status', { name: 'Floor 2' })).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Score: 400')).toBeInTheDocument();
+        expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
+        expect(screen.getByLabelText('Best streak: 1')).toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(1500); });
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', next.root.fen);
+        expect(screen.getByLabelText('Score: 400')).toBeInTheDocument();
+        expect(screen.queryByRole('status', { name: 'Checkmate' })).not.toBeInTheDocument();
+    });
+
+    it('keeps the final mating position visible for the Checkmate notice before starting payout', () => {
+        vi.useFakeTimers();
+        const level = makeLevel();
+        const choice = decision(level).choices[0]!;
+        choice.opponentReply = null;
+        choice.next = { kind: 'terminal', fen: choice.fenAfterPlayerMove,
+            decisionsTaken: 1, reason: 'checkmate', result: 'white' };
+        renderGame(<App levels={[level]} />);
+        selectQuality(level, 'best');
+        act(() => { vi.advanceTimersByTime(1400); });
+        expect(screen.getByRole('status', { name: 'Checkmate' })).toBeInTheDocument();
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
+        expect(screen.queryByRole('status', { name: 'Score payout' })).not.toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(1499); });
+        expect(screen.getByRole('status', { name: 'Checkmate' })).toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(1); });
+        expect(screen.queryByRole('status', { name: 'Checkmate' })).not.toBeInTheDocument();
+        expect(screen.getByRole('status', { name: 'Score payout' })).toBeInTheDocument();
     });
 
     it('shows an opponent win and automatically advances a surviving player to the next level', () => {
@@ -1060,6 +1107,7 @@ describe('gameplay interface', () => {
         act(() => { vi.advanceTimersByTime(1400); });
         act(() => { vi.advanceTimersByTime(1000); });
         expect(screen.getByRole('heading', { name: 'Floor lost' })).toBeInTheDocument();
+        expect(screen.queryByRole('status', { name: 'Checkmate' })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Next level' })).not.toBeInTheDocument();
         act(() => { vi.advanceTimersByTime(1500); });
         expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuenow', '2');

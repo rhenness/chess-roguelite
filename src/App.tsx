@@ -299,7 +299,13 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     function changeRun(next: RunState) {
         if (!daily.update(next)) return;
         setRun(next);
-        if (next.phase === 'level-ended' && run?.phase !== 'level-ended'
+        if (next.outcomes.length > (run?.outcomes.length ?? 0) && next.node.kind === 'terminal'
+            && next.node.reason === 'checkmate' && next.node.result === next.levels[next.levelIndex]!.playerColor) {
+            setBoardNotice({
+                id: `checkmate-${next.id}-${next.levelIndex}`, visual: <Trophy strokeWidth={1.5} />,
+                label: 'Checkmate', announcement: 'Checkmate', tone: 'reward',
+            });
+        } else if (next.phase === 'level-ended' && run?.phase !== 'level-ended'
             && next.outcomes.at(-1)?.status === 'completed') {
             const label = `Floor ${next.levelIndex + 2}`;
             setBoardNotice({

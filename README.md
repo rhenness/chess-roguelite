@@ -182,6 +182,14 @@ and fade. Damage uses a red theme. A lethal move instead shows a skull and
 or changes the layout; reduced-motion settings show a still badge. The reusable
 `BoardNotification` component accepts SVGs or images, a label, an optional caption,
 a color theme, and a display duration for other milestone notifications.
+
+Checkmating the opponent before the floor's configured decision limit awards
+Best-move points for every unplayed decision: a win on move two of a
+four-decision floor adds 200 bonus points. These points do not increase move
+counts, the Best streak, or health. Draws and losses award no such bonus.
+Player checkmates show a "Checkmate" board notification before advancing to
+the next floor or starting the final payout.
+
 Preview overlays from the browser console using `window.knightfall`. These
 commands only show notifications; they do not change gameplay health or score:
 
@@ -436,13 +444,22 @@ Select specific files, another directory, or already-scored levels:
 ```powershell
 npm run score:levels -- src/levels/my-level.json
 npm run score:levels -- --directory "C:\levels" --rescore
+npm run score:levels -- --rescore --concurrency 4
 npm run score:levels -- --help
 ```
 
 Use `--engine` or `STOCKFISH_PATH` for an alternative Stockfish executable.
-Scoring uses one thread and 64 MB of hash memory. Each search clears engine state
+`--concurrency` accepts 1–32 simultaneous scoring jobs and defaults to 1. It also
+works with `--dry-run`. Each active file uses a separate Stockfish process with
+one thread and 64 MB of hash memory, plus engine overhead. Each search clears engine state
 and replays the full branch history so results are reproducible for the same input,
 configuration and engine build, independently of previously scored positions.
+
+Programmatic callers can pass `FileScoringOptions.concurrency` to `scoreLevelFiles`.
+Returned results retain input order; `onResult` reports jobs as they finish.
+`onFileProgress` identifies the source file for each progress update. Supplying
+an existing engine requires concurrency 1 because searches on one engine must
+run sequentially.
 
 Configuration defaults and validation live in
 [`config.ts`](src/scripts/difficulty-scorer/config.ts). Use `--print-config` to
@@ -453,6 +470,7 @@ invalid thresholds and weights that do not sum to 1 are rejected. For example:
 ```json
 {
     "depths": [4, 8, 12, 16],
+    "depthDiscount": 0.5,
     "acceptableLossCp": 50,
     "subtlety": { "quiet": 90 }
 }
@@ -495,8 +513,16 @@ scores zero without starting Stockfish.
 
 Reach probabilities start at 1 and use best/good/inaccuracy/bad probabilities of
 40%/35%/20%/5%. When fewer than four choices exist, the available probabilities are
-renormalized. Overall difficulty is 80% of the reach-weighted mean plus 20% of the
-reach-weighted 90th percentile, rounded and clamped to 0–100. The percentile uses
+renormalized. Both the mean and percentile use
+`reachProbability * depthDiscount ** decisionsTaken` as the node weight. The default
+`depthDiscount` is 0.5, so successive decision depths receive multipliers of
+1, 0.5, 0.25 and 0.125. In a full depth-four tree, the opening contributes about
+53.3% of the weighted mean. The discount must be greater than 0 and at most 1;
+set it to 1 to restore weighting by reach probability alone. Existing ratings
+need `--rescore` to reflect the discount.
+
+Overall difficulty is 80% of the weighted mean plus 20% of the
+weighted 90th percentile, rounded and clamped to 0–100. The percentile uses
 the first ascending score whose cumulative weight reaches 90% of total decision
 weight. Leaves do not add weight. These are heuristic estimates; human difficulty
 calibration remains future work.

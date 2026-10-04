@@ -181,7 +181,14 @@ Suggested POC values:
 - Inaccuracy: 25 points.
 - Bad: 0 points.
 
-The base run score is the sum of points earned across all player decisions in all levels. The final score applies the end-of-run square multiplier and rounds once.
+The base run score is the sum of points earned across all player decisions in all levels, including early checkmate bonuses. The final score applies the end-of-run square multiplier and rounds once.
+
+When the player wins by checkmate before the floor's configured decision depth,
+award `max(0, decisionDepth - decisionsTaken) * points.best` once as a completion
+bonus. For example, mating on move two of a four-decision floor adds 200 points
+with the default rules. These points do not count as played moves, extend the
+Best-move streak, or grant health. Draws, losses, and terminal starting positions
+receive no bonus.
 
 Scoring values should be configurable.
 

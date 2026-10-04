@@ -83,7 +83,8 @@ export async function scoreLevel(level: GeneratedLevel, options: ScoringOptions 
         }
         const difficulty = clamp(Object.entries(signals).reduce((sum, [key, value]) => sum
             + config.nodeWeights[key as keyof typeof signals] * value, 0));
-        const result: NodeDifficulty = { fen: node.fen, difficulty, reachProbability, signals, bestMoveChanged };
+        const result: NodeDifficulty = { fen: node.fen, decisionsTaken: node.decisionsTaken,
+            difficulty, reachProbability, signals, bestMoveChanged };
         nodes.push(result);
         options.onProgress?.(result, nodes.length);
 

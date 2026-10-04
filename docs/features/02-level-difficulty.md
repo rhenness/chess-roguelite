@@ -155,15 +155,31 @@ Each child node's reach probability is:
 
 These probabilities should be configurable and replaceable later with real player data.
 
+### Decision Depth Discount
+
+Weight earlier decisions more heavily while retaining reach probabilities for each branch:
+
+`nodeWeight = reachProbability * depthDiscount ** decisionsTaken`
+
+`depthDiscount` defaults to `0.5` and must be greater than `0` and at most `1`.
+The root has `decisionsTaken: 0`, so it receives no discount. Each subsequent
+decision depth halves the multiplier. In a full depth-four tree, the depths
+contribute about 53.3%, 26.7%, 13.3% and 6.7% of the weighted mean. Both the mean
+and percentile use these discounted weights. Set `depthDiscount` to `1` to
+restore weighting by reach probability alone. Rescore existing levels to update
+their saved ratings.
+
 ### Weighted Mean Difficulty — 80%
 
-Calculate the weighted mean of all reachable `DecisionNode` difficulty scores using node reach probability.
+Calculate the weighted mean of all reachable `DecisionNode` difficulty scores using the discounted node weights.
 
-This represents the expected difficulty of a typical path through the level.
+This represents path difficulty with more influence given to earlier decisions.
 
 ### Weighted Peak Difficulty — 20%
 
 Calculate the weighted 90th percentile of reachable node difficulty.
+
+Use the same discounted node weights as the mean.
 
 This allows difficult sections of the tree to affect the level score without allowing one extremely unlikely branch to dominate it.
 
@@ -193,6 +209,8 @@ The scoring script should:
 - Preserve all other generated level data.
 - Write the updated JSON back to disk.
 - Support scoring multiple level files in one run.
+- Support `--concurrency` for 1–32 simultaneous file jobs, defaulting to 1, including rescoring and dry runs.
+- Use separate Stockfish processes for concurrent files, preserve input result order, and report progress per file.
 - Report failures without preventing other valid levels from being processed.
 
 ## Initial Scope
