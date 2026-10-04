@@ -5,12 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChessboardOptions } from 'react-chessboard';
 import type { GeneratedLevel, MoveQuality } from './types/level';
 import { decision, makeLevel } from './test/levels';
-import { DEFAULT_RULES } from './game/run';
+import { advancePlayback, chooseMove, DEFAULT_RULES, nextLevel } from './game/run';
 import { BOARD_SQUARES, formatMultiplier, initialMultiplierProfile, loadMultiplierProfile, MULTIPLIER_STORAGE_KEY } from './game/multipliers';
 import { PIECE_SET_IDS, PIECE_SETS } from './game/pieceSets';
 import { initialUserProgression, loadUserProgression, PROGRESSION_STORAGE_KEY, saveUserProgression } from './game/progression';
 import { PIECE_RENDERERS } from './components/pieces/pieceRenderers';
 import App from './App';
+import { initialPlayerProfile, loadPlayerProfile, PLAYER_PROFILE_STORAGE_KEY } from './game/playerProfile';
+import { createDailyDungeon, DAILY_STORAGE_KEY, enterDailyDungeon, initialDailyArchive, recordDailyRun, saveDailyArchive, storeDailyDungeon } from './game/daily';
 
 // Assert the FEN/orientation sent to the board without depending on drag animations.
 vi.mock('react-chessboard', async () => ({
@@ -32,15 +34,47 @@ vi.mock('react-chessboard', async () => ({
 
 afterEach(() => { vi.useRealTimers(); window.localStorage.removeItem(PROGRESSION_STORAGE_KEY); });
 beforeEach(() => {
+    window.history.replaceState(null, '', '#/play');
+    window.localStorage.removeItem(DAILY_STORAGE_KEY);
+    window.localStorage.removeItem(PLAYER_PROFILE_STORAGE_KEY);
     PIECE_SET_IDS.forEach(id => window.localStorage.removeItem(PIECE_SETS[id].storageKey));
     // Existing gameplay scenarios exercise all sets after they have been unlocked.
     saveUserProgression({ ...initialUserProgression(), finishedRuns: 8 });
 });
 
-function renderGame(element: ReactElement) {
+function renderSetup(element: ReactElement) {
     const view = render(element);
-    const defaultSet = screen.queryByRole('button', { name: 'Default' });
-    if (defaultSet) fireEvent.click(defaultSet);
+    if (screen.queryByRole('heading', { name: 'Play', level: 1 })) {
+        const regular = screen.getByRole('button', { name: 'Regular run' });
+        if (!regular.hasAttribute('disabled')) fireEvent.click(regular);
+    }
+    return view;
+}
+
+function openRegular() {
+    if (!screen.queryByRole('heading', { name: 'Regular run', level: 1 })) {
+        const modes = screen.queryByRole('button', { name: 'Modes' });
+        if (modes) fireEvent.click(modes);
+        fireEvent.click(screen.getByRole('button', { name: /^(Regular run|New run)$/ }));
+    }
+}
+
+function startRegular(name = 'Default') {
+    openRegular();
+    fireEvent.click(screen.getByRole('button', { name }));
+    fireEvent.click(screen.getByRole('button', { name: /^Start (new )?run$/ }));
+}
+
+function openDaily() {
+    if (screen.queryByRole('heading', { name: 'Daily dungeon', level: 1 })) return;
+    const modes = screen.queryByRole('button', { name: 'Modes' });
+    if (modes) fireEvent.click(modes);
+    fireEvent.click(screen.getByRole('button', { name: 'Daily dungeon' }));
+}
+
+function renderGame(element: ReactElement) {
+    const view = renderSetup(element);
+    if (screen.queryByRole('button', { name: 'Default' })) startRegular();
     return view;
 }
 
@@ -57,16 +91,403 @@ function summaryValue(label: string): string | null {
 }
 
 function finishPayout() {
-    for (let step = 0; step < 32 && !screen.queryByRole('dialog'); step++) {
+    for (let step = 0; step < 32 && !screen.queryByText('Total score') && !screen.queryByText('Final score'); step++) {
         act(() => { vi.runOnlyPendingTimers(); });
     }
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByText('Total score') ?? screen.queryByText('Final score')).toBeInTheDocument();
 }
+
+describe('player profile interface', () => {
+    it('opens from the header, previews independent choices, and persists only on save', () => {
+        const view = renderGame(<App levels={[makeLevel()]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+        const editor = screen.getByRole('dialog', { name: 'Edit profile' });
+        expect(screen.getAllByRole('dialog')).toHaveLength(1);
+        expect(screen.getByRole('textbox', { name: 'Display name' })).toHaveFocus();
+        fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Castle Keeper' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Rook avatar' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Sapphire avatar background' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Crimson court banner' }));
+        const preview = screen.getByLabelText('Leaderboard appearance');
+        expect(within(preview).getByText('Castle Keeper')).toBeInTheDocument();
+        expect(preview).toHaveStyle({ backgroundImage: 'url("/profile/banners/crimson.svg")' });
+        expect(preview.querySelector('.player-avatar')).toHaveStyle({ backgroundColor: '#345d85' });
+        expect(preview.querySelector('img')).toHaveAttribute('src', '/profile/avatars/rook.svg');
+        expect(loadPlayerProfile()).toEqual(initialPlayerProfile());
+        fireEvent.click(within(editor).getByRole('button', { name: 'Save changes' }));
+        expect(loadPlayerProfile()).toMatchObject({ displayName: 'Castle Keeper', avatarId: 'rook',
+            avatarBackgroundColor: '#345d85', bannerId: 'crimson' });
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Edit profile' })).toHaveFocus();
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+        view.unmount();
+        renderGame(<App levels={[makeLevel()]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+        expect(screen.getByRole('textbox', { name: 'Display name' })).toHaveValue('Castle Keeper');
+        expect(screen.getByRole('button', { name: 'Rook avatar' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: 'Crimson court banner' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('discards drafts on Cancel and Escape, and preserves an active run', () => {
+        vi.useFakeTimers();
+        const level = makeLevel();
+        renderGame(<App levels={[level]} />);
+        selectQuality(level, 'good');
+        const score = screen.getByLabelText('Score: 75');
+        const position = screen.getByTestId('board').getAttribute('data-position');
+        fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+        fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Unsaved' } });
+        act(() => { vi.advanceTimersByTime(10000); });
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', position);
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        expect(score).toHaveTextContent('75');
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', position);
+        expect(screen.getByRole('button', { name: 'Edit profile' })).toHaveFocus();
+        fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+        expect(screen.getByRole('textbox', { name: 'Display name' })).toHaveValue('Massive Pawn');
+        fireEvent.click(screen.getByRole('button', { name: 'Queen avatar' }));
+        fireEvent(screen.getByRole('dialog'), new Event('cancel', { bubbles: true, cancelable: true }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(loadPlayerProfile()).toEqual(initialPlayerProfile());
+    });
+
+    it('validates empty names, offers preset colors, and includes inputs in keyboard navigation', () => {
+        renderGame(<App levels={[makeLevel()]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+        const input = screen.getByRole('textbox', { name: 'Display name' });
+        fireEvent.change(input, { target: { value: '   ' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+        expect(screen.getByRole('alert')).toHaveTextContent('Enter a display name.');
+        expect(input).toHaveAttribute('aria-invalid', 'true');
+        fireEvent.change(input, { target: { value: '  Keeper  ' } });
+        expect(screen.queryByLabelText('Custom avatar background color')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Sapphire avatar background' }));
+        const close = screen.getByRole('button', { name: 'Close dialog' });
+        const save = screen.getByRole('button', { name: 'Save changes' });
+        close.focus();
+        fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+        expect(save).toHaveFocus();
+        fireEvent.keyDown(save, { key: 'Tab' });
+        expect(close).toHaveFocus();
+        fireEvent.click(save);
+        expect(loadPlayerProfile()).toMatchObject({ displayName: 'Keeper', avatarBackgroundColor: '#345d85' });
+    });
+
+    it('keeps profile changes in memory when saving is unavailable', () => {
+        renderGame(<App levels={[makeLevel()]} />);
+        const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Unavailable'); });
+        try {
+            fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+            fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Keeper' } });
+            fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+            expect(screen.queryByRole('status')).not.toBeInTheDocument();
+            fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+            expect(screen.getByRole('textbox', { name: 'Display name' })).toHaveValue('Keeper');
+        } finally { storage.mockRestore(); }
+    });
+});
+
+describe('page navigation', () => {
+    it('starts on a dedicated mode chooser and uses the logo as home', () => {
+        render(<App levels={[makeLevel()]} />);
+        expect(screen.getByRole('heading', { name: 'Play', level: 1 })).toHaveFocus();
+        expect(screen.queryByTestId('board')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Default' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
+        expect(window.location.hash).toBe('#/regular');
+        fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
+        expect(window.location.hash).toBe('#/play');
+        expect(screen.getByRole('heading', { name: 'Play', level: 1 })).toHaveFocus();
+    });
+
+    it('pauses browsing, preserves both runs, and requires explicit daily entry', () => {
+        vi.useFakeTimers();
+        const level = makeLevel('resumable', 10, 2);
+        renderGame(<App levels={[level]} />);
+        const choice = selectQuality(level, 'good');
+        fireEvent.click(screen.getByRole('button', { name: 'Modes' }));
+        expect(screen.getByRole('button', { name: 'Resume regular run' })).toBeInTheDocument();
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Obsidian Order' }));
+        expect(screen.getByRole('button', { name: 'Obsidian Order' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByTestId('board')).not.toBeInTheDocument();
+        expect(JSON.parse(window.localStorage.getItem(DAILY_STORAGE_KEY)!).days[Object.keys(JSON.parse(window.localStorage.getItem(DAILY_STORAGE_KEY)!).days)[0]!].attempt).toBeNull();
+        act(() => { vi.advanceTimersByTime(5000); });
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        expect(screen.getByLabelText('Health: 2')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Modes' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Resume regular run' }));
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
+        expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Modes' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' }));
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+        expect(screen.getByLabelText('Health: 2')).toBeInTheDocument();
+        openDaily();
+        expect(screen.getByRole('heading', { name: 'Dungeon in progress' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Enter dungeon' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Upgrade Obsidian Order' })).not.toBeInTheDocument();
+    });
+
+    it('follows browser navigation without resetting a pending move', () => {
+        const level = makeLevel();
+        renderGame(<App levels={[level]} />);
+        const option = screen.getAllByRole('button', { name: /^Option / })[0]!;
+        fireEvent.click(option);
+        const pending = option.getAttribute('aria-label');
+        fireEvent.click(screen.getByRole('button', { name: 'Modes' }));
+        act(() => { window.history.replaceState(null, '', '#/game'); window.dispatchEvent(new PopStateEvent('popstate')); });
+        expect(screen.getByRole('button', { name: pending! })).toHaveAttribute('aria-pressed', 'true');
+        act(() => { window.history.replaceState(null, '', '#/play'); window.dispatchEvent(new PopStateEvent('popstate')); });
+        expect(screen.getByRole('button', { name: 'Resume regular run' })).toBeInTheDocument();
+    });
+
+    it('restores a daily checkpoint after refresh, including automatic level advancement', () => {
+        vi.useFakeTimers();
+        const levels = [makeLevel('daily-first', 10), makeLevel('daily-next', 30)];
+        const view = render(<App levels={levels} />);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        selectQuality(levels[0]!, 'good');
+        act(() => { vi.advanceTimersByTime(1400); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        act(() => { vi.advanceTimersByTime(1500); });
+        view.unmount();
+        render(<App levels={levels} />);
+        expect(screen.queryByTestId('board')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' }));
+        expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuenow', '2');
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', levels[1]!.root.fen);
+        expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
+    });
+
+    it('shows expiration before opening the new daily page and preserves the regular run', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-04T23:59:57Z'));
+        const level = makeLevel('expiration', 10, 2);
+        renderGame(<App levels={[level]} />);
+        const position = screen.getByTestId('board').getAttribute('data-position');
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Daily leaderboard' }));
+        act(() => { vi.advanceTimersByTime(3000); });
+        expect(screen.getByRole('status', { name: 'Dungeon expired. Your daily attempt has ended.' })).toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(2500); });
+        expect(screen.getByRole('heading', { name: 'Daily dungeon', level: 1 })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeInTheDocument();
+        expect(loadUserProgression().coins).toBe(0);
+        expect(JSON.parse(window.localStorage.getItem(DAILY_STORAGE_KEY)!).days['2026-10-04'].attempt.status).toBe('expired');
+        fireEvent.click(screen.getByRole('button', { name: 'Modes' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Resume regular run' }));
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', position);
+    });
+});
+
+describe('daily leaderboard interface', () => {
+    it('offers a daily-only modal that returns to the same game and selection', () => {
+        vi.useFakeTimers();
+        renderGame(<App levels={[makeLevel('leaderboard', 10, 2)]} />);
+        expect(screen.queryByRole('button', { name: 'Daily leaderboard' })).not.toBeInTheDocument();
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        const option = screen.getAllByRole('button', { name: /^Option / })[0]!;
+        fireEvent.click(option);
+        const label = option.getAttribute('aria-label');
+        const position = screen.getByTestId('board').getAttribute('data-position');
+        fireEvent.click(screen.getByRole('button', { name: 'Daily leaderboard' }));
+        const modal = screen.getByRole('dialog', { name: 'Daily leaderboard' });
+        expect(within(modal).queryByRole('button', { name: /dungeon/i })).not.toBeInTheDocument();
+        expect(window.location.hash).toBe('#/game');
+        act(() => { vi.advanceTimersByTime(5000); });
+        fireEvent(modal, new Event('cancel', { bubbles: true, cancelable: true }));
+        expect(screen.getByRole('button', { name: 'Daily leaderboard' })).toHaveFocus();
+        expect(screen.getByRole('button', { name: label! })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', position);
+    });
+
+    it('shows all standings in a separate tab and retains the selected set and scroll position', () => {
+        render(<App levels={[makeLevel()]} />);
+        openDaily();
+        expect(screen.getByRole('button', { name: 'Modes' }).closest('header')).toHaveClass('topbar');
+        expect(screen.queryByRole('list', { name: 'Daily standings' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Obsidian Order' }));
+        fireEvent.click(screen.getByRole('tab', { name: 'Leaderboard' }));
+        const list = screen.getByRole('list', { name: 'Daily standings' });
+        expect(within(list).getAllByRole('listitem')).toHaveLength(18);
+        expect(screen.queryByRole('button', { name: /Show all|Top 5|Top 10|Regular run/ })).not.toBeInTheDocument();
+        expect(screen.queryByText('Demo leaderboard')).not.toBeInTheDocument();
+        expect(screen.queryByText('Player', { selector: '.leaderboard-columns span' })).not.toBeInTheDocument();
+        list.scrollTop = 300;
+        fireEvent.scroll(list);
+        fireEvent.click(screen.getByRole('tab', { name: 'Dungeon' }));
+        expect(screen.getByRole('button', { name: 'Obsidian Order' })).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(screen.getByRole('tab', { name: 'Leaderboard' }));
+        expect(screen.getByRole('list', { name: 'Daily standings' }).scrollTop).toBe(300);
+        expect(screen.queryByRole('button', { name: 'Edit your profile' })).not.toBeInTheDocument();
+        const edit = screen.getByRole('button', { name: 'Edit profile' });
+        fireEvent.click(edit);
+        fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Royal Player' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+        expect(edit).toHaveFocus();
+        expect(screen.getByRole('list', { name: 'Daily standings' }).scrollTop).toBe(300);
+        expect(within(screen.getByLabelText('Your standing')).getByText('Royal Player')).toBeInTheDocument();
+    });
+
+    it('supports keyboard switching between dungeon and leaderboard', () => {
+        render(<App levels={[makeLevel()]} />);
+        openDaily();
+        const dungeon = screen.getByRole('tab', { name: 'Dungeon' });
+        dungeon.focus();
+        fireEvent.keyDown(dungeon, { key: 'ArrowRight' });
+        const leaderboard = screen.getByRole('tab', { name: 'Leaderboard' });
+        expect(leaderboard).toHaveFocus();
+        expect(leaderboard).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByRole('tabpanel', { name: 'Leaderboard' })).toBeInTheDocument();
+        fireEvent.keyDown(leaderboard, { key: 'Home' });
+        expect(dungeon).toHaveFocus();
+        expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeInTheDocument();
+    });
+
+    it('shows the full in-game leaderboard without a profile edit button', () => {
+        render(<App levels={[makeLevel()]} />);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Daily leaderboard' }));
+        const modal = screen.getByRole('dialog', { name: 'Daily leaderboard' });
+        const list = within(modal).getByRole('list', { name: 'Daily standings' });
+        expect(within(list).getAllByRole('listitem')).toHaveLength(18);
+        list.scrollTop = 240;
+        fireEvent.scroll(list);
+        expect(within(modal).queryByRole('button', { name: /edit.*profile/i })).not.toBeInTheDocument();
+        expect(list.scrollTop).toBe(240);
+        expect(within(modal).queryByRole('button', { name: 'Show all' })).not.toBeInTheDocument();
+        fireEvent.click(within(modal).getByRole('button', { name: 'Close dialog' }));
+        expect(document.documentElement.style.overflow).toBe('');
+        const edit = screen.getByRole('button', { name: 'Edit profile' });
+        fireEvent.click(edit);
+        expect(screen.getByRole('dialog', { name: 'Edit profile' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        expect(edit).toHaveFocus();
+    });
+});
+
+describe('daily rewards interface', () => {
+    it('automatically shows results, rewards, and placement together after payout', () => {
+        vi.useFakeTimers();
+        const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+        try {
+            const level = makeLevel();
+            render(<App levels={[level]} />);
+            openDaily();
+            expect(screen.getByText('One attempt')).toBeInTheDocument();
+            fireEvent.click(screen.getByText('Reward details'));
+            expect(screen.getByText('5 coins / 25 base points')).toBeVisible();
+            fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+            selectQuality(level, 'good');
+            act(() => { vi.advanceTimersByTime(1400); });
+            act(() => { vi.advanceTimersByTime(1000); });
+            finishPayout();
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(screen.getByRole('heading', { name: 'Daily dungeon', level: 1 })).toHaveFocus();
+            expect(screen.getByText('Final score').nextElementSibling).toHaveTextContent('83');
+            expect(screen.getByLabelText('Earned 115 coins')).toHaveTextContent('+115');
+            expect(screen.queryByText('Coins earned')).not.toBeInTheDocument();
+            expect(screen.queryByText('Added to your wallet')).not.toBeInTheDocument();
+            fireEvent.click(screen.getByRole('tab', { name: 'Leaderboard' }));
+            expect(within(screen.getByRole('list', { name: 'Daily standings' })).getAllByRole('listitem')).toHaveLength(19);
+            expect(within(screen.getByLabelText('Your standing')).getByText('83')).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: /View results|View leaderboard|Rewards/ })).not.toBeInTheDocument();
+            const wallet = loadUserProgression();
+            fireEvent.click(screen.getByRole('button', { name: 'Modes' }));
+            openDaily();
+            expect(loadUserProgression()).toEqual(wallet);
+        } finally { random.mockRestore(); }
+    });
+
+    it('recovers interrupted finished rewards once and retains the completed daily page after refresh', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-04T12:00:00Z'));
+        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`reward-${index}`, index));
+        const entered = enterDailyDungeon(createDailyDungeon(levels), 'default', DEFAULT_RULES, initialMultiplierProfile().board);
+        let run = entered.run;
+        for (let index = 0; index < 10; index++) {
+            if (run.node.kind !== 'decision') throw new Error('Expected decision.');
+            run = advancePlayback(advancePlayback(chooseMove(run, run.node.choices[0]!.playerMove.uci)));
+            if (index < 9) run = nextLevel(run);
+        }
+        const finished = recordDailyRun(entered.dungeon, run, Date.now(), () => 0);
+        saveDailyArchive(storeDailyDungeon(initialDailyArchive(), finished));
+        const view = render(<App levels={levels} />);
+        openDaily();
+        expect(loadUserProgression().coins).toBe(300);
+        expect(loadMultiplierProfile().board.a1).toBe(12);
+        expect(screen.getByText('+0.1x on A1')).toBeInTheDocument();
+        expect(screen.getByText('Final score').nextElementSibling).toHaveTextContent('1,100');
+        const wallet = loadUserProgression();
+        const multipliers = loadMultiplierProfile();
+        view.unmount();
+        render(<StrictMode><App levels={levels} /></StrictMode>);
+        expect(screen.getByRole('heading', { name: 'Dungeon complete' })).toBeInTheDocument();
+        expect(loadUserProgression()).toEqual(wallet);
+        expect(loadMultiplierProfile()).toEqual(multipliers);
+        expect(screen.queryByRole('button', { name: 'Enter dungeon' })).not.toBeInTheDocument();
+        vi.setSystemTime(new Date('2026-10-05T00:00:00Z'));
+        act(() => { vi.advanceTimersByTime(1000); });
+        expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeInTheDocument();
+        expect(screen.queryByText('Final score')).not.toBeInTheDocument();
+    });
+
+    it('retains newer in-memory coins when storage fails after a credited daily run', () => {
+        vi.useFakeTimers();
+        const level = makeLevel();
+        render(<App levels={[level]} />);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        selectQuality(level, 'good');
+        act(() => { vi.advanceTimersByTime(1400); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        finishPayout();
+        const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Unavailable'); });
+        try {
+            startRegular();
+            selectQuality(level, 'best');
+            act(() => { vi.advanceTimersByTime(1400); });
+            act(() => { vi.advanceTimersByTime(1000); });
+            finishPayout();
+            fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+            expect(screen.getByLabelText('Coins: 139')).toBeInTheDocument();
+            startRegular('Gilded Court');
+            openRegular();
+            expect(screen.getByLabelText('Coins: 139')).toBeInTheDocument();
+        } finally { storage.mockRestore(); }
+    });
+
+    it('grants five times earned coins on defeat', () => {
+        vi.useFakeTimers();
+        const level = makeLevel('daily-reward', 10, 2);
+        render(<App levels={[level]} rules={{ ...DEFAULT_RULES, startingHealth: 1 }} />);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        const good = selectQuality(level, 'good');
+        act(() => { vi.advanceTimersByTime(1400); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        if (good.next.kind !== 'decision') throw new Error('Expected next decision.');
+        const bad = good.next.choices.find(choice => choice.quality === 'bad')!;
+        const button = screen.getByRole('button', { name: name => name.startsWith('Option ') && name.includes(`: ${bad.playerMove.san},`) });
+        fireEvent.click(button);
+        fireEvent.click(button);
+        expect(loadUserProgression().coins).toBe(15);
+        finishPayout();
+        expect(screen.getByRole('heading', { name: 'Run over' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Earned 15 coins')).toHaveTextContent('+15');
+    });
+});
 
 describe('gameplay interface', () => {
     it('shows every multiplier before selection, saves purchases, and prevents overspending', () => {
         saveUserProgression({ ...initialUserProgression(), coins: 80 });
-        render(<App levels={[makeLevel()]} />);
+        renderSetup(<App levels={[makeLevel()]} />);
         fireEvent.click(screen.getByRole('button', { name: 'Upgrade Default' }));
         const shop = screen.getByRole('dialog', { name: 'Default' });
         expect(within(shop).getByTestId('upgrade-board')).toHaveAttribute('data-position', '{}');
@@ -88,16 +509,16 @@ describe('gameplay interface', () => {
         expect(within(shop).getAllByRole('button', { name: /^[a-h][1-8]: / })).toHaveLength(64);
         expect(loadMultiplierProfile().board.a1).toBe(11);
         fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
-        expect(screen.getByRole('dialog', { name: 'Choose your set' })).toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'Regular run' })).toBeInTheDocument();
         expect(screen.queryByLabelText('Available moves')).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Default' }));
+        startRegular('Default');
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
     });
 
     it('shares the coin wallet across sets but restores their purchases independently', () => {
         saveUserProgression({ ...initialUserProgression(), finishedRuns: 8, coins: 120 });
         const level = makeLevel();
-        const view = render(<App levels={[level]} />);
+        const view = renderSetup(<App levels={[level]} />);
         fireEvent.click(screen.getByRole('button', { name: 'Upgrade Obsidian Order' }));
         fireEvent.click(screen.getByRole('button', { name: `a1: ${formatMultiplier(13)}` }));
         fireEvent.click(screen.getByRole('button', { name: 'Upgrade a1 for 30 coins' }));
@@ -109,7 +530,7 @@ describe('gameplay interface', () => {
         expect(saved).toMatchObject({ coins: 60, paidUpgrades: { obsidian: { a1: 1 }, gilded: { d4: 1 } } });
         expect(saved.paidUpgrades.default).toBeUndefined();
         view.unmount();
-        render(<App levels={[level]} />);
+        renderSetup(<App levels={[level]} />);
         fireEvent.click(screen.getByRole('button', { name: 'Upgrade Gilded Court' }));
         expect(screen.getByRole('button', { name: `d4: ${formatMultiplier(16)}` })).toBeInTheDocument();
         expect(screen.getByRole('status', { name: 'Coins: 60' })).toBeInTheDocument();
@@ -124,12 +545,12 @@ describe('gameplay interface', () => {
         const random = vi.spyOn(Math, 'random').mockReturnValue(0);
         try {
             const level = makeLevel();
-            render(<StrictMode><App levels={[level]} /></StrictMode>);
+            renderSetup(<StrictMode><App levels={[level]} /></StrictMode>);
             fireEvent.click(screen.getByRole('button', { name: 'Upgrade Default' }));
             fireEvent.click(screen.getByRole('button', { name: `a1: ${formatMultiplier(11)}` }));
             fireEvent.click(screen.getByRole('button', { name: 'Upgrade a1 for 30 coins' }));
             fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
-            fireEvent.click(screen.getByRole('button', { name: 'Default' }));
+            startRegular('Default');
             selectQuality(level, 'best');
             act(() => { vi.advanceTimersByTime(1400); });
             act(() => { vi.advanceTimersByTime(1000); });
@@ -139,8 +560,8 @@ describe('gameplay interface', () => {
             expect(screen.getByText(`100 ${formatMultiplier(12)}`)).toBeInTheDocument();
             expect(screen.getByText('Total score').nextElementSibling).toHaveTextContent('120');
             expect(screen.getByLabelText('Earned 24 coins')).toBeInTheDocument();
-            fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
-            fireEvent.click(screen.getByRole('button', { name: 'View score' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Modes' }));
+            act(() => { window.history.replaceState(null, '', '#/game'); window.dispatchEvent(new PopStateEvent('popstate')); });
             expect(loadUserProgression()).toEqual(saved);
         } finally { random.mockRestore(); }
     });
@@ -155,15 +576,15 @@ describe('gameplay interface', () => {
             selectQuality(levels[0]!, 'good');
             act(() => { vi.advanceTimersByTime(1400); });
             act(() => { vi.advanceTimersByTime(1000); });
-            fireEvent.click(screen.getByRole('button', { name: 'Next level' }));
+            act(() => { vi.advanceTimersByTime(1500); });
             selectQuality(levels[1]!, 'bad');
             expect(loadUserProgression().coins).toBe(63);
-            fireEvent.click(screen.getByRole('button', { name: 'New run' }));
+            openRegular();
             fireEvent.click(screen.getByRole('button', { name: 'Upgrade Default' }));
             fireEvent.click(screen.getByRole('button', { name: `a1: ${formatMultiplier(11)}` }));
             fireEvent.click(screen.getByRole('button', { name: 'Upgrade a1 for 30 coins' }));
             fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
-            fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Resume regular run' }));
             finishPayout();
             expect(screen.getByText(`75 ${formatMultiplier(11)}`)).toBeInTheDocument();
             expect(screen.getByText('Total score').nextElementSibling).toHaveTextContent('83');
@@ -174,7 +595,7 @@ describe('gameplay interface', () => {
     it('keeps premium sets locked for a new player and gives no credit for abandoning a run', () => {
         window.localStorage.removeItem(PROGRESSION_STORAGE_KEY);
         const level = makeLevel('abandoned', 10, 2);
-        render(<App levels={[level]} />);
+        renderSetup(<App levels={[level]} />);
         expect(screen.getByRole('button', { name: 'Default' })).toBeEnabled();
         const obsidian = screen.getByRole('button', { name: 'Obsidian Order' });
         expect(obsidian).toBeDisabled();
@@ -184,11 +605,11 @@ describe('gameplay interface', () => {
         expect(screen.queryByRole('button', { name: 'Upgrade Obsidian Order' })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Upgrade Gilded Court' })).not.toBeInTheDocument();
         fireEvent.click(obsidian);
-        expect(screen.getByRole('dialog', { name: 'Choose your set' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Default' }));
+        expect(screen.getByRole('region', { name: 'Regular run' })).toBeInTheDocument();
+        startRegular('Default');
         selectQuality(level, 'best');
-        fireEvent.click(screen.getByRole('button', { name: 'New run' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Default' }));
+        openRegular();
+        startRegular('Default');
         expect(loadUserProgression().finishedRuns).toBe(0);
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
     });
@@ -202,7 +623,7 @@ describe('gameplay interface', () => {
         selectQuality(level, 'bad');
         const saved = loadUserProgression();
         expect(saved.finishedRuns).toBe(3);
-        expect(screen.getByRole('status', { name: 'Run over' })).toBeInTheDocument();
+        expect(screen.getByRole('status', { name: 'Run over. No health remaining.' })).toBeInTheDocument();
         expect(screen.queryByRole('status', { name: 'Obsidian Order unlocked' })).not.toBeInTheDocument();
         view.rerender(element);
         expect(loadUserProgression()).toEqual(saved);
@@ -212,14 +633,14 @@ describe('gameplay interface', () => {
         expect(screen.getByRole('status', { name: 'Obsidian Order unlocked' })).toBeInTheDocument();
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         act(() => { vi.advanceTimersByTime(2000); });
-        expect(screen.getByRole('dialog', { name: 'Run over' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
-        fireEvent.click(screen.getByRole('button', { name: 'View score' }));
+        expect(screen.getByRole('region', { name: 'Run over' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Modes' }));
+        act(() => { window.history.replaceState(null, '', '#/game'); window.dispatchEvent(new PopStateEvent('popstate')); });
         expect(loadUserProgression()).toEqual(saved);
-        fireEvent.click(screen.getByRole('button', { name: 'Start new run' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
         expect(screen.getByRole('button', { name: 'Obsidian Order' })).toBeEnabled();
         expect(screen.getByRole('button', { name: 'Gilded Court' })).toHaveTextContent('3/8');
-        fireEvent.click(screen.getByRole('button', { name: 'Obsidian Order' }));
+        startRegular('Obsidian Order');
         expect(screen.getByTestId('board')).toHaveAttribute('data-piece-set', 'obsidian');
         expect(loadUserProgression()).toEqual(saved);
     });
@@ -235,13 +656,13 @@ describe('gameplay interface', () => {
         act(() => { vi.advanceTimersByTime(1000); });
         expect(loadUserProgression().finishedRuns).toBe(8);
         // Skipping the presentation must not lose the completed run or show a stale unlock.
-        fireEvent.click(screen.getByRole('button', { name: 'New run' }));
+        openRegular();
         expect(screen.getByRole('button', { name: 'Gilded Court' })).toBeEnabled();
-        fireEvent.click(screen.getByRole('button', { name: 'Gilded Court' }));
+        startRegular('Gilded Court');
         act(() => { vi.advanceTimersByTime(10000); });
         expect(screen.queryByRole('status', { name: 'Gilded Court unlocked' })).not.toBeInTheDocument();
         view.unmount();
-        render(<App levels={[level]} />);
+        renderSetup(<App levels={[level]} />);
         expect(screen.getByRole('button', { name: 'Obsidian Order' })).toBeEnabled();
         expect(screen.getByRole('button', { name: 'Gilded Court' })).toBeEnabled();
         expect(loadUserProgression().finishedRuns).toBe(8);
@@ -255,17 +676,17 @@ describe('gameplay interface', () => {
             renderGame(<App levels={[level]} rules={{ ...DEFAULT_RULES, startingHealth: 1 }} />);
             for (let count = 1; count <= 3; count++) {
                 selectQuality(level, 'bad');
-                fireEvent.click(screen.getByRole('button', { name: 'New run' }));
+                openRegular();
                 expect(screen.getByRole('button', { name: 'Gilded Court' })).toHaveTextContent(`${count}/8`);
-                if (count < 3) fireEvent.click(screen.getByRole('button', { name: 'Default' }));
+                if (count < 3) startRegular('Default');
             }
             expect(screen.getByRole('button', { name: 'Obsidian Order' })).toBeEnabled();
-            fireEvent.click(screen.getByRole('button', { name: 'Obsidian Order' }));
+            startRegular('Obsidian Order');
             expect(screen.getByLabelText('Health: 2')).toBeInTheDocument();
         } finally { read.mockRestore(); write.mockRestore(); }
     });
 
-    it.each(['white', 'black'] as const)('plays only an offered source/destination pair for %s after flipping the board', color => {
+    it.each(['white', 'black'] as const)('plays only an offered source/destination pair for %s', color => {
         const level = makeLevel('board-taps', 10, 2, color);
         renderGame(<App levels={[level]} />);
         const choice = decision(level).choices.find(candidate => candidate.quality === 'inaccuracy')!;
@@ -275,7 +696,6 @@ describe('gameplay interface', () => {
         tap(to);
         tap('e2');
         expect(screen.getByTestId('board')).toHaveAttribute('data-square-styles', '{}');
-        fireEvent.click(screen.getByRole('button', { name: 'Flip board' }));
         tap(from);
         const styles = JSON.parse(screen.getByTestId('board').getAttribute('data-square-styles')!);
         expect(Object.keys(styles).sort()).toEqual([...new Set([from, ...decision(level).choices
@@ -340,42 +760,31 @@ describe('gameplay interface', () => {
         expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent('Bad');
     });
 
-    it.each(['obsidian', 'gilded'] as const)('shows the set cards before play and starts as soon as %s is selected', set => {
-        render(<App levels={[makeLevel()]} />);
-        const picker = screen.getByRole('dialog', { name: 'Choose your set' });
-        expect(within(picker).getByRole('heading', { name: 'Choose your set' })).toBeInTheDocument();
-        expect(within(picker).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual([
-            'Default', 'Upgrade Default', 'Obsidian Order', 'Upgrade Obsidian Order', 'Gilded Court', 'Upgrade Gilded Court',
-        ]);
-        expect(screen.queryByLabelText('Available moves')).not.toBeInTheDocument();
-        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Default' })).toHaveFocus();
-        fireEvent(picker, new Event('cancel', { cancelable: true }));
-        expect(picker).toBeInTheDocument();
-        const footer = screen.getByTestId('board').parentElement?.nextElementSibling;
-        fireEvent.click(screen.getByRole('button', { name: PIECE_SETS[set].name }));
+    it.each(['obsidian', 'gilded'] as const)('selects %s without starting until Start run is pressed', set => {
+        renderSetup(<App levels={[makeLevel()]} />);
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-        expect(screen.getByLabelText('Available moves')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Regular run', level: 1 })).toHaveFocus();
+        fireEvent.click(screen.getByRole('button', { name: PIECE_SETS[set].name }));
+        expect(screen.getByRole('button', { name: PIECE_SETS[set].name })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByTestId('board')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Start run' }));
         expect(screen.getByLabelText(`Health: ${PIECE_SETS[set].startingHealth}`)).toBeInTheDocument();
         expect(screen.getByTestId('board')).toHaveAttribute('data-piece-set', set);
-        expect(screen.getByRole('progressbar')).toBe(footer);
-        expect(document.documentElement.style.overflow).toBe('');
     });
 
-    it('pauses playback while choosing a set, resumes on cancel, and resets on selection', () => {
+    it('pauses playback while browsing and resumes without changing the run', () => {
         vi.useFakeTimers();
         const level = makeLevel('paused', 10, 2);
         renderGame(<App levels={[level]} />);
         const choice = selectQuality(level, 'good');
-        fireEvent.click(screen.getByRole('button', { name: 'New run' }));
+        openRegular();
         act(() => { vi.advanceTimersByTime(5000); });
+        expect(screen.queryByTestId('board')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Resume regular run' }));
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
-        fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
         act(() => { vi.advanceTimersByTime(1400); });
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.next.fen);
-        fireEvent.click(screen.getByRole('button', { name: 'New run' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Obsidian Order' }));
-        act(() => { vi.advanceTimersByTime(5000); });
+        startRegular('Obsidian Order');
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', level.root.fen);
         expect(screen.getByLabelText('Health: 2')).toBeInTheDocument();
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
@@ -386,20 +795,20 @@ describe('gameplay interface', () => {
         const random = vi.spyOn(Math, 'random').mockReturnValue(0);
         try {
             const levels = [makeLevel('first', 10), makeLevel('second', 20)];
-            render(<App levels={levels} />);
-            fireEvent.click(screen.getByRole('button', { name: 'Obsidian Order' }));
+            renderSetup(<App levels={levels} />);
+            startRegular('Obsidian Order');
             selectQuality(levels[0]!, 'good');
             act(() => { vi.advanceTimersByTime(1400); });
             act(() => { vi.advanceTimersByTime(1000); });
-            fireEvent.click(screen.getByRole('button', { name: 'Next level' }));
+            act(() => { vi.advanceTimersByTime(1500); });
             selectQuality(levels[1]!, 'bad');
             expect(screen.getByLabelText('Health: 0')).toBeInTheDocument();
             finishPayout();
-            expect(screen.getByText('75 ×1.3')).toBeInTheDocument();
+            expect(screen.getByText('75 1.3x')).toBeInTheDocument();
             expect(screen.getByText('Total score').nextElementSibling).toHaveTextContent('98');
             expect(window.localStorage.getItem(MULTIPLIER_STORAGE_KEY)).toBeNull();
-            fireEvent.click(screen.getByRole('button', { name: 'Start new run' }));
-            fireEvent.click(screen.getByRole('button', { name: 'Default' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+            startRegular('Default');
             expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
             expect(screen.getByTestId('board')).toHaveAttribute('data-piece-set', 'default');
         } finally { random.mockRestore(); }
@@ -429,18 +838,15 @@ describe('gameplay interface', () => {
         expect(screen.getByRole('status')).toHaveTextContent('Good');
     });
 
-    it('flips the view without changing the position, choices, or the player’s side', () => {
+    it('keeps the board oriented to the player’s side across runs', () => {
         const level = makeLevel('black', 10, 1, 'black');
         renderGame(<App levels={[level, makeLevel('next', 30)]} />);
-        const choices = screen.getByLabelText('Available moves').innerHTML;
-        fireEvent.click(screen.getByRole('button', { name: 'Flip board' }));
-        expect(screen.getByTestId('board')).toHaveAttribute('data-orientation', 'white');
+        expect(screen.getByTestId('board')).toHaveAttribute('data-orientation', 'black');
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', level.root.fen);
-        expect(screen.getByLabelText('Available moves').innerHTML).toBe(choices);
         selectQuality(level, 'good');
         expect(screen.getByRole('status')).toHaveTextContent('Good');
-        fireEvent.click(screen.getByRole('button', { name: 'New run' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Default' }));
+        openRegular();
+        startRegular('Default');
         expect(screen.getByTestId('board')).toHaveAttribute('data-orientation', 'black');
         expect(screen.queryByText('White', { exact: true })).not.toBeInTheDocument();
         expect(screen.queryByText('Black', { exact: true })).not.toBeInTheDocument();
@@ -531,7 +937,14 @@ describe('gameplay interface', () => {
         act(() => { vi.advanceTimersByTime(1400); });
         act(() => { vi.advanceTimersByTime(1000); });
         expect(screen.getByRole('heading', { name: 'Level completed' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Next level' }));
+        const levelNotice = screen.getByRole('status', { name: 'Level 2' });
+        expect(levelNotice).toHaveTextContent('Level 2');
+        expect(levelNotice.querySelector('svg')).toHaveClass('lucide-arrow-up');
+        expect(levelNotice.parentElement).toContainElement(screen.getByTestId('board'));
+        expect(screen.queryByRole('button', { name: 'Next level' })).not.toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(1499); });
+        expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuenow', '1');
+        act(() => { vi.advanceTimersByTime(1); });
         const progress = screen.getByRole('progressbar', { name: 'Run progress' });
         expect(progress).toHaveAttribute('aria-valuenow', '2');
         expect(progress.children[0]).toHaveClass('past');
@@ -542,6 +955,7 @@ describe('gameplay interface', () => {
         expect(within(stats).getByLabelText('Health: 2')).toBeInTheDocument();
         expect(screen.getByLabelText('Move history')).toBeEmptyDOMElement();
         act(() => { vi.runOnlyPendingTimers(); });
+        expect(screen.queryByRole('status', { name: 'Level 2' })).not.toBeInTheDocument();
         expect(screen.getByLabelText('Available moves')).toBeInTheDocument();
         selectQuality(hard, 'good');
         act(() => { vi.advanceTimersByTime(1400); });
@@ -549,19 +963,20 @@ describe('gameplay interface', () => {
         finishPayout();
         expect(screen.getByRole('heading', { name: 'Run complete' })).toBeInTheDocument();
         expect([100, 110]).toContain(Number(screen.getByText('Total score').nextElementSibling!.textContent));
-        expect(screen.getByText(/^100 ×1\.[01]$/)).toBeInTheDocument();
+        expect(screen.getByText(/^100 1\.[01]x$/)).toBeInTheDocument();
         expect(summaryValue('Levels completed')).toBe('2 / 2');
         expect(summaryValue('Total decisions')).toBe('2');
-        expect(screen.getByRole('dialog', { name: 'Run complete' })).toHaveAttribute('aria-modal', 'true');
+        expect(screen.getByRole('region', { name: 'Run complete' })).toBeInTheDocument();
         expect(document.body).not.toHaveTextContent(/difficulty/i);
         expect(screen.getByLabelText('Move counts')).toHaveTextContent('0Best1Good1Inaccuracy0Bad');
-        fireEvent.click(screen.getByRole('button', { name: 'Start new run' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Default' }));
-        expect(progress).toHaveAttribute('aria-valuenow', '1');
-        expect(progress.children[0]).toHaveClass('current');
-        expect(progress.children[1]).toHaveClass('future');
-        expect(within(stats).getByLabelText('Score: 0')).toBeInTheDocument();
-        expect(within(stats).getByLabelText('Health: 3')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+        startRegular('Default');
+        const restartedProgress = screen.getByRole('progressbar', { name: 'Run progress' });
+        expect(restartedProgress).toHaveAttribute('aria-valuenow', '1');
+        expect(restartedProgress.children[0]).toHaveClass('current');
+        expect(restartedProgress.children[1]).toHaveClass('future');
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+        expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
         expect(screen.queryByRole('heading', { name: 'Run complete' })).not.toBeInTheDocument();
     });
 
@@ -581,19 +996,19 @@ describe('gameplay interface', () => {
         act(() => { vi.advanceTimersByTime(1); });
         finishPayout();
         expect(screen.getByRole('heading', { name: 'Run over' })).toBeInTheDocument();
-        expect(screen.getByTestId('board')).toHaveAttribute('data-position', '{}');
+        expect(screen.queryByTestId('board')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Available moves')).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Show opponent reply' })).not.toBeInTheDocument();
         expect(summaryValue('Levels completed')).toBe('0 / 1');
         expect(summaryValue('Total decisions')).toBe('1');
-        expect(screen.getByRole('dialog', { name: 'Run over' })).toHaveAttribute('aria-modal', 'true');
+        expect(screen.getByRole('region', { name: 'Run over' })).toBeInTheDocument();
         expect(window.localStorage.getItem(MULTIPLIER_STORAGE_KEY)).toBeNull();
         expect(document.body).not.toHaveTextContent(/difficulty/i);
         expect(screen.getByLabelText('Move counts')).toHaveTextContent('0Best0Good0Inaccuracy1Bad');
         act(() => { vi.runOnlyPendingTimers(); });
-        expect(screen.getByTestId('board')).toHaveAttribute('data-position', '{}');
-        fireEvent.click(screen.getByRole('button', { name: 'Start new run' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Default' }));
+        expect(screen.queryByTestId('board')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+        startRegular('Default');
         expect(screen.getByLabelText('Available moves')).toBeInTheDocument();
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', level.root.fen);
     });
@@ -613,7 +1028,7 @@ describe('gameplay interface', () => {
         expect(summaryValue('Levels completed')).toBe('1 / 1');
     });
 
-    it('shows an opponent win and lets a surviving player continue to the next level', () => {
+    it('shows an opponent win and automatically advances a surviving player to the next level', () => {
         vi.useFakeTimers();
         const level = makeLevel();
         const choice = decision(level).choices[0]!;
@@ -623,14 +1038,33 @@ describe('gameplay interface', () => {
         act(() => { vi.advanceTimersByTime(1400); });
         act(() => { vi.advanceTimersByTime(1000); });
         expect(screen.getByRole('heading', { name: 'Level lost' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Next level' }));
+        expect(screen.queryByRole('button', { name: 'Next level' })).not.toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(1500); });
         expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuenow', '2');
+    });
+
+    it('pauses automatic level advancement while the profile editor is open', () => {
+        vi.useFakeTimers();
+        const level = makeLevel();
+        const next = makeLevel('next', 30);
+        renderGame(<App levels={[level, next]} />);
+        selectQuality(level, 'best');
+        act(() => { vi.advanceTimersByTime(1400); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+        act(() => { vi.advanceTimersByTime(5000); });
+        expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuenow', '1');
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        act(() => { vi.advanceTimersByTime(1500); });
+        expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuenow', '2');
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', next.root.fen);
+        expect(screen.getByLabelText('Available moves')).toBeInTheDocument();
     });
 
     it('handles an empty catalog and provides actionable loading warnings', () => {
         renderGame(<App levels={[makeLevel('unscored', -1)]} levelWarnings={['broken.json: invalid level data.']} />);
         expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'New run' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Regular run' })).toBeDisabled();
         expect(screen.getByRole('status')).toHaveTextContent('No scored, playable levels');
         fireEvent.click(screen.getByText('1 level file(s) could not be loaded'));
         expect(screen.getByText('broken.json: invalid level data.')).toBeVisible();
@@ -658,44 +1092,33 @@ describe('gameplay interface', () => {
             }
             act(() => { vi.advanceTimersByTime(1400); });
             act(() => { vi.advanceTimersByTime(1000); });
-            if (index < 3) fireEvent.click(screen.getByRole('button', { name: 'Next level' }));
+            if (index < 3) act(() => { vi.advanceTimersByTime(1500); });
         });
         finishPayout();
-        fireEvent.click(screen.getByRole('button', { name: 'Start new run' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Default' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+        startRegular('Default');
         expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
         expect(screen.queryByRole('status', { name: '+1 health' })).not.toBeInTheDocument();
         selectQuality(levels[0]!, 'best');
         expect(screen.getByRole('status')).not.toHaveTextContent('+1 HP');
     });
 
-    it('opens the score as a dismissible modal, restores focus, and reopens without changing the position', () => {
+    it('shows a persistent result and replays directly with the same set', () => {
         vi.useFakeTimers();
         const level = makeLevel();
-        renderGame(<App levels={[level]} rules={{ ...DEFAULT_RULES, startingHealth: 1 }} />);
-        expect(document.body).not.toHaveTextContent(/difficulty/i);
+        renderSetup(<App levels={[level]} />);
+        startRegular('Obsidian Order');
         selectQuality(level, 'bad');
-        act(() => { vi.advanceTimersByTime(1500); });
         finishPayout();
-        const modal = screen.getByRole('dialog', { name: 'Run over' });
-        expect(screen.getByRole('button', { name: 'Start new run' })).toHaveFocus();
-        fireEvent.keyDown(screen.getByRole('button', { name: 'Start new run' }), { key: 'Tab' });
-        expect(screen.getByRole('button', { name: 'Close dialog' })).toHaveFocus();
-        fireEvent.keyDown(screen.getByRole('button', { name: 'Close dialog' }), { key: 'Tab', shiftKey: true });
-        expect(screen.getByRole('button', { name: 'Start new run' })).toHaveFocus();
-        expect(modal.closest('.options-area')).toBeNull();
-        expect(document.documentElement.style.overflow).toBe('hidden');
-        const finalFen = screen.getByTestId('board').getAttribute('data-position');
-        fireEvent(modal, new Event('cancel', { cancelable: true }));
+        const result = screen.getByRole('region', { name: 'Run over' });
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'View score' })).toHaveFocus();
-        expect(document.documentElement.style.overflow).toBe('');
-        expect(screen.getByTestId('board')).toHaveAttribute('data-position', finalFen);
-        fireEvent.click(screen.getByRole('button', { name: 'View score' }));
-        expect(screen.getByRole('dialog', { name: 'Run over' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'View score' })).toHaveFocus();
+        expect(within(result).getByRole('heading', { name: 'Run over' })).toHaveFocus();
+        const wallet = loadUserProgression();
+        fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
+        expect(screen.getByTestId('board')).toHaveAttribute('data-piece-set', 'obsidian');
+        expect(screen.getByLabelText('Health: 2')).toBeInTheDocument();
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+        expect(loadUserProgression()).toEqual(wallet);
     });
 
     it('shows the rules in an overlay and returns focus to help when dismissed', () => {
@@ -727,8 +1150,8 @@ describe('gameplay interface', () => {
         expect(loadUserProgression().finishedRuns).toBe(8);
         act(() => { window.knightfall!.payout(); });
         expect(loadUserProgression().coins).toBe(0);
-        fireEvent.click(screen.getByRole('button', { name: 'New run' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Default' }));
+        openRegular();
+        startRegular('Default');
         for (let step = 0; step < 32; step++) act(() => { vi.runOnlyPendingTimers(); });
         expect(screen.queryByRole('status', { name: 'Score payout' })).not.toBeInTheDocument();
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -744,17 +1167,17 @@ describe('gameplay interface', () => {
             selectQuality(levels[index]!, 'best');
             act(() => { vi.advanceTimersByTime(1400); });
             act(() => { vi.advanceTimersByTime(1000); });
-            if (index < 9) fireEvent.click(screen.getByRole('button', { name: 'Next level' }));
+            if (index < 9) act(() => { vi.advanceTimersByTime(1500); });
         }
         finishPayout();
         const saved = loadMultiplierProfile();
         expect(Object.values(saved.board).reduce((sum, value) => sum + value, 0)).toBe(673);
         expect(saved.board).not.toEqual(initialMultiplierProfile().board);
-        fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
-        fireEvent.click(screen.getByRole('button', { name: 'View score' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Modes' }));
+        act(() => { window.history.replaceState(null, '', '#/game'); window.dispatchEvent(new PopStateEvent('popstate')); });
         expect(loadMultiplierProfile()).toEqual(saved);
-        fireEvent.click(screen.getByRole('button', { name: 'Start new run' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Default' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+        startRegular('Default');
         expect(loadMultiplierProfile()).toEqual(saved);
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
     });
@@ -762,24 +1185,24 @@ describe('gameplay interface', () => {
     it('awards Obsidian upgrades to its own profile and retains them across set changes', () => {
         vi.useFakeTimers();
         const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`obsidian-${index}`, index));
-        render(<App levels={levels} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Obsidian Order' }));
+        renderSetup(<App levels={levels} />);
+        startRegular('Obsidian Order');
         for (let index = 0; index < 10; index++) {
             selectQuality(levels[index]!, 'best');
             act(() => { vi.advanceTimersByTime(1400); });
             act(() => { vi.advanceTimersByTime(1000); });
-            if (index < 9) fireEvent.click(screen.getByRole('button', { name: 'Next level' }));
+            if (index < 9) act(() => { vi.advanceTimersByTime(1500); });
         }
         finishPayout();
         const saved = loadMultiplierProfile('obsidian');
         expect(Object.values(saved.board).reduce((sum, value) => sum + value, 0)).toBe(737);
         expect(window.localStorage.getItem(MULTIPLIER_STORAGE_KEY)).toBeNull();
-        fireEvent.click(screen.getByRole('button', { name: 'Start new run' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Default' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+        startRegular('Default');
         expect(loadMultiplierProfile()).toEqual(initialMultiplierProfile());
         expect(loadMultiplierProfile('obsidian')).toEqual(saved);
-        fireEvent.click(screen.getByRole('button', { name: 'New run' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Obsidian Order' }));
+        openRegular();
+        startRegular('Obsidian Order');
         expect(screen.getByLabelText('Health: 2')).toBeInTheDocument();
         expect(loadMultiplierProfile('obsidian')).toEqual(saved);
     });
@@ -787,7 +1210,7 @@ describe('gameplay interface', () => {
     it('renders the installed chessboard with a real FEN', async () => {
         const actual = await vi.importActual<typeof import('react-chessboard')>('react-chessboard');
         const onSquareClick = vi.fn();
-        const { container } = render(<actual.Chessboard options={{ position: makeLevel().root.fen, allowDragging: false, allowDrawingArrows: false, onSquareClick }} />);
+        const { container } = renderSetup(<actual.Chessboard options={{ position: makeLevel().root.fen, allowDragging: false, allowDrawingArrows: false, onSquareClick }} />);
         expect(container.querySelectorAll('[data-square]')).toHaveLength(64);
         expect(container.querySelectorAll('[data-piece]')).toHaveLength(32);
         fireEvent.click(container.querySelector('[data-square="a2"] [data-piece]')!);

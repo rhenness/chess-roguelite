@@ -26,8 +26,8 @@ interface PayoutSequence {
 const prefersReducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const EMPTY_PAID_UPGRADES: PaidUpgradeCounts = {};
 
-function makeSequence(setId: PieceSetId, board: MultiplierBoard, score: number, completed: boolean, preview: boolean): PayoutSequence {
-    const outcome = createPayout(board, score, completed);
+function makeSequence(setId: PieceSetId, board: MultiplierBoard, score: number, completed: boolean, preview: boolean, saved?: PayoutResult | null): PayoutSequence {
+    const outcome = saved ?? createPayout(board, score, completed);
     const reducedMotion = prefersReducedMotion();
     return {
         setId, outcome, board: { ...board }, path: reducedMotion ? [outcome.square] : payoutPath(outcome.square),
@@ -37,7 +37,7 @@ function makeSequence(setId: PieceSetId, board: MultiplierBoard, score: number, 
 
 /** The payout presentation has its own lifecycle; gameplay totals stay unchanged. */
 export function useBoardPayout(run: RunState | null, waitingForNotice: boolean, setId: PieceSetId = 'default', paused = false,
-    paidUpgrades: PaidUpgradeCounts = EMPTY_PAID_UPGRADES) {
+    paidUpgrades: PaidUpgradeCounts = EMPTY_PAID_UPGRADES, lockedBoard?: MultiplierBoard, savedPayout?: PayoutResult | null) {
     // Cache each set so upgrades also survive switching when browser storage is unavailable.
     const profiles = useRef<Partial<Record<PieceSetId, MultiplierProfile>>>({});
     const [profile, setProfile] = useState(() => {
@@ -50,7 +50,7 @@ export function useBoardPayout(run: RunState | null, waitingForNotice: boolean, 
     const started = useRef(false);
     const committedUpgrade = useRef<string | null>(null);
     const finishedBoard = useRef<{ id: string; board: MultiplierBoard } | null>(null);
-    const effectiveBoard = useMemo(() => applyPaidUpgrades(profile.board, paidUpgrades[setId]), [profile, paidUpgrades, setId]);
+    const effectiveBoard = useMemo(() => lockedBoard ?? applyPaidUpgrades(profile.board, paidUpgrades[setId]), [profile, paidUpgrades, setId, lockedBoard]);
 
     useEffect(() => {
         // Purchases made while the payout is paused only affect later runs.
@@ -63,19 +63,19 @@ export function useBoardPayout(run: RunState | null, waitingForNotice: boolean, 
         if (paused || run?.phase !== 'finished' || waitingForNotice || sequence || started.current) return;
         started.current = true;
         const completed = run.result === 'complete' && run.levelsCompleted === RUN_LEVEL_COUNT;
-        setSequence(makeSequence(setId, finishedBoard.current!.board, run.score, completed, false));
-    }, [run, waitingForNotice, sequence, effectiveBoard, setId, paused]);
+        setSequence(makeSequence(setId, finishedBoard.current!.board, run.score, completed, false, savedPayout));
+    }, [run, waitingForNotice, sequence, effectiveBoard, setId, paused, savedPayout]);
 
     useEffect(() => {
         if (!sequence || sequence.preview || !sequence.outcome.upgrade || committedUpgrade.current === sequence.outcome.id) return;
         // Save the earned upgrade once, even if New run skips the remaining animation.
         // The sequence's board snapshot keeps this payout on the old multipliers.
         committedUpgrade.current = sequence.outcome.id;
-        const upgraded = applyPayoutUpgrade(profiles.current[sequence.setId]!, sequence.outcome);
+        const upgraded = applyPayoutUpgrade(profiles.current[sequence.setId]!, sequence.outcome, run?.daily?.day);
         profiles.current[sequence.setId] = upgraded;
         saveMultiplierProfile(upgraded, sequence.setId);
         setProfile(upgraded);
-    }, [sequence, profile]);
+    }, [sequence, profile, run?.daily?.day]);
 
     useEffect(() => {
         if (paused || sequence?.phase !== 'spinning') return;
@@ -113,6 +113,15 @@ export function useBoardPayout(run: RunState | null, waitingForNotice: boolean, 
         return nextProfile;
     }, []);
 
+    const claimDailyUpgrade = useCallback((set: PieceSetId, outcome: PayoutResult, day: string) => {
+        const before = profileFor(set);
+        const after = applyPayoutUpgrade(before, outcome, day);
+        if (after === before) return;
+        profiles.current[set] = after;
+        saveMultiplierProfile(after, set);
+        if (set === setId) setProfile(after);
+    }, [profileFor, setId]);
+
     const reset = useCallback((nextSet: PieceSetId = 'default') => {
         started.current = false;
         committedUpgrade.current = null;
@@ -145,5 +154,5 @@ export function useBoardPayout(run: RunState | null, waitingForNotice: boolean, 
     const upgrade = sequence?.phase === 'upgrading' || sequence?.phase === 'done' ? sequence.outcome.upgrade : null;
     const board = sequence ? (upgrade ? { ...sequence.board, [upgrade.square]: upgrade.after } : sequence.board) : effectiveBoard;
     const highlightedSquare = sequence ? (upgrade?.square ?? sequence.path[sequence.step]!) : result?.square;
-    return { result, sequence, board, highlightedSquare, notice, advanceNotice, reset, preview, profileFor };
+    return { result, sequence, board, highlightedSquare, notice, advanceNotice, reset, preview, profileFor, claimDailyUpgrade };
 }

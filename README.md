@@ -26,31 +26,90 @@ Local production builds default to `/chess-roguelite/`, while `npm start` uses `
 The logo and favicon use Vite's base path so they load correctly on the deployed site.
 Level JSON is bundled with the app; generation and scoring do not run during deployment.
 
+### Social link previews
+
+Knightfall includes custom dungeon artwork for iMessage and other social link previews.
+Open Graph and Twitter card metadata are emitted in the initial HTML, with the
+1200 × 630 JPEG at [`public/knightfall-social-preview.jpg`](public/knightfall-social-preview.jpg).
+The deployment workflow supplies `VITE_SITE_URL` from Pages so preview URLs also
+follow custom domains. Local builds default to `https://rhenness.github.io/chess-roguelite/`;
+set `VITE_SITE_URL` to the full public site URL when building for another host.
+Artwork generation details and the original prompt are in
+[`docs/social-preview.md`](docs/social-preview.md).
+
 ## Play a run
+
+### Player profile
+
+Open the avatar button in the header to edit your profile.
+Choose a display name (up to 24 characters), one of eight transparent SVG avatars,
+an independent avatar-circle background color, and one of six SVG banners.
+Background colors use preset swatches. The leaderboard-row
+preview updates as you edit, using sample rank and score values. The same avatar,
+circle color, name, and banner appear in daily standings. Save changes updates the header avatar and writes
+`knightfall.player-profile.v1` to localStorage. Cancel, closing, and Escape discard
+the draft. Profile appearance saves separately from unlocks, coins, and multipliers.
+If browser storage is unavailable, changes remain available for the current session.
+The editor uses a desktop dialog and a full-screen panel on phones, and pauses
+move playback while open.
+
+### Daily dungeon
+
+Choose **Daily dungeon** on the **Play** page, choose an unlocked set, and press
+**Enter dungeon**. Set selection does not consume the attempt. Each UTC day has
+the same seeded ten-level selection for everyone, with one attempt per local player.
+Your set's health, rules, and personal multiplier board are frozen at entry.
+**Resume dungeon** restores saved moves after refresh or a regular run.
+
+The final score includes your own multiplier on an individually random payout
+square. The payout is saved once, so refresh cannot reroll it. Daily runs earn
+five times normal coins, including the completion coin bonus, plus the existing
+free square upgrade for clearing all ten levels. After the payout, the daily page
+automatically shows the score, placement, and reward receipt. Interrupted
+finished rewards recover without double granting coins or upgrades.
+
+The daily page uses **Dungeon** and **Leaderboard** tabs. Set selection and results
+stay in Dungeon, with Enter or Resume pinned beneath the scrollable content.
+Leaderboard shows every player in one scrollable list: stable mock players plus
+your actual multiplied score. Ties share ranks; your row is highlighted and pinned.
+Switching tabs preserves selection and scroll position. **Modes** stays in the
+header, alongside the profile shortcut. The trophy shortcut appears only in daily
+games and opens standings in a modal; closing it returns to the same game and
+move selection. Profile editing preserves standings and returns focus to your row.
+Reward totals use compact icon receipts; rates and calculations expand on demand.
+
+At 00:00 UTC unfinished daily attempts expire without scores or rewards. An active
+dungeon shows an expiration notification, then opens today's daily page. A final
+decision made before the deadline counts even if its animation ends afterward.
+Daily storage keeps today and yesterday as compact checkpoints in
+`knightfall.daily.v1`. All profiles, standings, and progression remain local.
+See [development phases and rules](docs/features/04-daily-dungeon-profile.md).
+
+### Regular runs
 
 ```powershell
 npm start
 ```
 
-Open the local URL printed by Vite and choose **Default**, **Obsidian Order**, or **Gilded Court**
-to begin a run. The **Choose your set** popup shows both colors of each set,
-its name, and a short line with starting hearts and the initial square bonus;
-selecting a card starts immediately. **New run** and the result screen open the
-same chooser, pausing the current game until a set is chosen or the chooser is
-dismissed. Obsidian uses custom faceted SVG pieces with crimson inlays, 2 starting
+Open the local URL printed by Vite, choose **Regular run**, select **Default**,
+**Obsidian Order**, or **Gilded Court**, and press **Start run**. Set cards show
+both colors, the name, starting hearts, and the initial square bonus. Selecting a
+card changes your selection without starting or replacing a run. **Modes** opens
+the mode chooser and pauses playback; **Resume regular run** returns to the
+existing run. The logo also returns to the mode chooser. Browser Back and Forward
+follow pages without starting a run. Obsidian uses custom faceted SVG pieces with crimson inlays, 2 starting
 health, and alternating ×1.0/×1.3 multipliers. Default retains 3 starting health
 and ×1.0/×1.1 multipliers. Gilded Court uses ivory/dark green enamel SVGs with
 gold trim and emerald inlays, 3 starting health, and just four ×1.5 starting
 squares in the center (d4, e4, d5, e5); the other 60 squares start at ×1.0.
 Its card says "Limited ×1.5 multis." Each set keeps its own square upgrades. On narrow screens the cards
 stack as horizontal rows, with piece previews beside their benefits. Compact
-previews show the king, queen, and knight in both colors. No separate start button
-is needed.
+previews show the king, queen, and knight in both colors.
 
 Default is available immediately. Obsidian Order unlocks after **3 finished runs**,
 and Gilded Court after **8**. Wins and deaths count; abandoning a run does not.
 Locked cards show a lock and a small finished-run counter. A newly unlocked set
-gets a board notification after the payout, before the final score modal.
+gets a board notification after the payout, before the final score page.
 Progress saves when the run ends, even if the remaining animation is skipped.
 The versioned `knightfall.progression.v1` localStorage entry keeps the finished-run
 count and last counted run ID across refreshes. If storage is unavailable,
@@ -114,8 +173,17 @@ knightfall.health(); // Preview +1 health
 knightfall.health(-1); // Preview health loss (also accepts -2)
 knightfall.death(); // Preview the skull / Run over animation
 knightfall.notify('Nice!');
-knightfall.notify({ label: 'Streak!', icon: 'trophy', tone: 'reward', durationMs: 2500 });
-knightfall.notify({ label: 'Bonus', image: '/reward.png', caption: 'Custom image' });
+knightfall.notify({
+    label: 'Streak!',
+    icon: 'trophy',
+    tone: 'reward',
+    durationMs: 2500,
+});
+knightfall.notify({
+    label: 'Bonus',
+    image: '/reward.png',
+    caption: 'Custom image',
+});
 knightfall.payout(); // Preview the spin, payout, and square upgrade
 knightfall.payout({ score: 1200, completed: false }); // Preview a payout without an upgrade
 knightfall.dismiss();
@@ -157,22 +225,23 @@ show the selected square and notifications directly.
 Health can exceed the starting amount. Both totals persist
 between levels. The stored opponent
 reply plays automatically after the reveal, then gameplay advances automatically.
-The quality box shows only the move, quality, and points. Select **Next level**
-after a level ends. Wins, draws, and depth-limit
+The quality box shows only the move, quality, and points. The next level starts
+automatically after the level-ending presentation. Wins, draws, and depth-limit
 leaves count as completed levels. Opponent wins count as failed levels, and play
 continues while health remains. Zero health ends the run immediately, before an
 opponent reply. The skull notification finishes before the board payout
 begins. Completing the selected levels also ends the run.
 
-The final score modal shows the multiplied score, base score and multiplier,
-completed levels, decisions, and all
-four move-quality counts. The board and controls keep their positions during
-playback and level transitions. Both the result and rules open as modal overlays
-so mobile gameplay fits the viewport without page scrolling. Select
-**Start new run** to choose a set and reset the run. Rules are configurable through `DEFAULT_RULES`
+The regular result page shows the multiplied score and earned coins, with level,
+decision, and move-quality counts under **Run details**. **Play again** immediately
+starts a fresh run with the same set; **Change set** opens regular setup. The daily
+page combines daily results, rewards, and standings. Setup and result pages scroll
+on mobile, while gameplay keeps its viewport layout. Rules open in a modal and
+return to their opener. Rules are configurable through `DEFAULT_RULES`
 and `RunRules` in [`src/game/run.ts`](src/game/run.ts), or by supplying the `rules`
 prop to `App`; Obsidian overrides starting health to 2. Active runs are held in memory;
-refreshing the page returns to set selection while retaining saved unlocks and square upgrades.
+refreshing a regular game returns to the mode chooser while retaining saved
+unlocks and square upgrades. Daily attempts remain resumable after refresh.
 
 Gameplay uses React, chess.js, and react-chessboard. It follows only the selected
 precomputed branch and performs no Stockfish analysis. Level JSON is never modified
@@ -197,14 +266,14 @@ Terminal and depth-limit nodes have no choices.
 
 Use `npm run generate:tree -- --help` for all options. Defaults:
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `--depth` | `4` | Player decisions, each followed by a sampled opponent reply |
-| `--search-depth` | `10` | Stockfish search depth for every analysis |
-| `--multi-pv` | `256` | Analyze all legal moves for both sides, capped by the legal move count |
-| `--timeout-ms` | `120000` | Maximum time per engine operation |
-| `--name` | Unique timestamp | Output filename, without `.json` |
-| `--engine` | Bundled Stockfish | Native executable or JavaScript engine wrapper |
+| Option           | Default           | Meaning                                                                |
+| ---------------- | ----------------- | ---------------------------------------------------------------------- |
+| `--depth`        | `4`               | Player decisions, each followed by a sampled opponent reply            |
+| `--search-depth` | `10`              | Stockfish search depth for every analysis                              |
+| `--multi-pv`     | `256`             | Analyze all legal moves for both sides, capped by the legal move count |
+| `--timeout-ms`   | `120000`          | Maximum time per engine operation                                      |
+| `--name`         | Unique timestamp  | Output filename, without `.json`                                       |
+| `--engine`       | Bundled Stockfish | Native executable or JavaScript engine wrapper                         |
 
 The full, single-threaded [Stockfish.js engine](https://github.com/nmrugg/stockfish.js)
 is included as a dependency. To use a native Stockfish executable, pass
@@ -366,9 +435,9 @@ invalid thresholds and weights that do not sum to 1 are rejected. For example:
 
 ```json
 {
-  "depths": [4, 8, 12, 16],
-  "acceptableLossCp": 50,
-  "subtlety": { "quiet": 90 }
+    "depths": [4, 8, 12, 16],
+    "acceptableLossCp": 50,
+    "subtlety": { "quiet": 90 }
 }
 ```
 
@@ -379,12 +448,12 @@ npm run score:levels -- --config difficulty-config.json --rescore
 The initial heuristic follows
 [`02-level-difficulty`](docs/features/02-level-difficulty.md):
 
-| Signal | Weight | Implementation |
-| --- | --- | --- |
-| Ambiguity | 35% | Mean alternative plausibility, `100 * exp(-loss / 100)`; blend stored and final offered-move analysis equally |
-| Depth to separation | 25% | Earliest depth where the stored best choice leads every alternative by at least 80 cp and keeps that lead at all later sampled depths; normalize between the first and final depth |
-| Subtlety | 20% | Quiet moves score 100; captures 35, checks 20, recaptures 15, promotions 10, check evasions 30; use the lowest applicable value |
-| Uniqueness | 20% | `100 / acceptableMoveCount`, where acceptable moves lose at most 50 cp from the fresh analysis's best legal move |
+| Signal              | Weight | Implementation                                                                                                                                                                     |
+| ------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ambiguity           | 35%    | Mean alternative plausibility, `100 * exp(-loss / 100)`; blend stored and final offered-move analysis equally                                                                      |
+| Depth to separation | 25%    | Earliest depth where the stored best choice leads every alternative by at least 80 cp and keeps that lead at all later sampled depths; normalize between the first and final depth |
+| Subtlety            | 20%    | Quiet moves score 100; captures 35, checks 20, recaptures 15, promotions 10, check evasions 30; use the lowest applicable value                                                    |
+| Uniqueness          | 20%    | `100 / acceptableMoveCount`, where acceptable moves lose at most 50 cp from the fresh analysis's best legal move                                                                   |
 
 The default depths are `[4, 6, 8, 10]`. At each depth, Stockfish analyzes every
 offered choice using `searchmoves`. A separate final-depth MultiPV search measures

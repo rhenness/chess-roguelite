@@ -3,6 +3,7 @@ import { BOARD_SQUARES, type MultiplierBoard, type SquareUpgrade } from './multi
 import { PIECE_SET_IDS, PIECE_SETS, type PieceSetId } from './pieceSets';
 import type { UserProgression } from './progression';
 import type { RunState } from './run';
+import { DAILY_COIN_MULTIPLIER } from './daily';
 
 export const COIN_SCORE_STEP = 25;
 export const RUN_COMPLETION_COINS = 20;
@@ -20,7 +21,7 @@ export function isPaidUpgradeCounts(value: unknown): value is PaidUpgradeCounts 
             && typeof count === 'number' && Number.isSafeInteger(count) && count >= 0));
 }
 
-export function runCoinReward(run: RunState): number {
+export function normalRunCoinReward(run: RunState): number {
     if (run.phase !== 'finished' || !run.result) return 0;
     const completed = run.result === 'complete' && run.levelsCompleted === run.levels.length;
     return Math.min(Number.MAX_SAFE_INTEGER,
@@ -31,6 +32,10 @@ export function applyPaidUpgrades(board: MultiplierBoard, counts: Partial<Record
     return Object.fromEntries(BOARD_SQUARES.map(square => [square,
         Math.min(Number.MAX_SAFE_INTEGER, board[square] + (counts[square] ?? 0)),
     ])) as MultiplierBoard;
+}
+
+export function runCoinReward(run: RunState): number {
+    return Math.min(Number.MAX_SAFE_INTEGER, normalRunCoinReward(run) * (run.daily ? DAILY_COIN_MULTIPLIER : 1));
 }
 
 export const squareUpgradePrice = (counts: Partial<Record<Square, number>> | undefined, square: Square): number =>

@@ -16,6 +16,7 @@ export interface MultiplierProfile {
     version: 1;
     board: MultiplierBoard;
     lastUpgradeId: string | null;
+    lastDailyUpgradeDay?: string;
     initialLayout?: 'gilded-sparse-v1' | 'gilded-center-v1';
 }
 export interface SquareUpgrade {
@@ -173,12 +174,16 @@ export function createPayout(
 export function applyPayoutUpgrade(
     profile: MultiplierProfile,
     payout: PayoutResult,
+    dailyDay?: string,
 ): MultiplierProfile {
     if (!payout.upgrade || profile.lastUpgradeId === payout.id) return profile;
+    if (dailyDay && typeof profile.lastDailyUpgradeDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(profile.lastDailyUpgradeDay)
+        && profile.lastDailyUpgradeDay >= dailyDay) return profile;
     return {
         ...profile,
         version: 1,
         lastUpgradeId: payout.id,
+        ...(dailyDay ? { lastDailyUpgradeDay: dailyDay } : {}),
         board: {
             ...profile.board,
             [payout.upgrade.square]: profile.board[payout.upgrade.square] + 1,

@@ -28,6 +28,7 @@ export interface LevelOutcome {
 
 export interface RunState {
     id: string;
+    daily?: { day: string; expiresAt: number };
     levels: GeneratedLevel[];
     rules: RunRules;
     levelIndex: number;

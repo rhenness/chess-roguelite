@@ -10,6 +10,20 @@ beforeEach(() => { window.localStorage.removeItem(PROGRESSION_STORAGE_KEY); });
 afterEach(() => { vi.restoreAllMocks(); window.localStorage.removeItem(PROGRESSION_STORAGE_KEY); });
 
 describe('saved run progression', () => {
+    it('never credits a daily result again after other regular runs or refreshes', () => {
+        const level = makeLevel();
+        const completed = advancePlayback(advancePlayback(chooseMove(startRun([level]), decision(level).choices[0]!.playerMove.uci)));
+        const daily = { ...completed, daily: { day: '2026-10-04', expiresAt: Date.parse('2026-10-05T00:00:00Z') } };
+        const credited = recordFinishedRun(initialUserProgression(), daily);
+        expect(credited.coins).toBe(120);
+        const afterRegular = recordFinishedRun(credited, { ...completed, id: 'another-regular-run' });
+        saveUserProgression(afterRegular);
+        const restored = loadUserProgression();
+        expect(restored.coins).toBe(144);
+        expect(recordFinishedRun(restored, daily)).toBe(restored);
+        const tomorrow = { ...daily, id: 'tomorrow', daily: { ...daily.daily, day: '2026-10-05' } };
+        expect(recordFinishedRun(restored, tomorrow).coins).toBe(264);
+    });
     it('migrates existing unlock progress without inventing coins or losing its counted run', () => {
         window.localStorage.setItem(PROGRESSION_STORAGE_KEY, JSON.stringify({
             version: 1, finishedRuns: 8, lastFinishedRunId: 'existing-run',

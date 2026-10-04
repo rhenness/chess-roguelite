@@ -12,12 +12,14 @@ export function useUserProgression(run: RunState | null) {
     const recordedRun = useRef<string | null>(null);
     const [pendingUnlocks, setPendingUnlocks] = useState<PieceSetId[]>([]);
 
-    useEffect(() => {
-        if (run?.phase !== 'finished' || recordedRun.current === run.id) return;
+    const recordRun = useCallback((run: RunState) => {
+        if (run.phase !== 'finished' || recordedRun.current === run.id) return;
         recordedRun.current = run.id;
+        if (run.daily && latestProfile.current.lastDailyRewardDay && latestProfile.current.lastDailyRewardDay >= run.daily.day) return;
         // Include runs saved by another tab, while retaining progress if storage failed.
         const stored = loadUserProgression();
         const before = stored.finishedRuns > latestProfile.current.finishedRuns || stored.lastFinishedRunId === run.id
+            || (run.daily && stored.lastDailyRewardDay && stored.lastDailyRewardDay >= run.daily.day)
             ? stored : latestProfile.current;
         const after = recordFinishedRun(before, run);
         if (after !== before) saveUserProgression(after);
@@ -25,7 +27,9 @@ export function useUserProgression(run: RunState | null) {
         setProfile(after);
         const unlocked = newlyUnlockedSets(before, after);
         if (unlocked.length) setPendingUnlocks(current => [...current, ...unlocked]);
-    }, [run]);
+    }, []);
+
+    useEffect(() => { if (run) recordRun(run); }, [run, recordRun]);
 
     const advanceUnlock = useCallback(() => setPendingUnlocks(current => current.slice(1)), []);
     const dismissUnlocks = useCallback(() => setPendingUnlocks([]), []);
@@ -38,5 +42,5 @@ export function useUserProgression(run: RunState | null) {
         setProfile(purchase.profile);
         return purchase.upgrade;
     }, []);
-    return { profile, pendingUnlocks, advanceUnlock, dismissUnlocks, buyUpgrade };
+    return { profile, pendingUnlocks, advanceUnlock, dismissUnlocks, buyUpgrade, recordRun };
 }

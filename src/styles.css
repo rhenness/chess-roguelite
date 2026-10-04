@@ -76,7 +76,8 @@ h2, p { margin: 0; }
 .piece-set-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 28px 20px 0; }
 .piece-set-heading h2 { font: 600 26px/1.2 Georgia, serif; }
 .coin-balance { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: #a77b23; font-size: 13px; font-variant-numeric: tabular-nums; }
-.piece-set-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+/* Reserve space for the 3px selection/focus outline and its 3px offset. */
+.piece-set-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 6px; }
 .piece-set-option { position: relative; min-width: 0; }
 .piece-set-card { width: 100%; height: 100%; min-width: 0; padding: 8px; border: 1px solid #d1d5cb; border-radius: 8px; background: #fffdf8; box-shadow: 0 4px 14px rgba(23, 32, 29, .06); transition: border-color .15s, box-shadow .15s; }
 .piece-set-card:not(.locked) .piece-set-info { padding-right: 34px; }
@@ -150,7 +151,7 @@ h2, p { margin: 0; }
     .app-shell { --header-height: 88px; --board-footer-height: 56px; height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
     .topbar { flex-shrink: 0; height: var(--header-height); }
     .game-layout { flex: 1; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 120px; gap: 12px; padding: 12px 0; justify-items: center; align-content: start; }
-    .board-column { width: min(100%, 580px, calc(100dvh - var(--header-height) - 156px - var(--board-footer-height))); }
+    .board-column { width: min(100%, 580px, calc(100dvh - var(--header-height) - 156px - var(--board-footer-height) - var(--daily-banner-height, 0px))); }
     .play-panel { width: min(100%, 580px); }
     .history-section { display: none; }
     .options-area { height: 120px; }
@@ -206,7 +207,7 @@ h2, p { margin: 0; }
     .upgrade-change { justify-content: center; flex-wrap: wrap; }
     .app-shell { --header-height: 54px; }
     .game-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 24px; }
-    .board-column { width: min(100%, calc(100dvh - var(--header-height) - 24px - var(--board-footer-height))); }
+    .board-column { width: min(100%, calc(100dvh - var(--header-height) - 24px - var(--board-footer-height) - var(--daily-banner-height, 0px))); }
     .move-options { gap: 10px; }
     .move-option { width: 46px; height: 46px; }
     .summary { padding: 22px 24px; }

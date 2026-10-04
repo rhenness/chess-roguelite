@@ -10,6 +10,16 @@ afterEach(() => {
 });
 
 describe('persistent square multipliers', () => {
+    it('never repeats a daily completion upgrade after a later regular payout', () => {
+        const initial = initialMultiplierProfile();
+        const daily = createPayout(initial.board, 1000, true, () => 0);
+        const earned = applyPayoutUpgrade(initial, daily, '2026-10-04');
+        const regular = applyPayoutUpgrade(earned, createPayout(earned.board, 100, true, () => 0));
+        expect(regular.board.a1).toBe(initial.board.a1 + 2);
+        saveMultiplierProfile(regular);
+        const restored = loadMultiplierProfile();
+        expect(applyPayoutUpgrade(restored, daily, '2026-10-04')).toBe(restored);
+    });
     it('starts Gilded with four x1.5 squares in the center and pays that multiplier', () => {
         const profile = initialMultiplierProfile('gilded');
         expect(BOARD_SQUARES.filter(square => profile.board[square] === 15)).toEqual(['d4', 'e4', 'd5', 'e5']);

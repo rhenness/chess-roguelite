@@ -23,22 +23,32 @@ export function PieceSetPicker({
     onSelect,
     onUpgrade,
     progression,
+    title = 'Choose your set',
+    selectionOnly = false,
+    selectedSet,
+    hideSets = false,
+    showHeading = true,
     defaultStartingHealth = PIECE_SETS.default.startingHealth,
 }: {
     onSelect: (set: PieceSetId) => void;
-    onUpgrade: (set: PieceSetId) => void;
+    onUpgrade: (set: PieceSetId, button: HTMLButtonElement) => void;
     progression: UserProgression;
+    title?: string;
+    selectionOnly?: boolean;
+    selectedSet?: PieceSetId;
+    hideSets?: boolean;
+    showHeading?: boolean;
     defaultStartingHealth?: number;
 }) {
     return (
         <>
-            <div className="piece-set-heading">
-                <h2 id="piece-set-title">Choose your set</h2>
-                <span className="coin-balance" aria-label={`Coins: ${progression.coins}`}>
+            {showHeading && <div className="piece-set-heading">
+                <h2 id="piece-set-title">{title}</h2>
+                <div className="piece-set-heading-actions"><span className="coin-balance" aria-label={`Coins: ${progression.coins}`}>
                     <Coins size={17} aria-hidden="true" /><strong>{progression.coins.toLocaleString()}</strong>
-                </span>
-            </div>
-            <div className="piece-set-options">
+                </span></div>
+            </div>}
+            {!hideSets && <div className="piece-set-options">
                 {PIECE_SET_IDS.map((id, index) => {
                     const pieces = PIECE_RENDERERS[id];
                     const set = PIECE_SETS[id];
@@ -57,6 +67,7 @@ export function PieceSetPicker({
                         <button
                             className={`piece-set-card piece-set-${id}${locked ? ' locked' : ''}`}
                             aria-label={PIECE_SETS[id].name}
+                            aria-pressed={selectionOnly ? selectedSet === id : undefined}
                             aria-describedby={locked ? `${benefitsId} ${lockId}` : benefitsId}
                             disabled={locked}
                             data-modal-focus={index === 0 ? true : undefined}
@@ -90,11 +101,11 @@ export function PieceSetPicker({
                             </span>
                         </button>
                         {!locked && <button className="piece-set-upgrade" aria-label={`Upgrade ${set.name}`} title="Upgrade"
-                            onClick={() => onUpgrade(id)}><Sparkles size={18} aria-hidden="true" /></button>}
+                            onClick={event => onUpgrade(id, event.currentTarget)}><Sparkles size={18} aria-hidden="true" /></button>}
                         </div>
                     );
                 })}
-            </div>
+            </div>}
         </>
     );
 }

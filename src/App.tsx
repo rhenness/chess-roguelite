@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { Chess, type Square } from 'chess.js';
 import { Chessboard, type ChessboardOptions } from 'react-chessboard';
-import { Check, Coins, Flame, Heart, RotateCw, Sparkles, Unlock, X } from 'lucide-react';
+import { ArrowUp, Check, Clock3, Coins, DoorOpen, Flame, Heart, Sparkles, Trophy, Unlock, X } from 'lucide-react';
 import type { GeneratedLevel, PlayerChoice } from './types/level';
 import { selectLevels } from './game/levels';
 import { BoardNotification, type BoardNotice } from './components/BoardNotification';
+import { PlayMenu, formatCountdown } from './components/PlayMenu';
 import { PieceSetPicker } from './components/PieceSetPicker';
+import { DailyDungeonPage } from './components/DailyDungeonPage';
+import { usePageNavigation } from './game/usePageNavigation';
 import { MultiplierUpgrades } from './components/MultiplierUpgrades';
+import { PlayerAvatar } from './components/PlayerAvatar';
+import { ProfileEditor } from './components/ProfileEditor';
+import { DailyLeaderboard } from './components/DailyLeaderboard';
+import { dailyLeaderboard } from './game/leaderboard';
+import { loadPlayerProfile, savePlayerProfile, type PlayerProfile } from './game/playerProfile';
 import { PIECE_RENDERERS } from './components/pieces/pieceRenderers';
 import { PIECE_SETS, type PieceSetId } from './game/pieceSets';
 import { createDeathNotice, createHealthNotice, installNotificationConsole } from './components/notificationConsole';
@@ -15,6 +23,9 @@ import { useBoardPayout } from './game/useBoardPayout';
 import { useUserProgression } from './game/useUserProgression';
 import { isPieceSetUnlocked } from './game/progression';
 import { runCoinReward } from './game/economy';
+import { applyPaidUpgrades } from './game/economy';
+import { useDailyDungeon } from './game/useDailyDungeon';
+import { restoreDailyRun } from './game/daily';
 import {
     advancePlayback, BEST_MOVE_STREAK_LENGTH, boardFen, chooseMove, DEFAULT_RULES, nextLevel,
     QUALITY_LABELS, QUALITY_ORDER, RUN_LEVEL_COUNT, shuffleChoices, startRun,
@@ -32,6 +43,8 @@ const OPTION_COLORS = ['#c28b26', '#477c9e', '#a95843', '#785b96'];
 const CONFIRM_COLOR = '#2f8a5c';
 const EMPTY_BOARD_POSITION = {};
 const PIECES: Record<string, string> = { p: 'Pawn', n: 'Knight', b: 'Bishop', r: 'Rook', q: 'Queen', k: 'King' };
+let openModalCount = 0;
+let modalOverflow = '';
 
 function Modal({ children, titleId, className, onClose, returnFocus, dismissible = true }: {
     children: ReactNode;
@@ -44,13 +57,15 @@ function Modal({ children, titleId, className, onClose, returnFocus, dismissible
     const dialog = useRef<HTMLDialogElement>(null);
     useEffect(() => {
         const element = dialog.current!;
-        const previousOverflow = document.documentElement.style.overflow;
+        if (openModalCount === 0) modalOverflow = document.documentElement.style.overflow;
+        openModalCount++;
         document.documentElement.style.overflow = 'hidden';
         element.showModal();
-        element.querySelector<HTMLButtonElement>('[data-modal-focus]')?.focus();
+        element.querySelector<HTMLElement>('[data-modal-focus]')?.focus();
         return () => {
             element.close();
-            document.documentElement.style.overflow = previousOverflow;
+            openModalCount--;
+            if (openModalCount === 0) document.documentElement.style.overflow = modalOverflow;
             returnFocus.current?.focus();
         };
     }, [returnFocus]);
@@ -58,9 +73,9 @@ function Modal({ children, titleId, className, onClose, returnFocus, dismissible
         onCancel={event => { event.preventDefault(); if (dismissible) onClose(); }}
         onKeyDown={event => {
             if (event.key !== 'Tab') return;
-            const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');
-            const first = buttons[0];
-            const last = buttons[buttons.length - 1];
+            const controls = event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled):not([tabindex="-1"]), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]');
+            const first = controls[0];
+            const last = controls[controls.length - 1];
             if (event.shiftKey && document.activeElement === first) {
                 event.preventDefault();
                 last?.focus();
@@ -92,30 +107,31 @@ function Feedback({ run }: { run: RunState }) {
     </div>;
 }
 
-function RunSummary({ run, payout, restart, onClose, returnFocus }: {
+function RunSummary({ run, payout, restart, onChangeSet }: {
     run: RunState;
     payout: PayoutResult;
     restart: () => void;
-    onClose: () => void;
-    returnFocus: RefObject<HTMLButtonElement | null>;
+    onChangeSet: () => void;
 }) {
-    return <Modal className="summary" titleId="result-title" onClose={onClose} returnFocus={returnFocus}>
-        <h2 id="result-title">{run.result === 'complete' ? 'Run complete' : 'Run over'}</h2>
+    return <section className="summary result-page" aria-labelledby="result-title">
+        <h1 id="result-title" tabIndex={-1} data-page-focus>{run.result === 'complete' ? 'Run complete' : 'Run over'}</h1>
         <span className="summary-score-label">Total score</span>
         <strong className="summary-score">{payout.finalScore.toLocaleString()}</strong>
         <p className="summary-calculation">{payout.baseScore.toLocaleString()} {formatMultiplier(payout.multiplier)}</p>
         <span className="coin-balance summary-coins" aria-label={`Earned ${runCoinReward(run)} coins`}>
             <Coins size={17} aria-hidden="true" /><strong>+{runCoinReward(run).toLocaleString()}</strong>
         </span>
-        <dl className="summary-stats">
+        <details className="reward-details"><summary>Run details</summary><dl className="summary-stats">
             <div><dt>Levels completed</dt><dd>{run.levelsCompleted} / {run.levels.length}</dd></div>
             <div><dt>Total decisions</dt><dd>{run.decisionsMade}</dd></div>
         </dl>
         <div className="quality-counts" aria-label="Move counts">
             {QUALITY_ORDER.map(quality => <div key={quality}><strong>{run.moveCounts[quality]}</strong><span>{QUALITY_LABELS[quality]}</span></div>)}
         </div>
-        <button className="primary-small" data-modal-focus autoFocus onClick={restart}>Start new run</button>
-    </Modal>;
+        </details>
+        <div className="result-actions"><button className="primary-small" onClick={restart}>Play again</button>
+            <button className="text-button" onClick={onChangeSet}>Change set</button></div>
+    </section>;
 }
 
 function historyRows(run: RunState | null, level: GeneratedLevel | undefined) {
@@ -141,29 +157,48 @@ function historyRows(run: RunState | null, level: GeneratedLevel | undefined) {
 export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES }: AppProps) {
     const pool = useMemo(() => selectLevels(levels), [levels]);
     const [run, setRun] = useState<RunState | null>(null);
+    const daily = useDailyDungeon(pool);
+    const { location, navigate, content } = usePageNavigation();
+    const page = location.page;
+    const [showLeaderboard, setShowLeaderboard] = useState(false);
+    const [regularSelectedSet, setRegularSelectedSet] = useState<PieceSetId>('default');
+    const [dailySelectedSet, setDailySelectedSet] = useState<PieceSetId>('default');
+    const [expirationActive, setExpirationActive] = useState(false);
+    const regularRun = useRef<{ run: RunState; set: PieceSetId } | null>(null);
+    const [playerProfile, setPlayerProfile] = useState(loadPlayerProfile);
+    const [showProfile, setShowProfile] = useState(false);
+    const [profileSaveMessage, setProfileSaveMessage] = useState<string | null>(null);
     const progression = useUserProgression(run);
     const [pieceSet, setPieceSet] = useState<PieceSetId>('default');
-    const [showSetPicker, setShowSetPicker] = useState(() => pool.length > 0);
     const [upgradeSet, setUpgradeSet] = useState<PieceSetId | null>(null);
     const [preview, setPreview] = useState<string | null>(null);
     const [pendingChoice, setPendingChoice] = useState<string | null>(null);
     const [boardSelection, setBoardSelection] = useState<{ from: string; to: string | null } | null>(null);
-    const [flipped, setFlipped] = useState(false);
     const [showRules, setShowRules] = useState(false);
-    const [resultDismissed, setResultDismissed] = useState(false);
     const [boardNotice, setBoardNotice] = useState<BoardNotice | null>(null);
     const dismissBoardNotice = useCallback(() => setBoardNotice(null), []);
-    const payout = useBoardPayout(run, boardNotice !== null, pieceSet, showSetPicker, progression.profile.paidUpgrades);
-    const scoreButton = useRef<HTMLButtonElement>(null);
+    const activeDaily = run?.daily ? daily.archive.days[run.daily.day]?.attempt : undefined;
+    const paused = page !== 'game' || showProfile || showLeaderboard || !!upgradeSet || showRules;
+    const payout = useBoardPayout(run, boardNotice !== null, pieceSet, paused,
+        progression.profile.paidUpgrades, activeDaily?.multipliers, activeDaily?.payout);
     const helpButton = useRef<HTMLButtonElement>(null);
     const newRunButton = useRef<HTMLButtonElement>(null);
+    const profileButton = useRef<HTMLButtonElement>(null);
+    const leaderboardButton = useRef<HTMLButtonElement>(null);
+    const profileReturnFocus = useRef<HTMLButtonElement | null>(null);
+    const upgradeReturnFocus = useRef<HTMLButtonElement | null>(null);
+    const dailyDungeon = location.day ? daily.archive.days[location.day] ?? daily.today : daily.today;
+    const leaderboardDungeon = page === 'game' && run?.daily ? daily.archive.days[run.daily.day] : dailyDungeon;
+    const standings = useMemo(() => leaderboardDungeon ? dailyLeaderboard(leaderboardDungeon.day, playerProfile,
+        leaderboardDungeon.attempt?.status === 'finished' ? leaderboardDungeon.attempt.payout?.finalScore ?? null : null) : [],
+    [leaderboardDungeon?.day, leaderboardDungeon?.attempt?.payout, playerProfile]);
     const level = run ? run.levels[run.levelIndex] : pool[0];
     const node = run?.node;
     const choices = useMemo(() => node?.kind === 'decision' ? shuffleChoices(node.choices) : [], [node]);
     const fen = run ? boardFen(run) : level?.root.fen;
-    const playing = run?.phase === 'decision' && !payout.sequence && !showSetPicker;
+    const playing = run?.phase === 'decision' && !payout.sequence && !paused && !expirationActive;
     const activeRules = run?.rules ?? rules;
-    const orientation = (flipped ? (level?.playerColor === 'black' ? 'white' : 'black') : level?.playerColor) ?? 'white';
+    const orientation = level?.playerColor ?? 'white';
     const rows = historyRows(run, level);
     const currentOutcome = run?.outcomes.find(outcome => outcome.id === level?.id);
     const unlockedSet = progression.pendingUnlocks[0];
@@ -171,43 +206,201 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         id: `unlock-${unlockedSet}`, visual: <Unlock />, label: PIECE_SETS[unlockedSet].name,
         caption: 'Unlocked', announcement: `${PIECE_SETS[unlockedSet].name} unlocked`, tone: 'reward', durationMs: 2000,
     } : null, [unlockedSet]);
-    const showingResult = run?.phase === 'finished' && !!payout.result && !payout.sequence && !resultDismissed && !boardNotice && !showSetPicker && !unlockNotice;
+    const showingResult = page === 'game' && run?.phase === 'finished' && !!payout.result && !payout.sequence && !boardNotice && !unlockNotice;
     const showBonusBoard = !!payout.sequence || (run?.phase === 'finished' && !!payout.result);
     const displayScore = payout.result?.finalScore ?? run?.score ?? 0;
-    const visibleNotice = showSetPicker ? null : payout.notice ?? boardNotice
+    const visibleNotice = expirationActive ? boardNotice : paused ? null : payout.notice ?? boardNotice
         ?? (run?.phase === 'finished' && payout.result && !payout.sequence && !showRules ? unlockNotice : null);
 
     useEffect(() => installNotificationConsole(setBoardNotice, dismissBoardNotice, payout.preview), [dismissBoardNotice, payout.preview]);
 
     useEffect(() => {
-        if (showSetPicker || payout.sequence?.preview || (run?.phase !== 'reveal' && run?.phase !== 'reply')) return;
-        const timer = window.setTimeout(() => {
-            setRun(current => current ? advancePlayback(current) : current);
-        }, run.phase === 'reveal' ? 1400 : 1000);
+        setShowRules(false);
+        setShowProfile(false);
+        setShowLeaderboard(false);
+        setUpgradeSet(null);
+    }, [page, location.day]);
+
+    useEffect(() => {
+        if (page === 'game' && !run && !expirationActive) navigate({ page: 'play' }, true);
+    }, [page, run, expirationActive, navigate]);
+
+    useEffect(() => {
+        if (!showingResult || paused) return;
+        if (run?.daily) navigate({ page: 'daily', day: run.daily.day }, true);
+        else content.current?.querySelector<HTMLElement>('[data-page-focus]')?.focus({ preventScroll: true });
+    }, [showingResult, paused, run?.daily?.day, navigate]);
+
+    useEffect(() => {
+        // A completed attempt survives a refresh even if its payout presentation was interrupted.
+        for (const dungeon of Object.values(daily.archive.days)) {
+            if (dungeon.attempt?.status !== 'finished' || !dungeon.attempt.payout) continue;
+            const completed = restoreDailyRun(dungeon);
+            if (!completed) continue;
+            progression.recordRun(completed);
+            payout.claimDailyUpgrade(dungeon.attempt.setId, dungeon.attempt.payout, dungeon.day);
+        }
+    }, [daily.archive, progression.recordRun, payout.claimDailyUpgrade]);
+
+    useEffect(() => {
+        if (!profileSaveMessage) return;
+        const timer = window.setTimeout(() => setProfileSaveMessage(null), 3500);
         return () => window.clearTimeout(timer);
-    }, [run, payout.sequence?.preview, showSetPicker]);
+    }, [profileSaveMessage]);
+
+    function editProfile(button?: HTMLButtonElement) {
+        profileReturnFocus.current = button ?? profileButton.current;
+        setShowRules(false);
+        setProfileSaveMessage(null);
+        setShowProfile(true);
+    }
+
+    function updateProfile(profile: PlayerProfile) {
+        savePlayerProfile(profile);
+        setPlayerProfile(profile);
+        setShowProfile(false);
+    }
+
+    useEffect(() => {
+        if (!daily.expired) return;
+        if (page === 'game' && run?.id === daily.expired.id) {
+            setShowProfile(false);
+            setShowRules(false);
+            setShowLeaderboard(false);
+            setUpgradeSet(null);
+            setExpirationActive(true);
+            setBoardNotice({ id: `expired-${daily.expired.id}`, visual: <Clock3 />, label: 'Dungeon expired',
+                caption: 'Your daily attempt has ended', announcement: 'Dungeon expired. Your daily attempt has ended.',
+                tone: 'danger', durationMs: 2500 });
+        } else {
+            setProfileSaveMessage('Your unfinished daily dungeon has expired.');
+            if (run?.id === daily.expired.id) {
+                const regular = regularRun.current;
+                setRun(regular?.run ?? null);
+                setPieceSet(regular?.set ?? 'default');
+                payout.reset(regular?.set ?? 'default');
+            }
+            daily.clearExpiration();
+        }
+    }, [daily.expired, daily.clearExpiration, run?.id, page]);
+
+    function completeExpiration() {
+        setBoardNotice(null);
+        setExpirationActive(false);
+        daily.clearExpiration();
+        const regular = regularRun.current;
+        setRun(regular?.run ?? null);
+        setPieceSet(regular?.set ?? 'default');
+        payout.reset(regular?.set ?? 'default');
+        setUpgradeSet(null);
+        navigate({ page: 'daily' }, true);
+    }
+
+    function changeRun(next: RunState) {
+        if (!daily.update(next)) return;
+        setRun(next);
+        if (next.phase === 'level-ended' && run?.phase !== 'level-ended'
+            && next.outcomes.at(-1)?.status === 'completed') {
+            const label = `Level ${next.levelIndex + 2}`;
+            setBoardNotice({
+                id: `level-${next.id}-${next.levelIndex + 2}`, visual: <ArrowUp strokeWidth={1.5} />,
+                label, announcement: label, tone: 'reward',
+            });
+        }
+    }
+
+    useEffect(() => {
+        if (paused || expirationActive || payout.sequence?.preview || (run?.phase !== 'reveal' && run?.phase !== 'reply' && run?.phase !== 'level-ended')) return;
+        const timer = window.setTimeout(() => {
+            if (run.phase === 'level-ended') {
+                setPreview(null);
+                setPendingChoice(null);
+                setBoardSelection(null);
+                changeRun(nextLevel(run));
+            } else {
+                changeRun(advancePlayback(run));
+            }
+        }, run.phase === 'level-ended' ? 1500 : run.phase === 'reveal' ? 1400 : 1000);
+        return () => window.clearTimeout(timer);
+    }, [run, payout.sequence?.preview, paused, expirationActive]);
 
     function beginRun(set: PieceSetId) {
         if (!pool.length || !isPieceSetUnlocked(set, progression.profile)) return;
         setPreview(null);
         setPendingChoice(null);
         setBoardSelection(null);
-        setFlipped(false);
         setShowRules(false);
-        setResultDismissed(false);
         setBoardNotice(null);
         progression.dismissUnlocks();
         payout.reset(set);
         setPieceSet(set);
         setUpgradeSet(null);
-        setShowSetPicker(false);
+        regularRun.current = null;
+        setRegularSelectedSet(set);
+        navigate({ page: 'game' });
         setRun(startRun(pool, set === 'default' ? rules : { ...rules, startingHealth: PIECE_SETS[set].startingHealth }));
     }
 
     function requestNewRun() {
         setShowRules(false);
         setUpgradeSet(null);
-        setShowSetPicker(true);
+        navigate({ page: 'play' });
+    }
+
+    function beginDaily(set: PieceSetId) {
+        if (!isPieceSetUnlocked(set, progression.profile)) return;
+        try {
+            const board = applyPaidUpgrades(payout.profileFor(set).board, progression.profile.paidUpgrades[set]);
+            const next = daily.begin(set, set === 'default' ? rules : { ...rules, startingHealth: PIECE_SETS[set].startingHealth }, board);
+            if (run && !run.daily && run.phase !== 'finished') regularRun.current = { run, set: pieceSet };
+            showDailyRun(next, set);
+        } catch (error) {
+            setProfileSaveMessage(error instanceof Error ? error.message : 'The daily dungeon is unavailable.');
+        }
+    }
+
+    function openLeaderboard() {
+        if (page !== 'game' || !run?.daily) return;
+        setShowRules(false);
+        setUpgradeSet(null);
+        setShowLeaderboard(true);
+    }
+
+    function showDailyRun(next: RunState, set: PieceSetId) {
+        setPendingChoice(null);
+        setBoardSelection(null);
+        setPreview(null);
+        setShowRules(false);
+        setShowLeaderboard(false);
+        navigate({ page: 'game' });
+        setBoardNotice(null);
+        progression.dismissUnlocks();
+        payout.reset(set);
+        setPieceSet(set);
+        setRun(next);
+    }
+
+    function resumeDaily() {
+        if (run?.daily?.day === daily.today?.day && activeDaily?.status === 'active') {
+            navigate({ page: 'game' });
+            return;
+        }
+        const next = daily.resume();
+        const attempt = daily.today?.attempt;
+        if (!next || !attempt) return;
+        if (run && !run.daily && run.phase !== 'finished') regularRun.current = { run, set: pieceSet };
+        showDailyRun(next, attempt.setId);
+    }
+
+    function resumeRegular() {
+        if (run && !run.daily) {
+            navigate({ page: 'game' });
+            return;
+        }
+        const saved = regularRun.current;
+        if (!saved) return;
+        regularRun.current = null;
+        showDailyRun(saved.run, saved.set);
     }
 
     function selectMove(uci: string) {
@@ -226,8 +419,8 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         setPendingChoice(null);
         setBoardSelection(null);
         const updated = chooseMove(run!, uci);
-        setRun(updated);
-        if (updated !== run && updated.lastChoice) {
+        changeRun(updated);
+        if (updated !== run && updated.lastChoice && (!run?.daily || Date.now() < run.daily.expiresAt)) {
             const healthChange = updated.lastHealthBonus - updated.rules.damage[updated.lastChoice.quality];
             if (updated.result === 'defeat') setBoardNotice(createDeathNotice());
             else if (healthChange !== 0) setBoardNotice(createHealthNotice(healthChange));
@@ -315,25 +508,36 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         })) : [],
     };
 
+    function openUpgrades(set: PieceSetId, button: HTMLButtonElement) {
+        if (!isPieceSetUnlocked(set, progression.profile)) return;
+        upgradeReturnFocus.current = button;
+        setUpgradeSet(set);
+    }
+
+    const resumableRegular = run && !run.daily && (run.phase !== 'finished' || !payout.result) ? { run, set: pieceSet } : regularRun.current;
     return <main className="app-shell">
         <header className="topbar">
-            <a className="brand" href="#game" aria-label="Knightfall home"><img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="34" height="38" /><strong>Knightfall</strong></a>
+            <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); if (!expirationActive) requestNewRun(); }}><img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="34" height="38" /><strong>Knightfall</strong></a>
             <div className="top-actions">
-                <button ref={helpButton} disabled={!!payout.sequence} className="text-button help-button" aria-label="How to play" aria-expanded={showRules} aria-controls="game-rules" onClick={() => setShowRules(value => !value)}>?</button>
-                <button className="text-button" onClick={() => setFlipped(value => !value)}><RotateCw size={14} aria-hidden="true" /><span>Flip board</span></button>
-                <button ref={newRunButton} className="primary-small" disabled={!pool.length} onClick={requestNewRun}>New run</button>
+                <button ref={helpButton} disabled={!!payout.sequence || expirationActive} className="text-button help-button" aria-label="How to play" aria-expanded={showRules} aria-controls="game-rules" onClick={() => setShowRules(value => !value)}>?</button>
+                {page !== 'play' && <button ref={newRunButton} className="primary-small" disabled={expirationActive} onClick={requestNewRun}>Modes</button>}
+                {page === 'game' && run?.daily && <button ref={leaderboardButton} className="leaderboard-button" disabled={!leaderboardDungeon || expirationActive}
+                    aria-label="Daily leaderboard" title="Daily leaderboard" onClick={openLeaderboard}><Trophy size={18} aria-hidden="true" /></button>}
+                <button ref={profileButton} className="profile-button" disabled={expirationActive} aria-label="Edit profile" title="Edit profile" onClick={() => editProfile()}>
+                    <PlayerAvatar profile={playerProfile} />
+                </button>
             </div>
         </header>
-        {showSetPicker && <Modal key={upgradeSet ?? 'picker'} className={upgradeSet ? 'upgrade-modal' : 'piece-set-modal'}
-            titleId={upgradeSet ? 'multiplier-upgrade-title' : 'piece-set-title'} dismissible={!!run || !!upgradeSet}
-            onClose={() => upgradeSet ? setUpgradeSet(null) : setShowSetPicker(false)} returnFocus={newRunButton}>
-            {upgradeSet ? <MultiplierUpgrades set={upgradeSet} profile={progression.profile}
-                baseBoard={payout.profileFor(upgradeSet).board} onBuy={progression.buyUpgrade} />
-                : <PieceSetPicker onSelect={beginRun} onUpgrade={set => {
-                    if (isPieceSetUnlocked(set, progression.profile)) setUpgradeSet(set);
-                }} progression={progression.profile} defaultStartingHealth={rules.startingHealth} />}
+        {upgradeSet && <Modal className="upgrade-modal" titleId="multiplier-upgrade-title" onClose={() => setUpgradeSet(null)} returnFocus={upgradeReturnFocus}>
+            <MultiplierUpgrades set={upgradeSet} profile={progression.profile} baseBoard={payout.profileFor(upgradeSet).board} onBuy={progression.buyUpgrade} />
         </Modal>}
-        {showRules && !showingResult && !payout.sequence && !showSetPicker && <Modal className="rules-panel" titleId="game-rules" onClose={() => setShowRules(false)} returnFocus={helpButton}>
+        {showLeaderboard && leaderboardDungeon && <Modal className="leaderboard-modal" titleId="daily-leaderboard-title" onClose={() => setShowLeaderboard(false)} returnFocus={leaderboardButton}>
+            <DailyLeaderboard dungeon={leaderboardDungeon} now={daily.now} entries={standings} profile={playerProfile} />
+        </Modal>}
+        {showProfile && <Modal className="profile-modal" titleId="profile-title" onClose={() => setShowProfile(false)} returnFocus={profileReturnFocus}>
+            <ProfileEditor profile={playerProfile} onSave={updateProfile} onCancel={() => setShowProfile(false)} />
+        </Modal>}
+        {showRules && !payout.sequence && !showProfile && <Modal className="rules-panel" titleId="game-rules" onClose={() => setShowRules(false)} returnFocus={helpButton}>
             <h2 id="game-rules">How to play</h2>
             <p>Tap a piece, then an offered destination. Or tap a colored option twice.</p>
             <p>Start with {activeRules.startingHealth} health. Health and score carry across levels.</p>
@@ -342,12 +546,32 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             <ul>{QUALITY_ORDER.map(quality => <li key={quality}><strong>{QUALITY_LABELS[quality]}</strong><span>+{activeRules.points[quality]} points / {activeRules.damage[quality]} health lost</span></li>)}</ul>
             <button className="primary-small" data-modal-focus autoFocus onClick={() => setShowRules(false)}>Got it</button>
         </Modal>}
-        <section id="game" className="game-layout">
-            <div className="board-column">
+        <div className={`page-content${page === 'game' && !showingResult ? ' game-content' : page === 'daily' ? ' daily-content' : ''}`} ref={content}>
+        {page === 'play' && <PlayMenu daily={daily.today} now={daily.now} available={!!pool.length}
+            onRegular={() => navigate({ page: 'regular' })} onDaily={() => navigate({ page: 'daily' })}
+            onResumeRegular={resumableRegular ? resumeRegular : undefined} onResumeDaily={resumeDaily} />}
+        {page === 'regular' && <section className="regular-page" aria-labelledby="regular-page-title">
+            <header className="page-heading"><h1 id="regular-page-title" tabIndex={-1} data-page-focus>Regular run</h1><span className="coin-balance" aria-label={`Coins: ${progression.profile.coins}`}><Coins size={17} aria-hidden="true" />{progression.profile.coins.toLocaleString()}</span></header>
+            <PieceSetPicker showHeading={false} selectionOnly selectedSet={regularSelectedSet} onSelect={setRegularSelectedSet}
+                onUpgrade={openUpgrades} progression={progression.profile} defaultStartingHealth={rules.startingHealth} />
+            <div className="setup-actions">{resumableRegular && <button className="text-button" onClick={resumeRegular}>Resume regular run</button>}
+                <button className="primary-small" disabled={!pool.length} onClick={() => beginRun(regularSelectedSet)}>{resumableRegular ? 'Start new run' : 'Start run'}</button></div>
+            {resumableRegular && <p className="setup-replacement">Starting a new run replaces your regular run.</p>}
+        </section>}
+        {page === 'daily' && dailyDungeon && <DailyDungeonPage key={dailyDungeon.day} dungeon={dailyDungeon} today={daily.today?.day ?? dailyDungeon.day} now={daily.now}
+            progression={progression.profile} defaultStartingHealth={rules.startingHealth} selected={dailySelectedSet} onSelected={setDailySelectedSet}
+            onUpgrade={openUpgrades} onEnter={() => beginDaily(dailySelectedSet)} onResume={resumeDaily}
+            onToday={() => navigate({ page: 'daily' })}
+            entries={standings} profile={playerProfile} persisted={daily.persisted} />}
+        {page === 'daily' && !dailyDungeon && <p className="empty-state" role="status">No dungeon available.</p>}
+        {page === 'game' && (!showingResult || run?.daily) && <section id="game" className="game-layout" aria-label={run?.daily ? 'Daily game' : 'Regular game'} tabIndex={-1} data-page-focus>
+            <div className={`board-column${run?.daily ? ' daily-board-column' : ''}`}>
+                {run?.daily && <div className="daily-run-label"><span className="daily-run-banner"><DoorOpen size={14} aria-hidden="true" />DAILY DUNGEON</span>
+                    <time aria-label="Time until dungeon expires">{formatCountdown(run.daily.expiresAt, daily.now)}</time></div>}
                 <div className="board-wrap">
                     {fen && level ? <Chessboard options={boardOptions} /> : <div className="empty-board">No playable levels</div>}
                     {visibleNotice && <BoardNotification key={visibleNotice.id} notice={visibleNotice}
-                        onComplete={payout.notice ? payout.advanceNotice : boardNotice ? dismissBoardNotice : progression.advanceUnlock} />}
+                        onComplete={expirationActive ? completeExpiration : payout.notice ? payout.advanceNotice : boardNotice ? dismissBoardNotice : progression.advanceUnlock} />}
                 </div>
                 <div className="level-progress" role={run ? 'progressbar' : undefined} aria-label={run ? 'Run progress' : undefined}
                     aria-valuemin={run ? 1 : undefined} aria-valuemax={run?.levels.length} aria-valuenow={run ? run.levelIndex + 1 : undefined}
@@ -394,8 +618,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                         <strong>{payout.sequence.phase === 'spinning' ? '…' : formatMultiplier(payout.sequence.outcome.multiplier)}</strong>
                     </div>}
                     {!payout.sequence && run && (run.phase === 'reveal' || run.phase === 'reply') && <Feedback run={run} />}
-                    {!payout.sequence && run?.phase === 'level-ended' && <div className="finished-card"><h2>{currentOutcome?.status === 'completed' ? 'Level completed' : 'Level lost'}</h2><button className="primary-small" onClick={() => { setPreview(null); setPendingChoice(null); setRun(current => current ? nextLevel(current) : current); }}>Next level</button></div>}
-                    {!payout.sequence && run?.phase === 'finished' && <div className="finished-card"><button ref={scoreButton} disabled={!payout.result} className="primary-small" onClick={() => setResultDismissed(false)}>View score</button></div>}
+                    {!payout.sequence && run?.phase === 'level-ended' && <div className="finished-card"><h2>{currentOutcome?.status === 'completed' ? 'Level completed' : 'Level lost'}</h2></div>}
                 </div>
                 <section className="history-section">
                     <div className="section-title">Move history</div>
@@ -404,8 +627,10 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                     </div>
                 </section>
             </aside>
-        </section>
-        {showingResult && <RunSummary run={run!} payout={payout.result!} restart={requestNewRun} onClose={() => { setResultDismissed(true); setShowRules(false); }} returnFocus={scoreButton} />}
+        </section>}
+        {showingResult && !run!.daily && <RunSummary run={run!} payout={payout.result!} restart={() => beginRun(pieceSet)} onChangeSet={() => navigate({ page: 'regular' })} />}
         {levelWarnings.length > 0 && <details className="catalog-warnings"><summary>{levelWarnings.length} level file(s) could not be loaded</summary><ul>{levelWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
+        </div>
+        {profileSaveMessage && <p className="profile-save-toast" role="status">{profileSaveMessage}</p>}
     </main>;
 }

@@ -8,6 +8,15 @@ import { applyPayoutUpgrade, createPayout, initialMultiplierProfile } from './mu
 afterEach(() => { window.localStorage.removeItem(PROGRESSION_STORAGE_KEY); });
 
 describe('coins and paid square upgrades', () => {
+    it('multiplies the whole normal coin reward by five for daily runs, including completion', () => {
+        const level = makeLevel();
+        const completed = advancePlayback(advancePlayback(chooseMove(startRun([level]), decision(level).choices[0]!.playerMove.uci)));
+        const daily = { ...completed, daily: { day: '2026-10-04', expiresAt: Date.parse('2026-10-05T00:00:00Z') } };
+        expect(runCoinReward(completed)).toBe(24);
+        expect(runCoinReward(daily)).toBe(120);
+        expect(runCoinReward({ ...daily, result: 'defeat', score: 74, levelsCompleted: 0 })).toBe(10);
+        expect(runCoinReward({ ...daily, phase: 'decision', result: null })).toBe(0);
+    });
     it('earns coins once from base score and adds the completion bonus only for successful runs', () => {
         const level = makeLevel();
         const run = startRun([level]);

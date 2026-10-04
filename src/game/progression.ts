@@ -10,6 +10,7 @@ export interface UserProgression {
     lastFinishedRunId: string | null;
     coins: number;
     paidUpgrades: PaidUpgradeCounts;
+    lastDailyRewardDay?: string;
 }
 
 export const initialUserProgression = (): UserProgression => ({
@@ -30,6 +31,8 @@ export function loadUserProgression(): UserProgression {
                 return {
                     version: 1, finishedRuns: profile.finishedRuns, lastFinishedRunId: profile.lastFinishedRunId,
                     coins: validWallet ? profile.coins : 0, paidUpgrades: validWallet ? profile.paidUpgrades : {},
+                    ...(typeof profile.lastDailyRewardDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(profile.lastDailyRewardDay)
+                        ? { lastDailyRewardDay: profile.lastDailyRewardDay } : {}),
                 };
             }
         }
@@ -48,11 +51,13 @@ export const isPieceSetUnlocked = (set: PieceSetId, profile: UserProgression): b
 /** Only ended runs count; the run ID prevents replaying the same completion. */
 export function recordFinishedRun(profile: UserProgression, run: RunState): UserProgression {
     if (run.phase !== 'finished' || !run.result || profile.lastFinishedRunId === run.id) return profile;
+    if (run.daily && profile.lastDailyRewardDay && profile.lastDailyRewardDay >= run.daily.day) return profile;
     return {
         ...profile,
         version: 1, finishedRuns: Math.min(Number.MAX_SAFE_INTEGER, profile.finishedRuns + 1),
         lastFinishedRunId: run.id,
         coins: Math.min(Number.MAX_SAFE_INTEGER, profile.coins + runCoinReward(run)),
+        ...(run.daily ? { lastDailyRewardDay: run.daily.day } : {}),
     };
 }
 
