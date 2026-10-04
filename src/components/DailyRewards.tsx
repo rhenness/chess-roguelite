@@ -12,22 +12,29 @@ export function DailyRewardReceipt({ run, payout }: { run: RunState; payout: Pay
             <span className="coin-balance earned-coins" aria-label={`Earned ${total} coins`}><Coins size={19} aria-hidden="true" /><strong>+{total.toLocaleString()}</strong></span>
             {payout.upgrade && <span className="earned-upgrade" aria-label={`Completion upgrade: +0.1x on ${payout.upgrade.square.toUpperCase()}`}><Sparkles size={16} aria-hidden="true" />+0.1x on {payout.upgrade.square.toUpperCase()}</span>}
         </div>
-        <details className="reward-details"><summary>Earnings breakdown</summary>
-            <dl className="daily-reward-lines">
-                <div><dt>Normal earnings</dt><dd>{normal.toLocaleString()} coins</dd></div>
-                <div><dt>Daily bonus</dt><dd>+{(total - normal).toLocaleString()} coins</dd></div>
-            </dl>
-        </details>
+        <dl className="daily-earnings-breakdown" aria-label="Earnings breakdown">
+            <div><dt>Normal earnings</dt><dd>{normal.toLocaleString()} coins</dd></div>
+            <div><dt>Daily bonus</dt><dd>+{(total - normal).toLocaleString()} coins</dd></div>
+        </dl>
     </div>;
 }
 
 export function DailyRewards() {
-    return <details className="reward-details"><summary>Reward details</summary>
-        <dl className="daily-reward-lines daily-reward-preview">
-            <div><dt>Gameplay earnings</dt><dd>{DAILY_COIN_MULTIPLIER} coins / {COIN_SCORE_STEP} base points</dd></div>
-            <div><dt>Clear every floor</dt><dd>+{RUN_COMPLETION_COINS * DAILY_COIN_MULTIPLIER} coins</dd></div>
-            <div><dt>Clear all 10 floors</dt><dd><Sparkles size={15} aria-hidden="true" />+0.1x on a random square</dd></div>
-        </dl>
-        <p className="daily-reward-condition">Finished runs keep earned coins. Expired attempts earn no rewards.</p>
-    </details>;
+    return <section className="daily-rewards" aria-label="Dungeon rewards">
+        <div className="daily-reward-tiles">
+            <div className="daily-reward-tile" aria-label={`${DAILY_COIN_MULTIPLIER} times coins`}>
+                <Coins size={22} aria-hidden="true" /><strong>{DAILY_COIN_MULTIPLIER}×</strong><span>Coins</span>
+            </div>
+            <div className="daily-reward-tile" aria-label={`${RUN_COMPLETION_COINS * DAILY_COIN_MULTIPLIER} bonus coins for clearing every floor`}>
+                <Coins size={22} aria-hidden="true" /><strong>+{RUN_COMPLETION_COINS * DAILY_COIN_MULTIPLIER}</strong><span>Clear bonus</span>
+            </div>
+            <div className="daily-reward-tile" aria-label="Clear every floor to upgrade a random square by 0.1x">
+                <Sparkles size={22} aria-hidden="true" /><strong>+0.1×</strong><span>Random square</span>
+            </div>
+        </div>
+        <div className="daily-reward-notes">
+            <span>{DAILY_COIN_MULTIPLIER} coins / {COIN_SCORE_STEP} base points</span><span>Bonuses on clear</span>
+        </div>
+        <p className="daily-reward-policy">Keep coins on defeat · No rewards on expiry</p>
+    </section>;
 }

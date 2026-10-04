@@ -394,8 +394,9 @@ describe('daily rewards interface', () => {
             render(<App levels={[level]} />);
             openDaily();
             expect(screen.getByText('One attempt')).toBeInTheDocument();
-            fireEvent.click(screen.getByText('Reward details'));
             expect(screen.getByText('5 coins / 25 base points')).toBeVisible();
+            expect(screen.getByLabelText('100 bonus coins for clearing every floor')).toBeVisible();
+            expect(screen.getByRole('tabpanel', { name: 'Dungeon' }).querySelector('details')).toBeNull();
             fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
             selectQuality(level, 'good');
             act(() => { vi.advanceTimersByTime(1400); });
@@ -405,6 +406,9 @@ describe('daily rewards interface', () => {
             expect(screen.getByRole('heading', { name: 'Daily dungeon', level: 1 })).toHaveFocus();
             expect(screen.getByText('Final score').nextElementSibling).toHaveTextContent('83');
             expect(screen.getByLabelText('Earned 115 coins')).toHaveTextContent('+115');
+            expect(screen.getByText('Normal earnings')).toBeVisible();
+            expect(screen.getByLabelText('Daily move counts')).toBeVisible();
+            expect(screen.getByRole('tabpanel', { name: 'Dungeon' }).querySelector('details')).toBeNull();
             expect(screen.queryByText('Coins earned')).not.toBeInTheDocument();
             expect(screen.queryByText('Added to your wallet')).not.toBeInTheDocument();
             fireEvent.click(screen.getByRole('tab', { name: 'Leaderboard' }));

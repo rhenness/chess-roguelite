@@ -91,7 +91,9 @@ Switching tabs preserves selection and scroll position. **Menu** stays in the
 header, alongside the profile shortcut. The trophy shortcut appears only in daily
 games and opens standings in a modal; closing it returns to the same game and
 move selection. Profile editing preserves standings and returns focus to your row.
-Reward totals use compact icon receipts; rates and calculations expand on demand.
+Dungeon rules and rewards use compact badges and icon tiles. Set cards show
+starting hearts and square bonuses, with a checkmark on the selected set.
+Reward rates, earned coins, and result calculations are visible without expanding sections.
 
 At 00:00 UTC unfinished daily attempts expire without scores or rewards. An active
 dungeon shows an expiration notification, then opens today's daily page. A final

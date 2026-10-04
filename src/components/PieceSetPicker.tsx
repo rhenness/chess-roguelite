@@ -1,7 +1,7 @@
 import { PIECE_SET_IDS, PIECE_SETS, type PieceSetId } from '../game/pieceSets';
 import { formatMultiplier } from '../game/multipliers';
 import { PIECE_RENDERERS } from './pieces/pieceRenderers';
-import { Lock, Sparkles } from 'lucide-react';
+import { Check, Grid2X2, Heart, Lock, Sparkles } from 'lucide-react';
 import { isPieceSetUnlocked, type UserProgression } from '../game/progression';
 
 const PREVIEW_PIECES = [
@@ -28,6 +28,7 @@ export function PieceSetPicker({
     selectedSet,
     hideSets = false,
     showHeading = true,
+    compact = false,
     defaultStartingHealth = PIECE_SETS.default.startingHealth,
 }: {
     onSelect: (set: PieceSetId) => void;
@@ -38,6 +39,7 @@ export function PieceSetPicker({
     selectedSet?: PieceSetId;
     hideSets?: boolean;
     showHeading?: boolean;
+    compact?: boolean;
     defaultStartingHealth?: number;
 }) {
     return (
@@ -45,7 +47,7 @@ export function PieceSetPicker({
             {showHeading && <div className="piece-set-heading">
                 <h2 id="piece-set-title">{title}</h2>
             </div>}
-            {!hideSets && <div className="piece-set-options">
+            {!hideSets && <div className={`piece-set-options${compact ? ' piece-set-options-compact' : ''}`}>
                 {PIECE_SET_IDS.map((id, index) => {
                     const pieces = PIECE_RENDERERS[id];
                     const set = PIECE_SETS[id];
@@ -84,6 +86,7 @@ export function PieceSetPicker({
                             <span className="piece-set-info">
                                 <span className="piece-set-name">
                                     {set.name}
+                                    {compact && selectionOnly && selectedSet === id && <Check className="piece-set-selection" size={16} aria-hidden="true" />}
                                     {locked && <span id={lockId} className="piece-set-lock"
                                         aria-label={`Locked: ${progression.finishedRuns} of ${set.unlockAfterRuns} runs finished`}>
                                         <Lock size={12} aria-hidden="true" />
@@ -93,7 +96,10 @@ export function PieceSetPicker({
                                 <span
                                     id={benefitsId}
                                     className="piece-set-benefits">
-                                    {health} hearts · {bonus}
+                                    {compact ? <>
+                                        <span className="piece-set-health" aria-label={`${health} starting hearts`}><Heart size={13} fill="currentColor" aria-hidden="true" />{health}</span>
+                                        <span className="piece-set-multiplier" aria-label={`Starting square bonus: ${formatMultiplier(set.initialMultiplier)}${set.initialBonusSquares ? ` on ${set.initialBonusSquares.length} squares` : ''}`}><Grid2X2 size={13} aria-hidden="true" />{formatMultiplier(set.initialMultiplier)}{set.initialBonusSquares && <small>{set.initialBonusSquares.length} squares</small>}</span>
+                                    </> : <>{health} hearts · {bonus}</>}
                                 </span>
                             </span>
                         </button>

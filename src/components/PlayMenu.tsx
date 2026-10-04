@@ -39,7 +39,7 @@ export function PlayMenu({ daily, now, onRegular, onDaily, continuation, dailyRa
                 <DoorOpen size={24} aria-hidden="true" />
                 <span className="menu-daily-content"><strong>Daily dungeon</strong>
                     <span id="menu-daily-summary" className="menu-daily-meta">
-                        {score !== undefined ? <><span aria-label={`Final score: ${score}`}><Trophy size={14} aria-hidden="true" />{score.toLocaleString()}</span>{dailyRank !== undefined && <span aria-label={`Rank ${dailyRank}`}>#{dailyRank}</span>}</>
+                        {score !== undefined ? <>{dailyRank !== undefined && <span aria-label={`Rank ${dailyRank}`}><Trophy size={14} aria-hidden="true" />#{dailyRank}</span>}<span aria-label={`Final score: ${score}`}>{score.toLocaleString()}</span></>
                             : status === 'active' ? <span>In progress</span> : status === 'finished' ? <span>Finished</span> : status === 'expired' ? <span>Expired</span>
                                 : <span className="daily-reward-badge" aria-label="5 times coins"><Coins size={14} aria-hidden="true" />×5</span>}
                         {daily && <span aria-label="Time until daily dungeon closes"><Clock3 size={14} aria-hidden="true" />{now >= daily.expiresAt ? 'Closed' : formatCountdown(daily.expiresAt, now)}</span>}

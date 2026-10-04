@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Clock3, Coins, Heart, Sparkles } from 'lucide-react';
+import { Clock3, Flag, Heart, Layers3, Ticket } from 'lucide-react';
 import { restoreDailyRun, type DailyDungeon } from '../game/daily';
 import type { LeaderboardEntry } from '../game/leaderboard';
 import { PIECE_SETS, type PieceSetId } from '../game/pieceSets';
@@ -10,6 +10,7 @@ import { DailyResults } from './DailyResults';
 import { DailyRewards } from './DailyRewards';
 import { PieceSetPicker } from './PieceSetPicker';
 import { formatCountdown, formatDailyDate } from './PlayMenu';
+import './DailyDungeonContent.css';
 
 export function DailyDungeonPage({ dungeon, today, now, progression, defaultStartingHealth, selected, onSelected,
     onUpgrade, onEnter, onResume, onToday, entries, profile, persisted }: {
@@ -51,14 +52,19 @@ export function DailyDungeonPage({ dungeon, today, now, progression, defaultStar
         <div id="daily-dungeon-panel" role="tabpanel" aria-labelledby="daily-dungeon-tab" className="daily-tab-panel" hidden={tab !== 'dungeon'}>
             <div className="daily-attempt-panel" ref={dungeonScroll}>
                 {!attempt && !closed ? <>
-                    <div className="daily-entry-details"><span>{dungeon.levels.length} floors</span><span>One attempt</span><span className="daily-reward-badge" aria-label="5 times coins"><Coins size={14} aria-hidden="true" />5×</span></div>
-                    <PieceSetPicker showHeading={false} selectionOnly selectedSet={selected} onSelect={onSelected} onUpgrade={onUpgrade}
-                        progression={progression} defaultStartingHealth={defaultStartingHealth} />
-                    <p className="daily-clear-reward"><Sparkles size={15} aria-hidden="true" />+0.1× on clear</p>
+                    <div className="daily-entry-details"><span><Layers3 size={14} aria-hidden="true" />{dungeon.levels.length} floors</span><span><Ticket size={14} aria-hidden="true" />One attempt</span></div>
                     <DailyRewards />
+                    <h2 className="daily-set-heading">Choose your set</h2>
+                    <PieceSetPicker compact showHeading={false} selectionOnly selectedSet={selected} onSelect={onSelected} onUpgrade={onUpgrade}
+                        progression={progression} defaultStartingHealth={defaultStartingHealth} />
                 </> : attempt?.status === 'active' && restored && !closed ? <>
-                    <div className="daily-attempt-status"><h2>Dungeon in progress</h2><span>{PIECE_SETS[attempt.setId].name}</span></div>
+                    <div className="daily-run-card">
+                    <div className="daily-attempt-status"><Flag size={24} aria-hidden="true" /><h2>Dungeon in progress</h2><span>{PIECE_SETS[attempt.setId].name}</span></div>
                     <dl className="daily-progress-stats"><div><dt>Floor</dt><dd>{restored.levelIndex + 1} / {restored.levels.length}</dd></div><div><dt>Health</dt><dd><Heart size={15} aria-hidden="true" />{restored.health}</dd></div><div><dt>Score</dt><dd>{restored.score.toLocaleString()}</dd></div></dl>
+                    <div className="daily-run-progress" role="progressbar" aria-label="Dungeon progress" aria-valuemin={1} aria-valuemax={restored.levels.length} aria-valuenow={restored.levelIndex + 1}>
+                        {restored.levels.map((level, index) => <span key={level.id} className={index < restored.levelIndex ? 'past' : index === restored.levelIndex ? 'current' : 'future'} />)}
+                    </div>
+                    </div>
                 </> : attempt?.status === 'finished' && restored && attempt.payout && rank !== undefined ? <>
                     <DailyResults run={restored} payout={attempt.payout} rank={rank} />
                 </> : <div className="daily-attempt-status"><h2>{attempt?.status === 'expired' ? 'Attempt expired' : 'Dungeon closed'}</h2>{attempt?.status === 'expired' && <span>No rewards earned</span>}</div>}
