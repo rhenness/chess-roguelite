@@ -17,7 +17,7 @@ export function isPaidUpgradeCounts(value: unknown): value is PaidUpgradeCounts 
     return Object.entries(value).every(([set, counts]) => PIECE_SET_IDS.includes(set as PieceSetId)
         && counts && typeof counts === 'object' && !Array.isArray(counts)
         && Object.entries(counts).every(([square, count]) => BOARD_SQUARES.includes(square as Square)
-            && Number.isSafeInteger(count) && count >= 0));
+            && typeof count === 'number' && Number.isSafeInteger(count) && count >= 0));
 }
 
 export function runCoinReward(run: RunState): number {
