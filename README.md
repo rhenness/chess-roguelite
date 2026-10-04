@@ -8,6 +8,24 @@ distances, use the player's perspective. Difficulty scoring runs after generatio
 Requires Node.js 22 or newer. Install dependencies with `npm install` (or
 `npm ci` when using the lockfile).
 
+## GitHub Pages
+
+Deployment follows the sibling `fourced-move` project: Node 22 builds the Vite
+site, then GitHub Actions uploads `dist` and deploys it to Pages using
+[`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml).
+Pushes to `master` or `main` deploy automatically; the workflow can also be run
+manually from the Actions tab. There is no test step in the deployment workflow.
+
+In [the repository's Pages settings](https://github.com/rhenness/chess-roguelite/settings/pages),
+select **GitHub Actions** as the build and deployment source. The site will be
+available at [rhenness.github.io/chess-roguelite](https://rhenness.github.io/chess-roguelite/)
+after a successful deployment. See [GitHub's publishing-source instructions](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
+
+The workflow supplies Pages' base path to Vite, including custom-domain paths.
+Local production builds default to `/chess-roguelite/`, while `npm start` uses `/`.
+The logo and favicon use Vite's base path so they load correctly on the deployed site.
+Level JSON is bundled with the app; generation and scoring do not run during deployment.
+
 ## Play a run
 
 ```powershell

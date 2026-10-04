@@ -317,7 +317,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
 
     return <main className="app-shell">
         <header className="topbar">
-            <a className="brand" href="#game" aria-label="Knightfall home"><img src="/knight.svg" alt="" width="34" height="38" /><strong>Knightfall</strong></a>
+            <a className="brand" href="#game" aria-label="Knightfall home"><img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="34" height="38" /><strong>Knightfall</strong></a>
             <div className="top-actions">
                 <button ref={helpButton} disabled={!!payout.sequence} className="text-button help-button" aria-label="How to play" aria-expanded={showRules} aria-controls="game-rules" onClick={() => setShowRules(value => !value)}>?</button>
                 <button className="text-button" onClick={() => setFlipped(value => !value)}><RotateCw size={14} aria-hidden="true" /><span>Flip board</span></button>
