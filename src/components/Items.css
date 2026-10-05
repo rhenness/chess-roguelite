@@ -30,6 +30,7 @@
 .item-confirm { background: #2f8a5c; }
 .item-confirm:hover { background: #216b44; }
 .effect-badge { background: #f4ebd5; border-color: #d8bc7a; color: #70501c; }
+.effect-compact { display: none; }
 .daily-supplies { display: flex; flex-direction: column; gap: 6px; margin: 16px 0; padding: 14px; border: 1px solid #d9ddd7; border-radius: 8px; font-size: 12px; background: #fafbf9; }
 .daily-supplies span { color: #58645d; }
 .loadout button:disabled, .item-button:disabled { opacity: .5; cursor: default; }
@@ -42,11 +43,13 @@
     .loadout-quantity { justify-content: flex-start; }
 }
 @media (max-width: 900px) {
-    .app-shell.has-run-items { --board-footer-height: 144px; }
-    .item-bar { flex-wrap: nowrap; }
+    .run-items { display: flex; align-items: center; gap: 8px; margin-top: 6px; min-height: 44px; }
+    .item-bar { flex: 1; flex-wrap: nowrap; gap: 6px; margin-top: 0; }
     .item-slot { flex: 1; min-width: 0; }
-    .item-button { flex: 1; justify-content: center; min-width: 0; }
+    .item-button { flex: 1; justify-content: center; min-width: 0; gap: 5px; padding: 6px; }
     .item-button > span { display: none; }
-    .active-effects { flex-wrap: nowrap; }
-    .effect-badge { font-size: 11px; padding: 6px; min-height: 36px; }
+    .active-effects { flex-wrap: nowrap; gap: 6px; margin-top: 0; }
+    .effect-badge { gap: 5px; font-size: 11px; padding: 6px; min-height: 44px; }
+    .effect-label { display: none; }
+    .effect-compact { display: inline; }
 }

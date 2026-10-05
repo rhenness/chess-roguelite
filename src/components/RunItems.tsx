@@ -81,7 +81,8 @@ export function RunItems({ items, activeEffects, enabled, canUse, onUse }: {
             const label = active.effect.kind === 'scoreMultiplier' ? `×${active.effect.multiplier}` : 'Shield';
             const description = `${ITEMS[active.sourceItemId].name}: ${active.remainingMoves} ${active.remainingMoves === 1 ? 'move' : 'moves'} remaining. ${ITEMS[active.sourceItemId].description}`;
             return <span key={active.sourceItemId} className="effect-badge" title={description} aria-label={description} tabIndex={0}>
-                <ItemIcon id={active.sourceItemId} /><span>{label} · {active.remainingMoves} {active.remainingMoves === 1 ? 'move' : 'moves'}</span></span>;
+                <ItemIcon id={active.sourceItemId} /><span className="effect-label">{label} · {active.remainingMoves} {active.remainingMoves === 1 ? 'move' : 'moves'}</span>
+                <span className="effect-compact" aria-hidden="true">{active.remainingMoves} {active.remainingMoves === 1 ? 'move' : 'moves'}</span></span>;
         })}</div>}
     </section>;
 }

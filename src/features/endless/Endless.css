@@ -17,7 +17,6 @@
 }
 @media (max-width: 900px) {
     .endless-game .board-column { --daily-banner-height: 36px; --board-footer-height: 48px; }
-    .has-run-items .endless-game .board-column { --board-footer-height: 132px; }
 }
 @media (max-width: 560px) {
     .endless-modes { gap: 8px; }

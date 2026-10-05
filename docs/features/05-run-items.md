@@ -48,6 +48,12 @@ labels. Activation is legal only at an
 active decision and clears any pending move confirmation. Timed-effect badges
 show an icon and remaining moves with descriptions in their accessible labels and tooltips.
 
+On mobile, unused items and active-effect durations share a compact toolbar.
+Portrait boards use the available width, up to the tablet size limit, regardless
+of inventory or effects. Move controls use less vertical space, and short screens
+scroll to reach controls rather than shrinking the board to fit every element.
+Consuming an item does not resize the board.
+
 Use actual resolved points and health changes for feedback. A shield reports
 Damage blocked and the prevented amount, rather than a health-loss notice. A
 shield spent on a safe move reports Guard spent. Healing and activation use the
