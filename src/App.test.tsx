@@ -321,11 +321,13 @@ describe('daily dungeon console reset', () => {
         const level = makeLevel('reset-finished');
         const props = { levels: [level], rules: { ...DEFAULT_RULES, startingHealth: 1 } };
         const view = render(<App {...props} />);
+        const initialCoins = loadUserProgression().coins;
         openDaily();
         fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
-        selectQuality(level, 'bad');
+        selectQuality(level, 'best');
         finishPayout();
         const profile = loadUserProgression();
+        expect(profile.coins).toBeGreaterThan(initialCoins);
         const history = loadRunHistory();
         expect(loadDailyArchive([level]).days['2026-10-04']!.attempt!.status).toBe('finished');
         act(() => { window.knightfall!.resetDailyDungeon(); });
@@ -336,7 +338,7 @@ describe('daily dungeon console reset', () => {
         render(<App {...props} />);
         expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeEnabled();
         fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
-        selectQuality(level, 'bad');
+        selectQuality(level, 'best');
         finishPayout();
         expect(loadUserProgression()).toEqual(profile);
     });

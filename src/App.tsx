@@ -773,7 +773,6 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                             {resumableRegular ? 'Start new run' : 'Start run'}</button>
                     </>}
                 </div>
-                {page === 'regular-items' && resumableRegular && <p className="setup-replacement">Starting a new run replaces your regular run.</p>}
             </footer>
         </section>}
         {page === 'daily' && dailyDungeon && <DailyDungeonPage key={dailyDungeon.day} dungeon={dailyDungeon} today={daily.today?.day ?? dailyDungeon.day} now={daily.now}
