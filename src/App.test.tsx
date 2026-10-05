@@ -11,8 +11,11 @@ import { PIECE_SET_IDS, PIECE_SETS } from './game/pieceSets';
 import { initialUserProgression, loadUserProgression, PROGRESSION_STORAGE_KEY, saveUserProgression } from './game/progression';
 import { PIECE_RENDERERS } from './components/pieces/pieceRenderers';
 import App from './App';
+import { HELP_WELCOME_STORAGE_KEY } from './components/HelpWelcome';
 import { initialPlayerProfile, loadPlayerProfile, PLAYER_PROFILE_STORAGE_KEY } from './game/playerProfile';
 import { loadRunHistory, RUN_HISTORY_STORAGE_KEY, saveRunHistory, type RunRecord } from './game/runHistory';
+import { ENDLESS_STORAGE_KEY, saveState } from './features/endless/storage';
+import { REGULAR_STORAGE_KEY } from './game/regular';
 import { createDailyDungeon, DAILY_STORAGE_KEY, enterDailyDungeon, initialDailyArchive, loadDailyArchive, recordDailyRun, saveDailyArchive, storeDailyDungeon } from './game/daily';
 
 // Assert the FEN/orientation sent to the board without depending on drag animations.
@@ -36,9 +39,12 @@ vi.mock('react-chessboard', async () => ({
 afterEach(() => { vi.useRealTimers(); window.localStorage.removeItem(PROGRESSION_STORAGE_KEY); });
 beforeEach(() => {
     window.history.replaceState(null, '', '#/play');
+    window.localStorage.removeItem(HELP_WELCOME_STORAGE_KEY);
     window.localStorage.removeItem(DAILY_STORAGE_KEY);
     window.localStorage.removeItem(PLAYER_PROFILE_STORAGE_KEY);
     window.localStorage.removeItem(RUN_HISTORY_STORAGE_KEY);
+    window.localStorage.removeItem(ENDLESS_STORAGE_KEY);
+    window.localStorage.removeItem(REGULAR_STORAGE_KEY);
     PIECE_SET_IDS.forEach(id => window.localStorage.removeItem(PIECE_SETS[id].storageKey));
     // Existing gameplay scenarios exercise all sets after they have been unlocked.
     saveUserProgression({ ...initialUserProgression(), finishedRuns: 8 });
@@ -120,6 +126,106 @@ function openProfileEditor() {
     fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
 }
 
+describe('regular run persistence', () => {
+    it('resumes after refreshing during a move and continues playback without scoring it again', () => {
+        vi.useFakeTimers();
+        const level = makeLevel('regular-refresh', 10, 2);
+        const view = renderGame(<App levels={[level]} />);
+        const choice = selectQuality(level, 'good');
+        expect(window.localStorage.getItem(REGULAR_STORAGE_KEY)).not.toBeNull();
+        view.unmount();
+        render(<App levels={[level]} />);
+        expect(screen.getByRole('button', { name: 'Regular run' })).toHaveAccessibleDescription('In progress · Floor 1');
+        resumeRegularFromHome();
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
+        expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
+        expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(1400); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        expect(screen.getAllByRole('button', { name: /^Option / })).toHaveLength(4);
+        expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
+    });
+
+    it('restores the current floor after advancement and replaces the save when starting a new run', () => {
+        vi.useFakeTimers();
+        const levels = [makeLevel('regular-first', 10), makeLevel('regular-second', 30)];
+        const view = renderGame(<App levels={levels} />);
+        selectQuality(levels[0]!, 'good');
+        act(() => { vi.advanceTimersByTime(1400); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        act(() => { vi.advanceTimersByTime(1500); });
+        const oldId = JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).id;
+        view.unmount();
+        render(<App levels={levels} />);
+        resumeRegularFromHome();
+        expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuenow', '2');
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', levels[1]!.root.fen);
+        expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
+        startRegular();
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).id).not.toBe(oldId);
+    });
+
+    it('keeps a paused regular run saved when a daily dungeon is entered and refreshed', () => {
+        vi.useFakeTimers();
+        const level = makeLevel('regular-and-daily', 10, 2);
+        const view = renderGame(<App levels={[level]} />);
+        const choice = selectQuality(level, 'good');
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        view.unmount();
+        render(<App levels={[level]} />);
+        expect(screen.getByRole('button', { name: 'Regular run' })).toHaveAccessibleDescription('In progress · Floor 1');
+        expect(screen.getByRole('button', { name: 'Daily dungeon' })).toHaveAccessibleDescription(/In progress · Floor 1/);
+        resumeRegularFromHome();
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
+        expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' }));
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+    });
+
+    it('restores the chosen set and purchased supplies without charging again or replaying item notices', () => {
+        vi.useFakeTimers();
+        const level = makeLevel('regular-supplies', 10, 3);
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 8, coins: 70 });
+        const view = renderSetup(<App levels={[level]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Obsidian Order' }));
+        openRegularItems();
+        fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Bring Healing Potion for 20 coins' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Start run' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm use of Triple Crown' }));
+        view.unmount();
+        render(<App levels={[level]} />);
+        resumeRegularFromHome();
+        expect(screen.getByTestId('board')).toHaveAttribute('data-piece-set', 'obsidian');
+        expect(screen.getByLabelText('Health: 2')).toBeInTheDocument();
+        expect(screen.getByLabelText(/Triple Crown: 3 moves remaining/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Healing Potion, 1 remaining' })).toBeInTheDocument();
+        expect(screen.queryByRole('status', { name: /Triple Crown/ })).not.toBeInTheDocument();
+        expect(loadUserProgression().coins).toBe(20);
+    });
+
+    it('clears the save once a finished run is recorded so refresh cannot resume or reward it again', () => {
+        vi.useFakeTimers();
+        const level = makeLevel('regular-finished');
+        const view = renderGame(<App levels={[level]} />);
+        selectQuality(level, 'good');
+        finishPayout();
+        expect(window.localStorage.getItem(REGULAR_STORAGE_KEY)).toBeNull();
+        const coins = loadUserProgression().coins;
+        const history = loadRunHistory();
+        view.unmount();
+        render(<App levels={[level]} />);
+        openRegular();
+        expect(screen.queryByRole('button', { name: 'Resume regular run' })).not.toBeInTheDocument();
+        expect(loadUserProgression().coins).toBe(coins);
+        expect(loadRunHistory()).toEqual(history);
+    });
+});
+
 describe('regular setup steps', () => {
     it('requires the items step before starting and preserves selections when returning to sets', () => {
         saveUserProgression({ ...initialUserProgression(), finishedRuns: 8, coins: 70 });
@@ -168,6 +274,114 @@ describe('regular setup steps', () => {
         expect(content.scrollTop).toBe(90);
         expect(screen.getByRole('region', { name: 'Run supplies' })).toHaveTextContent('Total 20');
         expect(loadUserProgression().coins).toBe(20);
+    });
+});
+
+describe('welcome help tip', () => {
+    it('opens automatically from the help icon on Home without taking keyboard focus', () => {
+        render(<App levels={[makeLevel()]} />);
+        const tip = screen.getByRole('complementary', { name: 'Need help?' });
+        expect(tip).toHaveTextContent('This Help menu explains whatever page you’re viewing.');
+        expect(tip.parentElement).toContainElement(screen.getByRole('button', { name: 'Help for this page' }));
+        expect(screen.getByRole('heading', { name: 'Knightfall', level: 1 })).toHaveFocus();
+        expect(within(tip).getByRole('button', { name: 'OK' })).toBeVisible();
+        expect(within(tip).getByRole('button', { name: 'Don’t show this again' })).toBeVisible();
+    });
+
+    it('waits for the first Home entry and stays dismissed when returning during the same visit', () => {
+        window.history.replaceState(null, '', '#/regular');
+        render(<App levels={[makeLevel()]} />);
+        expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('link', { name: 'Home' }));
+        expect(screen.getByRole('complementary', { name: 'Need help?' })).toBeVisible();
+        fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
+        expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('link', { name: 'Home' }));
+        expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
+    });
+
+    it('dismisses OK for this visit, restores focus to help, and welcomes users on the next visit', () => {
+        const view = render(<App levels={[makeLevel()]} />);
+        const okay = screen.getByRole('button', { name: 'OK' });
+        okay.focus();
+        fireEvent.click(okay);
+        expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Help for this page' })).toHaveFocus();
+        view.unmount();
+        render(<App levels={[makeLevel()]} />);
+        expect(screen.getByRole('complementary', { name: 'Need help?' })).toBeVisible();
+    });
+
+    it('remembers Don’t show this again across visits while keeping page help available', () => {
+        const view = render(<App levels={[makeLevel()]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Don’t show this again' }));
+        view.unmount();
+        render(<App levels={[makeLevel()]} />);
+        expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Help for this page' }));
+        expect(screen.getByRole('dialog', { name: 'Choose your game' })).toBeVisible();
+    });
+
+    it('dismisses with Escape or outside taps without changing the permanent preference', () => {
+        const view = render(<App levels={[makeLevel()]} />);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
+        view.unmount();
+        render(<App levels={[makeLevel()]} />);
+        fireEvent.pointerDown(screen.getByRole('heading', { name: 'Knightfall', level: 1 }));
+        expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
+        expect(window.localStorage.getItem(HELP_WELCOME_STORAGE_KEY)).toBeNull();
+    });
+
+    it('still dismisses when saving the preference is unavailable', () => {
+        render(<App levels={[makeLevel()]} />);
+        const save = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage unavailable'); });
+        try {
+            fireEvent.click(screen.getByRole('button', { name: 'Don’t show this again' }));
+            expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
+        } finally { save.mockRestore(); }
+    });
+});
+
+describe('page help', () => {
+    it.each([
+        ['play', 'Choose your game', 'Regular: tackle'],
+        ['regular', 'Choosing your set', 'Your set determines starting health'],
+        ['regular-items', 'Choosing items', 'Coins are spent when you start the run.'],
+        ['daily', 'Daily dungeon help', 'one attempt at today’s dungeon'],
+        ['endless', 'Choosing Endless difficulty', 'Standard: use health'],
+        ['endless-items', 'Choosing items', 'Coins are spent when you start the attempt.'],
+        ['leaderboards', 'Daily leaderboard help', 'Equal scores share a rank.'],
+        ['profile', 'Your profile', 'Your card shows personal bests for Regular, Dungeon, Endless, and Hardcore.'],
+    ])('shows concise help for %s without gameplay rules', (page, title, content) => {
+        window.history.replaceState(null, '', `#/${page}`);
+        render(<App levels={[makeLevel()]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Help for this page' }));
+        const help = screen.getByRole('dialog', { name: title });
+        expect(help).toHaveTextContent(content);
+        expect(within(help).getByText('Help changes based on the page you’re viewing.')).toBeVisible();
+        expect(help.querySelector('details')).toBeNull();
+        if (page === 'regular-items' || page === 'endless-items') {
+            expect(within(help).getByText(/Timed effects spend a charge/)).toBeVisible();
+        }
+        expect(help.querySelectorAll(':scope > p:not(.help-page-note)')).toHaveLength(3);
+        expect(help).not.toHaveTextContent('health lost');
+        expect(within(help).queryByText(/Use arrow keys/)).not.toBeInTheDocument();
+    });
+
+    it('dismisses help on browser navigation and shows the new page’s content when reopened', () => {
+        render(<App levels={[makeLevel()]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Help for this page' }));
+        expect(screen.getByRole('dialog', { name: 'Choose your game' })).toBeInTheDocument();
+        act(() => {
+            window.history.replaceState(null, '', '#/regular-items');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+        });
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Help for this page' }));
+        const help = screen.getByRole('dialog', { name: 'Choosing items' });
+        expect(help).toHaveTextContent('Unused items expire when it ends.');
+        expect(help).not.toHaveTextContent('Daily: one attempt');
     });
 });
 
@@ -469,8 +683,13 @@ describe('player profile interface', () => {
         expect(window.location.hash).toBe('#/profile');
         expect(screen.getByRole('heading', { name: 'Your profile', level: 1 })).toHaveFocus();
         expect(within(profile).getByText('Massive Pawn')).toBeInTheDocument();
-        expect(within(profile).getAllByText('No runs yet')).toHaveLength(2);
-        expect(within(profile).getByText('Finish a regular run to start your score history.')).toBeInTheDocument();
+        expect(within(profile).queryByText('No runs yet')).not.toBeInTheDocument();
+        const highScores = within(profile).getByLabelText('High scores');
+        expect(highScores.children).toHaveLength(4);
+        expect(within(highScores).getAllByRole('definition')).toHaveLength(4);
+        within(highScores).getAllByRole('definition').forEach(score => expect(score).toHaveTextContent('—'));
+        expect(within(profile).queryByText('Score history')).not.toBeInTheDocument();
+        expect(within(profile).getByRole('button', { name: 'Play' })).toBeInTheDocument();
         expect(screen.queryByRole('textbox', { name: 'Display name' })).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('link', { name: 'Home' }));
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -478,7 +697,32 @@ describe('player profile interface', () => {
         expect(window.location.hash).toBe('#/play');
     });
 
-    it('shows personal bests, lifetime stats and selectable score history with mode and period controls', () => {
+    it('takes a new player from the card to the play menu', () => {
+        render(<App levels={[makeLevel()]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+        expect(window.location.hash).toBe('#/play');
+        expect(screen.getByRole('heading', { name: 'Knightfall', level: 1 })).toHaveFocus();
+    });
+
+    it.each([0, 3, 8])('keeps the player card free of unlock explanations after %i finished runs', finishedRuns => {
+        saveUserProgression({ ...initialUserProgression(), finishedRuns });
+        render(<App levels={[makeLevel()]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
+        const card = screen.getByRole('region', { name: 'Player card' });
+        expect(card.querySelector('.profile-row-preview')).toHaveClass('banner-checkered');
+        expect(card.querySelector('.profile-row-preview')).toHaveStyle({ backgroundImage: 'url("/profile/banners/checkered.svg")' });
+        expect(card.querySelector('.profile-preview-rank')).toBeNull();
+        expect(within(card).getByRole('button', { name: 'Edit profile' })).toBeInTheDocument();
+        expect(within(card).getByRole('button', { name: 'Edit profile' }).closest('.profile-row-preview')).not.toBeNull();
+        expect(within(card).getByRole('link', { name: 'Knightfall home' })).toBeInTheDocument();
+        expect(within(card).queryByRole('heading', { name: 'Your profile' })).not.toBeInTheDocument();
+        expect(screen.queryByText(/unlocked|Collection complete|Last adventure/)).not.toBeInTheDocument();
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+        expect(loadUserProgression().finishedRuns).toBe(finishedRuns);
+    });
+
+    it('shows all four high scores and footer branding in one card without a graph', () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-10-04T12:00:00Z'));
         const sample = (id: string, date: string, score: number, mode: 'regular' | 'daily' = 'regular'): RunRecord => ({
@@ -488,28 +732,41 @@ describe('player profile interface', () => {
         saveRunHistory({ version: 1, runs: [sample('old', '2026-09-01', 1000), sample('low', '2026-10-01', 100),
             sample('high', '2026-10-01', 400), sample('new', '2026-10-04', 300),
             { ...sample('daily', '2026-10-03', 800, 'daily'), floorsCompleted: 7, result: 'defeat' }] });
+        saveState({ version: 1, session: null, records: [
+            { id: 'standard-best', mode: 'standard', score: 1800, longestStreak: 7, moves: 30, gamesCompleted: 1, coins: 10, finishedAt: Date.now() - 1000 },
+            { id: 'standard-longest', mode: 'standard', score: 500, longestStreak: 50, moves: 60, gamesCompleted: 1, coins: 5, finishedAt: Date.now() },
+            { id: 'hardcore-best', mode: 'hardcore', score: 28, longestStreak: 28, moves: 29, gamesCompleted: 0, coins: 8, finishedAt: Date.now() - 1000 },
+            { id: 'hardcore-newest', mode: 'hardcore', score: 12, longestStreak: 12, moves: 13, gamesCompleted: 0, coins: 3, finishedAt: Date.now() },
+        ] });
         render(<App levels={[makeLevel()]} />);
         fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
         const profile = screen.getByRole('region', { name: 'Your profile' });
-        expect(within(profile).getByText('Best regular score').nextElementSibling).toHaveTextContent('1,000');
-        expect(within(profile).getByText('Best daily score').nextElementSibling).toHaveTextContent('800');
-        expect(within(profile).getByText('Runs completed').nextElementSibling).toHaveTextContent('4');
-        expect(within(profile).getByText('Total checkmates').nextElementSibling).toHaveTextContent('5');
-        const chart = within(profile).getByRole('group', { name: 'Regular score history chart' });
-        expect(within(chart).getAllByRole('button')).toHaveLength(2);
-        fireEvent.focus(within(chart).getByRole('button', { name: /400 points$/ }));
-        expect(within(profile).getByRole('status', { name: 'Selected run' })).toHaveTextContent('400 points');
-        fireEvent.click(within(profile).getByRole('button', { name: 'All time' }));
-        expect(within(chart).getAllByRole('button')).toHaveLength(3);
-        fireEvent.click(within(chart).getByRole('button', { name: /1,000 points$/ }));
-        expect(within(profile).getByRole('status', { name: 'Selected run' })).toHaveTextContent('1,000 points');
-        fireEvent.click(within(profile).getByRole('button', { name: 'Daily' }));
-        const dailyChart = within(profile).getByRole('group', { name: 'Daily score history chart' });
-        expect(within(dailyChart).getAllByRole('button')).toHaveLength(1);
-        expect(dailyChart.querySelector('polyline')).toBeNull();
-        expect(within(profile).getByRole('status', { name: 'Selected run' })).toHaveTextContent('800 points');
-        expect(within(profile).getByRole('status', { name: 'Selected run' })).toHaveTextContent('7 / 10 floors');
-        expect(within(profile).getByRole('status', { name: 'Selected run' })).toHaveTextContent('Defeat');
+        const highScores = within(profile).getByLabelText('High scores');
+        expect(highScores.children).toHaveLength(4);
+        expect(within(highScores).getByText('Best regular score').closest('dt')!.nextElementSibling).toHaveTextContent('1,000');
+        expect(within(highScores).getByText('Best Dungeon score').closest('dt')!.nextElementSibling).toHaveTextContent('800');
+        expect(within(highScores).getByText('Best Endless score').closest('dt')!.nextElementSibling).toHaveTextContent('1,800');
+        const hardcore = within(highScores).getByText('Best Hardcore streak').closest('dt')!.nextElementSibling;
+        expect(hardcore).toHaveTextContent('28');
+        expect(hardcore).toHaveAttribute('aria-label', '28 moves');
+        expect(within(profile).queryByText('Checkmates')).not.toBeInTheDocument();
+        expect(within(profile).queryByText('Clears')).not.toBeInTheDocument();
+        expect(profile.querySelector('details')).toBeNull();
+        expect(within(profile).queryByText('Daily')).not.toBeInTheDocument();
+        expect(within(profile).queryByText('Score history')).not.toBeInTheDocument();
+        expect(profile.querySelector('.profile-score-chart')).toBeNull();
+        expect(within(profile).queryByRole('group', { name: 'History period' })).not.toBeInTheDocument();
+        expect(profile.closest('.app-shell')).not.toHaveClass('main-menu-shell');
+        const card = within(profile).getByRole('region', { name: 'Player card' });
+        expect(card).toContainElement(highScores);
+        expect(within(highScores).getByText('Endless')).toBeVisible();
+        expect(within(highScores).getByText('Hardcore')).toBeVisible();
+        const brand = within(card).getByRole('link', { name: 'Knightfall home' });
+        expect(highScores.compareDocumentPosition(brand) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(loadRunHistory().runs).toHaveLength(5);
+        expect(loadRunHistory().runs.find(run => run.id === 'daily')).toMatchObject({ score: 800, floorsCompleted: 7, result: 'defeat' });
+        fireEvent.click(brand);
+        expect(window.location.hash).toBe('#/play');
     });
 
     it('records a regular payout once and keeps its final score after reopening and refreshing the profile', () => {
@@ -525,14 +782,14 @@ describe('player profile interface', () => {
         expect(history.runs).toHaveLength(1);
         expect(history.runs[0]?.score.toLocaleString()).toBe(score);
         fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
-        expect(screen.getByText('Best regular score').nextElementSibling).toHaveTextContent(score!);
+        expect(within(screen.getByLabelText('High scores')).getByText('Best regular score').closest('dt')!.nextElementSibling).toHaveTextContent(score!);
         fireEvent.click(screen.getByRole('link', { name: 'Home' }));
         fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
         expect(loadRunHistory().runs).toHaveLength(1);
         view.unmount();
         render(<App levels={[level]} />);
         fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
-        expect(screen.getByText('Best regular score').nextElementSibling).toHaveTextContent(score!);
+        expect(within(screen.getByLabelText('High scores')).getByText('Best regular score').closest('dt')!.nextElementSibling).toHaveTextContent(score!);
         expect(loadRunHistory().runs).toHaveLength(1);
     });
 
@@ -551,7 +808,8 @@ describe('player profile interface', () => {
         render(<App levels={[level]} />);
         expect(loadRunHistory().runs).toHaveLength(1);
         fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
-        expect(screen.getByText('Best daily score').nextElementSibling).toHaveTextContent(saved.attempt!.payout!.finalScore.toLocaleString());
+        expect(within(screen.getByLabelText('High scores')).getByText('Best Dungeon score').closest('dt')!.nextElementSibling).toHaveTextContent(saved.attempt!.payout!.finalScore.toLocaleString());
+        expect(screen.queryByRole('group', { name: 'Dungeon score history chart' })).not.toBeInTheDocument();
     });
 
     it('opens from the header, previews independent choices, and persists only on save', () => {
@@ -1760,7 +2018,7 @@ describe('gameplay interface', () => {
         renderGame(<App levels={[makeLevel('unscored', -1)]} levelWarnings={['broken.json: invalid floor data.']} />);
         expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Regular run' })).toBeDisabled();
-        expect(screen.getByRole('status')).toHaveTextContent('No scored, playable floors');
+        expect(screen.getByText('No scored, playable floors.')).toHaveAttribute('role', 'status');
         fireEvent.click(screen.getByText('1 floor file(s) could not be loaded'));
         expect(screen.getByText('broken.json: invalid floor data.')).toBeVisible();
     });
@@ -1768,10 +2026,11 @@ describe('gameplay interface', () => {
     it('shows the configured scoring and health rules', () => {
         const rules = { ...DEFAULT_RULES, startingHealth: 5, points: { ...DEFAULT_RULES.points, best: 200 } };
         renderGame(<App levels={[makeLevel()]} rules={rules} />);
-        fireEvent.click(screen.getByRole('button', { name: 'How to play' }));
-        expect(screen.getByRole('dialog', { name: 'How to play' })).toHaveTextContent('Start with 5 health.');
-        expect(screen.getByRole('dialog', { name: 'How to play' })).toHaveTextContent('+200 points / 0 health lost');
-        expect(screen.getByRole('button', { name: 'How to play' })).toHaveAttribute('aria-expanded', 'true');
+        fireEvent.click(screen.getByRole('button', { name: 'Help for this page' }));
+        const help = screen.getByRole('dialog', { name: 'Playing a regular run' });
+        expect(help).toHaveTextContent('Start with 5 health.');
+        expect(within(help).getByText('+200 points / 0 health lost')).toBeVisible();
+        expect(screen.getByRole('button', { name: 'Help for this page' })).toHaveAttribute('aria-expanded', 'true');
     });
 
     it('shows extra health on the fourth consecutive Best move and resets it on a new run', () => {
@@ -1821,9 +2080,9 @@ describe('gameplay interface', () => {
 
     it('shows the rules in an overlay and returns focus to help when dismissed', () => {
         renderGame(<App levels={[makeLevel()]} />);
-        const help = screen.getByRole('button', { name: 'How to play' });
+        const help = screen.getByRole('button', { name: 'Help for this page' });
         fireEvent.click(help);
-        expect(screen.getByRole('dialog', { name: 'How to play' }).closest('.game-layout')).toBeNull();
+        expect(screen.getByRole('dialog', { name: 'Playing a regular run' }).closest('.game-layout')).toBeNull();
         expect(screen.getByRole('button', { name: 'Got it' })).toHaveFocus();
         fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

@@ -42,6 +42,16 @@ upgrade, before opening the final score modal.
 
 Each run selects 10 distinct scored levels evenly across the available difficulty range, or all playable levels if fewer are available, then sorts the selection in ascending difficulty order. The player starts with the easiest selected level and progresses through increasingly difficult levels while health and score persist across the entire run.
 
+Save regular runs in the versioned `knightfall.regular.v1` localStorage entry.
+After a refresh, show the saved floor in the play menu and offer "Resume regular run"
+in regular setup. Preserve the selected set, rules, floor selection, confirmed moves,
+playback phase, purchased items, and activated effects. Replay compact checkpoints
+against the level catalog to reconstruct health and score without buying items again.
+Keep regular progress saved while playing daily or endless modes. Starting a new
+regular run replaces the checkpoint; recording the final payout clears it. Ignore
+invalid saves or saves referencing unavailable floors, and keep gameplay working
+in memory when browser storage is unavailable.
+
 The run ends when the player's health reaches 0.
 
 ## Technology

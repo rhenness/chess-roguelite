@@ -6,8 +6,8 @@ export function EndlessRecords({ records }: { records: readonly EndlessRecord[] 
     return <>{(['standard', 'hardcore'] as const).map(mode => {
             const record = best(mode);
             return <div key={mode}><dt>{mode === 'standard' ? 'Best Standard score' : 'Best Hardcore streak'}</dt>
-                <dd>{record ? record.score.toLocaleString() : 'No attempts yet'}{record && <small>{mode === 'standard' ? ' points' : ' moves'}</small>}</dd>
-                {record && <span>Longest streak: {record.longestStreak} · Games completed: {record.gamesCompleted}</span>}
+                <dd>{record ? record.score.toLocaleString() : '—'}{record && <small>{mode === 'standard' ? ' points' : ' moves'}</small>}</dd>
+                {record && <span>{record.longestStreak} streak · {record.gamesCompleted} games</span>}
             </div>;
         })}</>;
 }

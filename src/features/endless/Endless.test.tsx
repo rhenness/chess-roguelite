@@ -40,7 +40,7 @@ afterEach(() => {
     for (const key of [ENDLESS_STORAGE_KEY, PROGRESSION_STORAGE_KEY, DAILY_STORAGE_KEY, PLAYER_PROFILE_STORAGE_KEY, RUN_HISTORY_STORAGE_KEY,
         ...PIECE_SET_IDS.map(id => PIECE_SETS[id].storageKey)]) localStorage.removeItem(key);
 });
-const flush = async () => { await act(async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); }); };
+const flush = async () => { await act(async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); }); };
 const openEndless = () => fireEvent.click(screen.getByRole('button', { name: 'Endless' }));
 function startHardcore() {
     openEndless();
@@ -55,6 +55,89 @@ function playOption(uci: string) {
 }
 
 describe('Endless integration', () => {
+    it('prepares the four opening children without advancing play and immediately reuses a completed branch after the reveal', async () => {
+        render(<App levels={[makeLevel()]} />);
+        startHardcore();
+        await flush();
+        const opening = loadSave().session!;
+        expect(opening).toMatchObject({ phase: 'ready', pgn: '', moves: 0, health: 1, score: 0 });
+        expect(engine.analyze).toHaveBeenCalledTimes(4);
+        expect(engine.analyze.mock.calls.every(([fen]) => new Chess(fen).turn() === 'b')).toBe(true);
+        playOption('e2e4');
+        const fen = new Chess(); fen.move('e4');
+        expect(loadSave().session!.phase).toBe('reveal');
+        expect(loadSave().session!.options).toEqual([]);
+        act(() => vi.advanceTimersByTime(1399));
+        expect(loadSave().session!.phase).toBe('reveal');
+        act(() => vi.advanceTimersByTime(1));
+        expect(loadSave().session).toMatchObject({ phase: 'ready', optionsFen: fen.fen(), moves: 1, score: 1 });
+        expect(screen.queryByText('Finding your moves…')).not.toBeInTheDocument();
+        expect(engine.analyze.mock.calls.filter(([board]) => board === fen.fen())).toHaveLength(1);
+    });
+
+    it('prioritizes the first tap and keeps the selected search running across confirmation and the reveal timer', async () => {
+        const requests: { fen: string; signal: AbortSignal; resolve: (moves: unknown[]) => void; reject: (error: Error) => void }[] = [];
+        engine.analyze.mockImplementation((fen: string, _legal: string[], signal: AbortSignal) => new Promise((resolve, reject) => {
+            requests.push({ fen, signal, resolve, reject });
+        }));
+        render(<App levels={[makeLevel()]} />);
+        startHardcore();
+        const e4 = screen.getByRole('button', { name: /Option \d+: e4,/ });
+        fireEvent.click(e4);
+        expect(loadSave().session!.moves).toBe(0);
+        expect(requests[0]!.signal.aborted).toBe(true);
+        expect(requests).toHaveLength(1);
+        requests[0]!.reject(new DOMException('Stopped', 'AbortError')); await flush();
+        const board = new Chess(); board.move('e4');
+        expect(requests[1]!.fen).toBe(board.fen());
+        fireEvent.click(screen.getByRole('button', { name: /^Confirm e4/ }));
+        expect(loadSave().session!.phase).toBe('reveal');
+        act(() => vi.advanceTimersByTime(1400));
+        expect(loadSave().session!.phase).toBe('analyzing');
+        expect(requests[1]!.signal.aborted).toBe(false);
+        expect(requests).toHaveLength(2);
+        requests[1]!.resolve(board.moves({ verbose: true }).slice(0, 8).map((move, index) => ({
+            uci: moveToUci(move), depth: 10, score: { kind: 'cp', value: -index * 100 },
+        }))); await flush();
+        expect(loadSave().session).toMatchObject({ phase: 'ready', optionsFen: board.fen(), moves: 1, health: 1 });
+        expect(requests.filter(request => request.fen === board.fen())).toHaveLength(1);
+    });
+
+    it('restarts preparation after a refreshed reveal and keeps offered choices unchanged on a later refresh', async () => {
+        const view = render(<App levels={[makeLevel()]} />);
+        startHardcore(); await flush(); playOption('e2e4');
+        const saved = loadSave().session!;
+        expect(saved.phase).toBe('reveal');
+        view.unmount();
+        const refreshed = render(<App levels={[makeLevel()]} />);
+        await flush();
+        expect(loadSave().session).toEqual(saved);
+        act(() => vi.advanceTimersByTime(1400)); await flush();
+        const ready = loadSave().session!;
+        expect(ready).toMatchObject({ phase: 'ready', moves: 1, health: 1, score: 1 });
+        refreshed.unmount(); render(<App levels={[makeLevel()]} />); await flush();
+        expect(loadSave().session).toEqual(ready);
+    });
+
+    it('pauses preparation when the tab is hidden and resumes when visible again', async () => {
+        const visibility = vi.spyOn(document, 'visibilityState', 'get');
+        engine.analyze.mockImplementation((_fen: string, _legal: string[], signal: AbortSignal) => new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(new DOMException('Stopped', 'AbortError')), { once: true });
+        }));
+        try {
+            render(<App levels={[makeLevel()]} />); startHardcore();
+            const session = loadSave().session;
+            visibility.mockReturnValue('hidden'); fireEvent(document, new Event('visibilitychange')); await flush();
+            expect(engine.analyze.mock.calls[0]![2].aborted).toBe(true);
+            const calls = engine.analyze.mock.calls.length;
+            act(() => vi.advanceTimersByTime(10000)); await flush();
+            expect(engine.analyze).toHaveBeenCalledTimes(calls);
+            expect(loadSave().session).toEqual(session);
+            visibility.mockReturnValue('visible'); fireEvent(document, new Event('visibilitychange')); await flush();
+            expect(engine.analyze).toHaveBeenCalledTimes(calls + 1);
+        } finally { visibility.mockRestore(); }
+    });
+
     it('starts Hardcore with one life, plays both colors, fails immediately, and credits once across refresh', async () => {
         const view = render(<StrictMode><App levels={[makeLevel()]} /></StrictMode>);
         startHardcore();
@@ -77,7 +160,14 @@ describe('Endless integration', () => {
         expect(screen.getByRole('heading', { name: 'Endless over' })).toBeInTheDocument();
         expect(loadUserProgression()).toEqual(credited);
         fireEvent.click(screen.getByRole('link', { name: 'Profile' }));
-        expect(screen.getByLabelText('Lifetime stats')).toHaveTextContent('Best Hardcore streak1 moves');
+        const highScores = screen.getByLabelText('High scores');
+        expect(highScores.children).toHaveLength(4);
+        expect(within(highScores).getByText('Best Hardcore streak').closest('dt')!.nextElementSibling).toHaveTextContent('1');
+        expect(within(highScores).getByText('Best regular score').closest('dt')!.nextElementSibling).toHaveTextContent('—');
+        expect(screen.queryByText('Your first adventure awaits.')).not.toBeInTheDocument();
+        expect(screen.queryByText('Score history')).not.toBeInTheDocument();
+        expect(highScores.querySelector('dd[aria-label="1 moves"]')).toHaveTextContent('1');
+        expect(screen.queryByText('Stats & history')).not.toBeInTheDocument();
     });
 
     it('charges Standard items once at entry, activates shared item controls, and restores exact choices', async () => {
@@ -129,10 +219,16 @@ describe('Endless integration', () => {
     it('pauses timers during help and browsing, then resumes without disturbing dungeon runs', async () => {
         render(<App levels={[makeLevel()]} />);
         startHardcore(); playOption('e2e4');
-        fireEvent.click(screen.getByRole('button', { name: 'How to play' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Help for this page' }));
+        const help = screen.getByRole('dialog', { name: 'Playing Hardcore Endless' });
+        expect(help).toHaveTextContent('One Inaccuracy or Bad move ends the attempt.');
+        expect(help).toHaveTextContent('Help changes based on the page you’re viewing.');
+        expect(within(help).queryByText(/items|restore one heart|health lost/i)).not.toBeInTheDocument();
+        const callsBeforePause = engine.analyze.mock.calls.length;
         act(() => vi.advanceTimersByTime(5000));
+        await flush();
         expect(loadSave().session!.phase).toBe('reveal');
-        expect(engine.analyze).not.toHaveBeenCalled();
+        expect(engine.analyze).toHaveBeenCalledTimes(callsBeforePause);
         fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
         act(() => vi.advanceTimersByTime(1400)); await flush();
         const saved = loadSave().session!;
@@ -152,12 +248,14 @@ describe('Endless integration', () => {
     });
 
     it('keeps engine errors recoverable without altering streaks or health', async () => {
-        engine.analyze.mockRejectedValueOnce(new Error('Test engine error'));
+        const normalAnalysis = engine.analyze.getMockImplementation()!;
+        engine.analyze.mockRejectedValue(new Error('Test engine error'));
         render(<App levels={[makeLevel()]} />);
-        startHardcore(); playOption('e2e4');
+        startHardcore(); await flush(); playOption('c2c4'); await flush();
         act(() => vi.advanceTimersByTime(1400)); await flush();
         expect(screen.getByRole('alert')).toHaveTextContent('Test engine error');
         expect(loadSave().session).toMatchObject({ health: 1, streak: 1, phase: 'analyzing' });
+        engine.analyze.mockImplementation(normalAnalysis);
         fireEvent.click(screen.getByRole('button', { name: 'Retry analysis' })); await flush();
         expect(screen.getByRole('group', { name: 'Available moves' })).toBeInTheDocument();
         expect(loadSave().session).toMatchObject({ health: 1, streak: 1, phase: 'ready' });

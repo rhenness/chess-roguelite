@@ -1,0 +1,10 @@
+.help-anchor { position: relative; display: inline-flex; flex-shrink: 0; }
+.help-welcome { position: absolute; z-index: 10; top: calc(100% + 12px); left: var(--help-tip-left, -124px); width: min(284px, calc(100vw - 32px)); padding: 16px; border: 1px solid #d6dacc; border-radius: 10px; color: #17201d; background: #fffdf8; box-shadow: 0 10px 32px rgba(4, 12, 10, .28); }
+.help-welcome::before { content: ''; position: absolute; top: -6px; left: calc(var(--help-tip-arrow, 142px) - 6px); width: 10px; height: 10px; border-top: 1px solid #d6dacc; border-left: 1px solid #d6dacc; background: #fffdf8; transform: rotate(45deg); }
+.help-welcome p { font-size: 14px; line-height: 1.5; }
+.help-welcome p strong { display: block; margin-bottom: 4px; color: var(--green); font-size: 16px; }
+.help-welcome-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.help-welcome-actions button { min-height: 44px; font-size: 12px; }
+.help-welcome-actions .primary-small { padding: 9px 14px; }
+.help-welcome-actions .text-button { padding: 9px 7px; color: #58645d; }
+.help-welcome-actions .text-button:hover { color: var(--green); background: #e7ece3; }

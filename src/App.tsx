@@ -10,12 +10,13 @@ import { PieceSetPicker } from './components/PieceSetPicker';
 import { DailyDungeonPage } from './components/DailyDungeonPage';
 import { LeaderboardsPage } from './components/LeaderboardsPage';
 import { PrimaryNavigation } from './components/PrimaryNavigation';
+import { PageHelp } from './components/PageHelp';
+import { HelpWelcome } from './components/HelpWelcome';
 import { ItemIcon, ItemLoadout, RunItems } from './components/RunItems';
 import { activateItem, canActivateItem, ITEMS, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemId, type ItemInventory } from './game/items';
 import { MoveOptions, OPTION_COLORS, CONFIRM_COLOR } from './components/MoveOptions';
 import { BOARD_APPEARANCE } from './components/boardAppearance';
 import { EndlessPage } from './features/endless/EndlessPage';
-import { EndlessRecords } from './features/endless/EndlessRecords';
 import { useEndlessSession } from './features/endless/useEndlessSession';
 import { usePageNavigation } from './game/usePageNavigation';
 import { MultiplierUpgrades } from './components/MultiplierUpgrades';
@@ -37,8 +38,9 @@ import { runCoinReward } from './game/economy';
 import { applyPaidUpgrades } from './game/economy';
 import { useDailyDungeon } from './game/useDailyDungeon';
 import { restoreDailyRun } from './game/daily';
+import { clearRegularRun, loadRegularRun, saveRegularRun } from './game/regular';
 import {
-    advancePlayback, BEST_MOVE_STREAK_LENGTH, boardFen, chooseMove, DEFAULT_RULES, nextLevel,
+    advancePlayback, boardFen, chooseMove, DEFAULT_RULES, nextLevel,
     QUALITY_LABELS, QUALITY_ORDER, RUN_LEVEL_COUNT, shuffleChoices, startRun,
     type RunRules, type RunState,
 } from './game/run';
@@ -91,7 +93,8 @@ function Modal({ children, titleId, className, onClose, returnFocus, dismissible
         onCancel={event => { event.preventDefault(); if (dismissible) onClose(); }}
         onKeyDown={event => {
             if (event.key !== 'Tab') return;
-            const controls = event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled):not([tabindex="-1"]), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]');
+            const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled):not([tabindex="-1"]), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], summary, [tabindex="0"]'))
+                .filter(control => !control.closest('details:not([open])') || control.tagName === 'SUMMARY');
             const first = controls[0];
             const last = controls[controls.length - 1];
             if (event.shiftKey && document.activeElement === first) {
@@ -176,6 +179,8 @@ function historyRows(run: RunState | null, level: GeneratedLevel | undefined) {
 
 export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES }: AppProps) {
     const pool = useMemo(() => selectLevels(levels), [levels]);
+    const [savedRegular] = useState(() => loadRegularRun(pool));
+    const regularInitialItems = useRef<ItemInventory>(savedRegular?.initialItems ?? {});
     const [run, setRunState] = useState<RunState | null>(null);
     const latestRun = useRef(run);
     const setRun = useCallback((next: RunState | null) => { latestRun.current = next; setRunState(next); }, []);
@@ -189,7 +194,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const [regularSelectedSet, setRegularSelectedSet] = useState<PieceSetId>('default');
     const [dailySelectedSet, setDailySelectedSet] = useState<PieceSetId>('default');
     const [expirationActive, setExpirationActive] = useState(false);
-    const regularRun = useRef<{ run: RunState; set: PieceSetId } | null>(null);
+    const regularRun = useRef<{ run: RunState; set: PieceSetId } | null>(savedRegular);
     const [playerProfile, setPlayerProfile] = useState(loadPlayerProfile);
     const [showProfile, setShowProfile] = useState(false);
     const [editingProfile, setEditingProfile] = useState(false);
@@ -331,6 +336,16 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     }, [run, finishedPayout, runHistory.recordRun]);
 
     useEffect(() => {
+        if (!run || run.daily) return;
+        if (run.phase === 'finished' && finishedPayout) {
+            clearRegularRun();
+            regularRun.current = null;
+        } else {
+            saveRegularRun({ run, set: pieceSet, initialItems: regularInitialItems.current });
+        }
+    }, [run, pieceSet, finishedPayout]);
+
+    useEffect(() => {
         if (!profileSaveMessage) return;
         const timer = window.setTimeout(() => setProfileSaveMessage(null), 3500);
         return () => window.clearTimeout(timer);
@@ -440,6 +455,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             setProfileSaveMessage('Not enough coins for these items. Adjust your loadout.');
             return;
         }
+        regularInitialItems.current = { ...latestSelectedItems.current };
         setSelectedItems({});
         setPreview(null);
         setPendingChoice(null);
@@ -710,14 +726,17 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     return <main className={`app-shell${page === 'play' ? ' main-menu-shell' : ''}${showNavigation ? ' has-navigation' : ''}${hasRunItems ? ' has-run-items' : ''}`}
         onPointerDownCapture={() => { keyboardOption.current = null; }}>
         <header className={`topbar${page === 'play' ? ' main-menu-topbar' : ''}`}>
-            {page !== 'play' && <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); if (!expirationActive) openMenu(); }}>
+            {page !== 'play' && (page !== 'profile' || editingProfile) && <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); if (!expirationActive) openMenu(); }}>
                 <img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="38" height="42" /><strong>Knightfall</strong>
             </a>}
             {showNavigation && <PrimaryNavigation active={activeDestination} onNavigate={navigate} />}
             <div className="top-actions">
                 {page === 'game' && run?.daily && <button ref={leaderboardButton} className="leaderboard-button" disabled={!leaderboardDungeon || expirationActive}
                     aria-label="Daily leaderboard" title="Daily leaderboard" onClick={openLeaderboard}><Trophy size={20} aria-hidden="true" /></button>}
-                <button ref={helpButton} disabled={!!payout.sequence || expirationActive} className="text-button help-button" aria-label="How to play" aria-expanded={showRules} aria-controls="game-rules" onClick={() => setShowRules(value => !value)}>?</button>
+                <div className="help-anchor">
+                    <button ref={helpButton} disabled={!!payout.sequence || expirationActive} className="text-button help-button" aria-label="Help for this page" aria-expanded={showRules} aria-controls="game-rules" onClick={() => setShowRules(value => !value)}>?</button>
+                    <HelpWelcome home={page === 'play'} blocked={showRules || showProfile || showLeaderboard || !!upgradeSet || !!payout.sequence || expirationActive} anchor={helpButton} />
+                </div>
                 <span className="coin-balance" aria-label={`Coins: ${progression.profile.coins}`} title={`${progression.profile.coins.toLocaleString()} coins`}>
                     <Coins size={20} aria-hidden="true" />
                     <strong className="coin-amount">{progression.profile.coins.toLocaleString()}</strong>
@@ -737,25 +756,14 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         </Modal>}
         {showProfile && <Modal className={`profile-modal${editingProfile ? '' : ' profile-overview-modal'}`} titleId="profile-title" onClose={closeProfile} returnFocus={profileReturnFocus}>
             {editingProfile ? <ProfileEditor profile={playerProfile} onSave={updateProfile} onCancel={() => setEditingProfile(false)} />
-                : <ProfileOverview profile={playerProfile} history={runHistory.history} now={daily.now} onEdit={() => setEditingProfile(true)}>
-                    <EndlessRecords records={endless.records} /></ProfileOverview>}
+                : <ProfileOverview profile={playerProfile} history={runHistory.history} endlessRecords={endless.records}
+                    onEdit={() => setEditingProfile(true)} onPlay={() => { setShowProfile(false); openMenu(); }} />}
         </Modal>}
         {showRules && !payout.sequence && !showProfile && <Modal className="rules-panel" titleId="game-rules" onClose={() => setShowRules(false)} returnFocus={helpButton}>
-            <h2 id="game-rules">How to play</h2>
-            <p>Tap a piece, then an offered destination. Or tap a colored option twice.</p>
-            {endlessPage ? <>
-                <p>Play both sides. Best and Good moves extend your streak. Checkmate and draws automatically start a new board.</p>
-                <p>Standard uses lives and items. Inaccuracy and Bad moves break your streak and deal damage. Four Best moves in a row restore one heart.</p>
-                <p>Hardcore has no items. One Inaccuracy or Bad move ends the attempt.</p>
-                <p>Coins are awarded when the attempt ends. Score boosts do not increase coin earnings.</p>
-            </> : <>
-            <p>Use arrow keys to switch colored options. Press Enter or Space once to select, then again to confirm.</p>
-            <p>Start with {activeRules.startingHealth} health. Health and score carry across floors.</p>
-            <p>{BEST_MOVE_STREAK_LENGTH} Best in a row: +1 HP.</p>
-            <p>Every run ends with a square multiplier. Complete all 10 floors to permanently upgrade one square.</p>
-            <p>Buy up to 3 items when starting a run. Unused items are lost when it ends. Activate them before confirming a move. Only player moves spend charges; effects carry across floors. Shields still allow mistakes to break your streak. Boosts exclude checkmate bonus points and coin earnings.</p>
-            <ul>{QUALITY_ORDER.map(quality => <li key={quality}><strong>{QUALITY_LABELS[quality]}</strong><span>+{activeRules.points[quality]} points / {activeRules.damage[quality]} health lost</span></li>)}</ul>
-            </>}
+            <PageHelp key={`${page}/${showingResult}/${endless.session?.mode}/${endless.session?.phase === 'finished'}`} page={page}
+                rules={page === 'endless-game' ? endless.session?.rules ?? rules : activeRules}
+                result={showingResult} dailyRun={!!run?.daily} dailyStatus={dailyDungeon?.attempt?.status}
+                dailyClosed={!!dailyDungeon && daily.now >= dailyDungeon.expiresAt} editingProfile={editingProfile} endless={endless.session} />
             <button className="primary-small" data-modal-focus autoFocus onClick={() => setShowRules(false)}>Got it</button>
         </Modal>}
         <div className={`page-content${(page === 'game' && !showingResult) || (page === 'endless-game' && endless.session?.phase !== 'finished') ? ' game-content' : page === 'daily' || page === 'leaderboards' ? ' daily-content' : page === 'regular' || page === 'regular-items' || page === 'endless' || page === 'endless-items' ? ' regular-content' : page === 'profile' ? ' profile-content' : ''}`} ref={content}>
@@ -800,8 +808,8 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         {page === 'leaderboards' && <LeaderboardsPage dungeon={daily.today} now={daily.now} entries={standings} profile={playerProfile} />}
         {page === 'profile' && <section className="profile-page" aria-labelledby="profile-page-title">
             {editingProfile ? <ProfileEditor asPage profile={playerProfile} onSave={updateProfile} onCancel={() => setEditingProfile(false)} />
-                : <ProfileOverview asPage profile={playerProfile} history={runHistory.history} now={daily.now} onEdit={() => setEditingProfile(true)}>
-                    <EndlessRecords records={endless.records} /></ProfileOverview>}
+                : <ProfileOverview asPage profile={playerProfile} history={runHistory.history} endlessRecords={endless.records}
+                    onEdit={() => setEditingProfile(true)} onPlay={openMenu} />}
         </section>}
         {page === 'game' && (!showingResult || run?.daily) && <section id="game" className="game-layout" aria-label={run?.daily ? 'Daily game' : 'Regular game'} tabIndex={-1} data-page-focus>
             <div className={`board-column${run?.daily ? ' daily-board-column' : ''}`}>

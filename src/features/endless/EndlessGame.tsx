@@ -35,6 +35,9 @@ export function EndlessGame({ controller, active, navigate }: {
         controller.play(uci);
     }, [active, controller.play]);
     const ready = active && session?.phase === 'ready';
+    const sourceOptions = source ? session?.options.filter(option => option.from === source && (!destination || option.to === destination)) : [];
+    const preferred = pending ?? (sourceOptions?.length === 1 ? sourceOptions[0]!.uci : null);
+    useEffect(() => { controller.prioritize(ready ? preferred : null); }, [controller.prioritize, ready, preferred]);
     const select = (uci: string) => {
         if (!ready) return;
         if (pending === uci) commit(uci);
@@ -144,7 +147,7 @@ export function EndlessGame({ controller, active, navigate }: {
                                 : `Option ${index + 1}: ${option.san}, ${option.description}. Tap twice to play.` };
                 })} />}
             {session.phase === 'analyzing' && !error && <div className="endless-thinking" role="status">Finding your moves…</div>}
-            {error && <div className="endless-engine-error" role="alert"><strong>Engine unavailable</strong><p>{error}</p>
+            {session.phase === 'analyzing' && error && <div className="endless-engine-error" role="alert"><strong>Engine unavailable</strong><p>{error}</p>
                 <button className="primary-small" onClick={controller.retry}>Retry analysis</button></div>}
             {session.phase === 'reveal' && session.lastMove && <div className={`reveal-card quality-${session.lastMove.quality}`} role="status" aria-label="Move quality">
                 <span className="reveal-kicker">{session.lastMove.san}</span><strong>{QUALITY_LABELS[session.lastMove.quality]}</strong>
