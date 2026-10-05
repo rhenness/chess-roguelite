@@ -20,6 +20,7 @@ export function MoveOptions({ options, pending, onSelect, onPreview, groupRef }:
 }) {
     return <div className="move-picker"><div ref={groupRef} className="move-options" role="group" aria-label="Available moves">
         {options.map((option, index) => <button className={`move-option${pending === option.uci ? ' pending' : ''}`} key={option.uci}
+            data-move={option.uci}
             onClick={() => onSelect(option.uci)}
             onMouseEnter={() => onPreview(option.uci)} onMouseLeave={() => onPreview(null)}
             onFocus={() => onPreview(option.uci)} onBlur={() => onPreview(null)}

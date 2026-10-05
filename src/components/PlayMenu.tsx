@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, Clock3, Coins, DoorOpen, Infinity, Play, Trophy } from 'lucide-react';
+import { ChevronRight, Clock3, Coins, DoorOpen, Infinity, LockKeyhole, Play, Trophy } from 'lucide-react';
 import type { DailyDungeon } from '../game/daily';
 import './DailyDungeon.css';
 import './PlayMenu.css';
@@ -28,8 +28,9 @@ export function formatCountdown(expiresAt: number, now: number): string {
         .map(value => String(value).padStart(2, '0')).join(':');
 }
 
-export function PlayMenu({ daily, now, onRegular, onDaily, onEndless, regularFloor, dailyFloor, endlessMove, dailyRank, available }: {
+export function PlayMenu({ daily, now, onRegular, onDaily, onEndless, regularFloor, dailyFloor, endlessMove, dailyRank, available, locked = false }: {
     daily: DailyDungeon | undefined; now: number; available: boolean; dailyRank?: number;
+    locked?: boolean;
     onRegular: () => void; onDaily: () => void;
     onEndless: () => void; endlessMove?: number;
     regularFloor?: number; dailyFloor?: number;
@@ -49,7 +50,7 @@ export function PlayMenu({ daily, now, onRegular, onDaily, onEndless, regularFlo
                     {regularFloor !== undefined && <span id="menu-regular-status" className="menu-daily-meta">In progress · Floor {regularFloor}</span>}
                 </span><ChevronRight size={20} aria-hidden="true" />
             </button>
-            <button className="menu-daily menu-action" aria-label="Daily dungeon" aria-describedby="menu-daily-summary" disabled={!daily} onClick={onDaily}>
+            <button className="menu-daily menu-action" aria-label="Daily dungeon" aria-describedby={locked ? 'menu-unlock-hint' : 'menu-daily-summary'} disabled={locked || !daily} onClick={onDaily}>
                 <DoorOpen size={24} aria-hidden="true" />
                 <span className="menu-daily-content"><strong>Daily dungeon</strong>
                     <span id="menu-daily-summary" className="menu-daily-meta">
@@ -59,13 +60,15 @@ export function PlayMenu({ daily, now, onRegular, onDaily, onEndless, regularFlo
                         {daily && <span aria-label="Time until daily dungeon closes"><Clock3 size={14} aria-hidden="true" />{now >= daily.expiresAt ? 'Closed' : formatCountdown(daily.expiresAt, now)}</span>}
                     </span>
                 </span>
-                <ChevronRight size={20} aria-hidden="true" />
+                {locked ? <LockKeyhole size={20} aria-hidden="true" /> : <ChevronRight size={20} aria-hidden="true" />}
             </button>
-            <button className="menu-action menu-endless" aria-label="Endless" aria-describedby={endlessMove !== undefined ? 'menu-endless-status' : undefined} onClick={onEndless}>
+            <button className="menu-action menu-endless" aria-label="Endless" aria-describedby={locked ? 'menu-unlock-hint' : endlessMove !== undefined ? 'menu-endless-status' : undefined} disabled={locked} onClick={onEndless}>
                 <Infinity size={24} aria-hidden="true" /><span className="menu-daily-content"><strong>Endless</strong>
-                    {endlessMove !== undefined && <span id="menu-endless-status" className="menu-daily-meta">In progress · Move {endlessMove}</span>}</span><ChevronRight size={20} aria-hidden="true" />
+                    {endlessMove !== undefined && <span id="menu-endless-status" className="menu-daily-meta">In progress · Move {endlessMove}</span>}</span>
+                {locked ? <LockKeyhole size={20} aria-hidden="true" /> : <ChevronRight size={20} aria-hidden="true" />}
             </button>
         </div>
+        {locked && <p id="menu-unlock-hint" className="menu-unlock-hint">Finish your first regular run to unlock more modes and navigation.</p>}
         {!available && <p className="empty-state" role="status">No scored, playable floors.</p>}
     </section>;
 }

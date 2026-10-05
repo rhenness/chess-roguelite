@@ -1,0 +1,21 @@
+.play-tutorial { position: fixed; z-index: 40; width: min(330px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; padding: 18px 20px; border: 1px solid #b7cbb9; border-radius: 12px; background: #fffdf8; box-shadow: 0 6px 24px #17201d26; }
+.tutorial-arrow { position: fixed; z-index: -1; width: 10px; height: 10px; background: #c28b26; border: 1px solid #c28b26; transform: rotate(45deg); }
+.play-tutorial[data-placement="floating"] .tutorial-arrow { display: none; }
+.play-tutorial[data-placement="center"] .tutorial-arrow { display: none; }
+.tutorial-eyebrow { color: #8b6425; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.play-tutorial h2 { margin: 6px 0 10px; color: #234b40; font-size: 21px; }
+.play-tutorial p { color: #58645d; font-size: 13px; line-height: 1.55; }
+.tutorial-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.tutorial-actions button { min-height: 40px; }
+.tutorial-actions .text-button { color: #687569; font-size: 12px; }
+.tutorial-health-example { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; color: #a95843; }
+.tutorial-health-example > span { display: flex; gap: 5px; }
+.tutorial-health-example small { color: #687569; font-size: 11px; }
+.tutorial-health-example .lost { opacity: .2; transition: opacity .35s; }
+.tutorial-highlight { position: fixed; z-index: 35; pointer-events: none; border: 2px solid #c28b26; border-radius: 5px; box-shadow: 0 0 0 1px #fffdf899; }
+@media (max-width: 900px) {
+    .play-tutorial { padding: 12px 14px; }
+    .play-tutorial h2 { font-size: 18px; margin-bottom: 6px; }
+    .play-tutorial p { font-size: 12px; }
+    .tutorial-actions { margin-top: 10px; }
+}

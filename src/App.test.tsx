@@ -13,6 +13,7 @@ import { initialUserProgression, loadUserProgression, PROGRESSION_STORAGE_KEY, s
 import { PIECE_RENDERERS } from './components/pieces/pieceRenderers';
 import App from './App';
 import { HELP_WELCOME_STORAGE_KEY } from './components/HelpWelcome';
+import { finishPlayTutorial, initialPlayTutorial, PLAY_TUTORIAL_STORAGE_KEY, savePlayTutorial } from './game/playTutorial';
 import { initialPlayerProfile, loadPlayerProfile, PLAYER_PROFILE_STORAGE_KEY } from './game/playerProfile';
 import { loadRunHistory, RUN_HISTORY_STORAGE_KEY, saveRunHistory, type RunRecord } from './game/runHistory';
 import { ENDLESS_STORAGE_KEY, saveState } from './features/endless/storage';
@@ -39,6 +40,7 @@ vi.mock('react-chessboard', async () => ({
 
 afterEach(() => { vi.useRealTimers(); window.localStorage.removeItem(PROGRESSION_STORAGE_KEY); });
 beforeEach(() => {
+    savePlayTutorial(finishPlayTutorial(initialPlayTutorial()));
     window.history.replaceState(null, '', '#/play');
     window.localStorage.removeItem(HELP_WELCOME_STORAGE_KEY);
     window.localStorage.removeItem(DAILY_STORAGE_KEY);
@@ -118,7 +120,8 @@ function claimCheckpointReward() {
 
 function resumeRegularFromHome() {
     openRegular();
-    fireEvent.click(screen.getByRole('button', { name: 'Resume regular run' }));
+    const resume = screen.queryByRole('button', { name: 'Resume regular run' });
+    if (resume) fireEvent.click(resume);
 }
 
 function openRegularItems() {
@@ -132,6 +135,245 @@ function openProfileEditor() {
     }
     fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
 }
+
+describe('first play tutorial', () => {
+    function newPlayer() {
+        window.localStorage.removeItem(PLAY_TUTORIAL_STORAGE_KEY);
+        saveUserProgression(initialUserProgression());
+    }
+    function continueLessons() {
+        for (const title of ['Read your move', 'Keep an eye on your hearts', 'Build a Best streak']) {
+            expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
+            fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        }
+        expect(screen.getByRole('heading', { name: 'Keep going between rounds' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Continue playing' }));
+    }
+    function finishPlayback() {
+        act(() => { vi.advanceTimersByTime(1400); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        act(() => { vi.advanceTimersByTime(1500); });
+    }
+
+    it('locks other modes and non-Home navigation until the first run ends, including after a refresh', () => {
+        newPlayer();
+        const level = makeLevel('locked-first-play', 10, 2);
+        let view = render(<App levels={[level]} />);
+        function expectLockedHome() {
+            expect(screen.getByRole('button', { name: 'Regular run' })).toBeEnabled();
+            for (const name of ['Daily dungeon', 'Endless']) {
+                const button = screen.getByRole('button', { name });
+                expect(button).toBeDisabled();
+                expect(button).toHaveAccessibleDescription(/Finish your first regular run/);
+                fireEvent.click(button);
+            }
+            const navigation = screen.getByRole('navigation', { name: 'Main navigation' });
+            expect(within(navigation).getByRole('link', { name: 'Home' })).toHaveAttribute('href', '#/play');
+            for (const name of ['Dungeon', 'Leaderboards', 'Profile']) {
+                const link = within(navigation).getByRole('link', { name });
+                expect(link).toHaveAttribute('aria-disabled', 'true');
+                expect(link).not.toHaveAttribute('href');
+                expect(link).toHaveAttribute('tabindex', '-1');
+                fireEvent.click(link);
+                fireEvent.click(link, { ctrlKey: true });
+            }
+            expect(window.location.hash).toBe('#/play');
+        }
+        expectLockedHome();
+        fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Skip tutorial' }));
+        const savedId = JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).id;
+        fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
+        expectLockedHome();
+        view.unmount();
+        view = render(<App levels={[level]} />);
+        expectLockedHome();
+        fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).id).toBe(savedId);
+        expect(screen.getByTestId('board')).toBeInTheDocument();
+    });
+
+    it.each(['best', 'bad'] as const)('unlocks modes and navigation after the first run ends with a %s move and preserves it on refresh', quality => {
+        vi.useFakeTimers();
+        newPlayer();
+        const level = makeLevel('unlock-first-play');
+        const view = renderGame(<App levels={[level]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Skip tutorial' }));
+        selectQuality(level, quality);
+        finishPlayback();
+        finishPayout();
+        expect(loadUserProgression().finishedRuns).toBe(1);
+        fireEvent.click(screen.getByRole('link', { name: 'Home' }));
+        function expectUnlockedHome() {
+            expect(screen.getByRole('button', { name: 'Daily dungeon' })).toBeEnabled();
+            expect(screen.getByRole('button', { name: 'Endless' })).toBeEnabled();
+            const navigation = screen.getByRole('navigation', { name: 'Main navigation' });
+            for (const name of ['Dungeon', 'Leaderboards', 'Profile']) {
+                const link = within(navigation).getByRole('link', { name });
+                expect(link).not.toHaveAttribute('aria-disabled');
+                expect(link).toHaveAttribute('href');
+            }
+            expect(screen.queryByText(/Finish your first regular run/)).not.toBeInTheDocument();
+        }
+        expectUnlockedHome();
+        view.unmount();
+        render(<App levels={[level]} />);
+        expectUnlockedHome();
+        fireEvent.click(screen.getByRole('button', { name: 'Endless' }));
+        expect(window.location.hash).toBe('#/endless');
+    });
+
+    it('teaches a real piece/destination move, holds its feedback, and keeps the damage example separate from health', () => {
+        vi.useFakeTimers();
+        newPlayer();
+        const level = makeLevel('tutorial-opening', 10, 2);
+        renderGame(<App levels={[level]} />);
+        expect(screen.getByRole('heading', { name: 'Your first run' })).toBeInTheDocument();
+        expect(screen.queryByLabelText('Available moves')).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+        expect(screen.queryByText(/multiplier/i)).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        expect(screen.getByRole('heading', { name: 'Choose a move' })).toBeInTheDocument();
+        expect(screen.getByText(/You can also use the board:/)).toBeInTheDocument();
+        expect(screen.getByRole('group', { name: 'Available moves' }).querySelector('.tutorial-target')).toHaveAttribute('data-move', decision(level).choices.find(choice => choice.quality === 'best')!.playerMove.uci);
+        const move = decision(level).choices[0]!;
+        const from = move.playerMove.uci.slice(0, 2);
+        const to = move.playerMove.uci.slice(2, 4);
+        fireEvent.click(screen.getByRole('button', { name: `Square ${from}` }));
+        expect(screen.getByRole('heading', { name: 'Choose a destination' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: `Square ${to}` }));
+        expect(screen.getByRole('heading', { name: 'Read your move' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Score: 100')).toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(10000); });
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', move.fenAfterPlayerMove);
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        expect(screen.getByRole('img', { name: /Example only:/ })).toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(1000); });
+        expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
+        expect(screen.getByLabelText('Score: 100')).toBeInTheDocument();
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', move.fenAfterPlayerMove);
+    });
+
+    it('waits for a checkpoint, guides a real item activation, and then gets out of the way', () => {
+        vi.useFakeTimers();
+        newPlayer();
+        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`tutorial-${index}`, index));
+        renderGame(<App levels={levels} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        selectQuality(levels[0]!, 'best');
+        continueLessons();
+        expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
+        finishPlayback();
+        for (let index = 1; index < 3; index++) { selectQuality(levels[index]!, 'best'); finishPlayback(); }
+        expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Pick a free item' })).not.toBeInTheDocument();
+        const offers = screen.getByRole('group', { name: 'Checkpoint items' });
+        const saved = JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).checkpoint;
+        const id = saved.checkpointRewards[0].offers[0] as keyof typeof ITEMS;
+        fireEvent.click(within(offers).getAllByRole('button')[0]!);
+        expect(screen.getByRole('heading', { name: 'Try your item' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: `${ITEMS[id].name}, 1 remaining` }));
+        fireEvent.click(screen.getByRole('button', { name: `Confirm use of ${ITEMS[id].name}` }));
+        expect(screen.getByRole('heading', { name: 'You’re ready' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: `${ITEMS[id].name}, 1 remaining` })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Continue playing' }));
+        expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Available moves')).toBeInTheDocument();
+        expect(JSON.parse(window.localStorage.getItem(PLAY_TUTORIAL_STORAGE_KEY)!).status).toBe('done');
+    });
+
+    it('resumes guidance after refresh, permits skipping, and leaves the multiplier presentation unchanged', () => {
+        vi.useFakeTimers();
+        newPlayer();
+        const level = makeLevel('tutorial-resume', 10, 1);
+        let view = renderGame(<App levels={[level]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        const move = selectQuality(level, 'good');
+        view.unmount();
+        view = render(<App levels={[level]} />);
+        resumeRegularFromHome();
+        expect(screen.getByRole('heading', { name: 'Read your move' })).toBeInTheDocument();
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', move.fenAfterPlayerMove);
+        fireEvent.click(screen.getByRole('button', { name: 'Skip tutorial' }));
+        finishPlayback();
+        finishPayout();
+        expect(screen.queryByText(/how to upgrade|selected square/i)).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
+        startRegular();
+        expect(screen.queryByRole('heading', { name: 'Your first run' })).not.toBeInTheDocument();
+    });
+
+    it('replays from Help on the current run without spending coins, replacing the run, or making a move', () => {
+        const level = makeLevel('replay-guide', 10, 2);
+        renderGame(<App levels={[level]} />);
+        const saved = JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!);
+        fireEvent.click(screen.getByRole('button', { name: 'Help for this page' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Replay play tutorial' }));
+        expect(screen.getByRole('heading', { name: 'Your first run' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).id).toBe(saved.id);
+        expect(loadUserProgression().coins).toBe(0);
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        selectQuality(level, 'best');
+        expect(screen.getByRole('heading', { name: 'Read your move' })).toBeInTheDocument();
+    });
+
+    it('keeps guidance out of a dungeon while preserving the paused regular tutorial', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
+        const level = makeLevel('tutorial-daily', 10, 2);
+        renderGame(<App levels={[level]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Help for this page' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Replay play tutorial' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
+        selectQuality(level, 'best');
+        expect(JSON.parse(window.localStorage.getItem(PLAY_TUTORIAL_STORAGE_KEY)!).step).toBe('piece');
+        resumeRegularFromHome();
+        expect(screen.getByRole('heading', { name: 'Choose a move' })).toBeInTheDocument();
+    });
+
+    it('starts a new player directly from the menu and resumes that same run on their return', () => {
+        newPlayer();
+        render(<App levels={[makeLevel('first-menu', 10, 2)]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
+        expect(window.location.hash).toBe('#/game');
+        expect(screen.getByRole('heading', { name: 'Your first run' })).toBeInTheDocument();
+        expect(screen.getByTestId('board')).toHaveAttribute('data-piece-set', 'default');
+        expect(screen.queryByRole('region', { name: 'Run supplies' })).not.toBeInTheDocument();
+        expect(loadUserProgression().coins).toBe(0);
+        const saved = JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!);
+        expect(saved.initialItems).toEqual({});
+        const id = saved.id;
+        fireEvent.click(screen.getByRole('button', { name: 'Skip tutorial' }));
+        fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
+        expect(window.location.hash).toBe('#/game');
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).id).toBe(id);
+        expect(screen.queryByRole('heading', { name: 'Your first run' })).not.toBeInTheDocument();
+    });
+
+    it('guides two taps on a colored move square without automatically playing a move', () => {
+        newPlayer();
+        const level = makeLevel('option-guide', 10, 2);
+        renderGame(<App levels={[level]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        const bestMove = decision(level).choices.find(choice => choice.quality === 'best')!;
+        const option = screen.getByRole('button', { name: name => name.startsWith('Option ') && name.includes(`: ${bestMove.playerMove.san},`) });
+        expect(option).toHaveClass('tutorial-target');
+        fireEvent.click(option);
+        expect(screen.getByRole('heading', { name: 'Confirm your move' })).toBeInTheDocument();
+        expect(option).toHaveClass('tutorial-target');
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+        fireEvent.click(option);
+        expect(screen.getByRole('heading', { name: 'Read your move' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Score: 100')).toBeInTheDocument();
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).checkpoint.moves).toHaveLength(1);
+    });
+});
 
 describe('regular run persistence', () => {
     it('resumes after refreshing during a move and continues playback without scoring it again', () => {
@@ -345,7 +587,7 @@ describe('regular setup steps', () => {
     });
 
     it('restores each setup step and its scroll position through browser navigation', () => {
-        saveUserProgression({ ...initialUserProgression(), coins: 20 });
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 20 });
         renderSetup(<App levels={[makeLevel()]} />);
         const content = screen.getByRole('region', { name: 'Regular run' }).querySelector<HTMLElement>('[data-page-scroll="regular-setup"]')!;
         content.scrollTop = 210;
@@ -480,7 +722,7 @@ describe('page help', () => {
 
 describe('run supplies', () => {
     it('selects items in setup, charges once at entry, and brings only selected items', () => {
-        saveUserProgression({ ...initialUserProgression(), coins: 70 });
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 70 });
         renderSetup(<App levels={[makeLevel('supplies', 10, 3)]} />);
         expect(screen.queryByRole('link', { name: 'Shop' })).not.toBeInTheDocument();
         openRegularItems();
@@ -495,7 +737,7 @@ describe('run supplies', () => {
         expect(loadUserProgression().coins).toBe(40);
     });
     it('enforces three slots and loses unused items without refunds when replacing a run', () => {
-        saveUserProgression({ ...initialUserProgression(), coins: 100 });
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 100 });
         renderSetup(<App levels={[makeLevel()]} />);
         openRegularItems();
         for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole('button', { name: 'Bring Healing Potion for 20 coins' }));
@@ -512,7 +754,7 @@ describe('run supplies', () => {
     it('activates a boost, clears pending move confirmation, and shows actual points and duration', () => {
         vi.useFakeTimers();
         const level = makeLevel('boost-ui', 10, 3);
-        saveUserProgression({ ...initialUserProgression(), coins: 30 });
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 30 });
         renderSetup(<App levels={[level]} />);
         openRegularItems();
         fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
@@ -534,7 +776,7 @@ describe('run supplies', () => {
     it('announces prevented damage without reporting a health loss or ending the run', () => {
         vi.useFakeTimers();
         const level = makeLevel('shield-ui', 10, 3);
-        saveUserProgression({ ...initialUserProgression(), coins: 20 });
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 20 });
         renderSetup(<App levels={[level]} rules={{ ...DEFAULT_RULES, startingHealth: 1 }} />);
         openRegularItems();
         fireEvent.click(screen.getByRole('button', { name: 'Bring King’s Guard for 20 coins' }));
@@ -551,7 +793,7 @@ describe('run supplies', () => {
     });
     it('resumes free daily item effects after remount without charging coins or replaying notices', () => {
         const level = makeLevel('daily-supplies', 10, 3);
-        saveUserProgression({ ...initialUserProgression(), coins: 80 });
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 80 });
         const view = render(<App levels={[level]} />);
         openDaily();
         expect(screen.getByText('Daily supplies')).toBeInTheDocument();
@@ -568,7 +810,7 @@ describe('run supplies', () => {
     });
     it('shows square cancel/confirm controls above an item and cancels without spending it', () => {
         const level = makeLevel('confirmation', 10, 3);
-        saveUserProgression({ ...initialUserProgression(), coins: 20 });
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 20 });
         renderSetup(<App levels={[level]} />);
         openRegularItems();
         fireEvent.click(screen.getByRole('button', { name: 'Bring Healing Potion for 20 coins' }));
@@ -1332,7 +1574,7 @@ describe('daily rewards interface', () => {
 
 describe('gameplay interface', () => {
     it('shows every multiplier before selection, saves purchases, and prevents overspending', () => {
-        saveUserProgression({ ...initialUserProgression(), coins: 80 });
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 80 });
         renderSetup(<App levels={[makeLevel()]} />);
         fireEvent.click(screen.getByRole('button', { name: 'Upgrade Default' }));
         const shop = screen.getByRole('dialog', { name: 'Default' });
@@ -1387,7 +1629,7 @@ describe('gameplay interface', () => {
 
     it('uses paid multipliers for payouts and awards coins once from base score', () => {
         vi.useFakeTimers();
-        saveUserProgression({ ...initialUserProgression(), coins: 30 });
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 30 });
         const random = vi.spyOn(Math, 'random').mockReturnValue(0);
         try {
             const level = makeLevel();
@@ -1414,7 +1656,7 @@ describe('gameplay interface', () => {
 
     it('keeps a finished run on its original board when upgrading during its death notification', () => {
         vi.useFakeTimers();
-        saveUserProgression({ ...initialUserProgression(), coins: 60 });
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 60 });
         const random = vi.spyOn(Math, 'random').mockReturnValue(0);
         try {
             const levels = [makeLevel('first', 10), makeLevel('second', 20)];
@@ -1441,6 +1683,7 @@ describe('gameplay interface', () => {
     it('keeps premium sets locked for a new player and gives no credit for abandoning a run', () => {
         window.localStorage.removeItem(PROGRESSION_STORAGE_KEY);
         const level = makeLevel('abandoned', 10, 2);
+        window.history.replaceState(null, '', '#/regular');
         renderSetup(<App levels={[level]} />);
         expect(screen.getByRole('button', { name: 'Default' })).toBeEnabled();
         const obsidian = screen.getByRole('button', { name: 'Obsidian Order' });
@@ -1454,7 +1697,10 @@ describe('gameplay interface', () => {
         expect(screen.getByRole('region', { name: 'Regular run' })).toBeInTheDocument();
         startRegular('Default');
         selectQuality(level, 'best');
-        openRegular();
+        act(() => {
+            window.history.replaceState(null, '', '#/regular');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+        });
         startRegular('Default');
         expect(loadUserProgression().finishedRuns).toBe(0);
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
@@ -1520,6 +1766,7 @@ describe('gameplay interface', () => {
         const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Unavailable'); });
         try {
             renderGame(<App levels={[level]} rules={{ ...DEFAULT_RULES, startingHealth: 1 }} />);
+            fireEvent.click(screen.getByRole('button', { name: 'Skip tutorial' }));
             for (let count = 1; count <= 3; count++) {
                 selectQuality(level, 'bad');
                 openRegular();

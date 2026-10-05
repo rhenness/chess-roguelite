@@ -13,6 +13,9 @@
 .menu-actions { display: grid; gap: 12px; width: 100%; }
 .menu-action { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; padding: 18px 20px; border: 1px solid #55705b; border-radius: 10px; color: #f5efdc; background: #193b32; box-shadow: 0 5px 20px rgba(4, 12, 10, .22); text-align: left; }
 .menu-action:hover:enabled { border-color: #b9b08b; background: #234b40; box-shadow: 0 6px 24px rgba(4, 12, 10, .3); }
+.menu-action:disabled { opacity: 1; cursor: not-allowed; color: #aeb8b0; background: #20342d; border-color: #47594d; }
+.menu-action:disabled .menu-daily-meta, .menu-action:disabled .daily-reward-badge { color: #98a69a; }
+.menu-unlock-hint { margin: 0; max-width: 36ch; color: #e9e3d4; font-size: 12px; line-height: 1.5; text-align: center; }
 .menu-action > svg { flex-shrink: 0; }
 .menu-action > svg:last-child { margin-left: auto; }
 .menu-action strong { font-size: 18px; font-weight: 650; }

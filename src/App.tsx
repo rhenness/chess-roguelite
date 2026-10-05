@@ -12,6 +12,8 @@ import { LeaderboardsPage } from './components/LeaderboardsPage';
 import { PrimaryNavigation } from './components/PrimaryNavigation';
 import { PageHelp } from './components/PageHelp';
 import { HelpWelcome } from './components/HelpWelcome';
+import { PlayTutorial } from './components/PlayTutorial';
+import { usePlayTutorial } from './game/usePlayTutorial';
 import { ItemIcon, ItemLoadout, RunItems } from './components/RunItems';
 import { RunCheckpointReward } from './components/RunCheckpointReward';
 import { activateItem, canActivateItem, ITEMS, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemId, type ItemInventory } from './game/items';
@@ -212,6 +214,8 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const [profileSaveMessage, setProfileSaveMessage] = useState<string | null>(null);
     const progression = useUserProgression(run);
     const runHistory = useRunHistory();
+    const tutorial = usePlayTutorial(run);
+    const firstPlayLocked = progression.profile.finishedRuns === 0;
     const [pieceSet, setPieceSet] = useState<PieceSetId>('default');
     const [upgradeSet, setUpgradeSet] = useState<PieceSetId | null>(null);
     const [preview, setPreview] = useState<string | null>(null);
@@ -247,7 +251,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     }, []);
     const activeDaily = run?.daily ? daily.archive.days[run.daily.day]?.attempt : undefined;
     const paused = page !== 'game' || showProfile || showLeaderboard || !!upgradeSet || showRules;
-    const payout = useBoardPayout(run, boardNotice !== null, pieceSet, paused,
+    const payout = useBoardPayout(run, boardNotice !== null, pieceSet, paused || tutorial.paused,
         progression.profile.paidUpgrades, activeDaily?.multipliers, activeDaily?.payout);
     const helpButton = useRef<HTMLButtonElement>(null);
     const profileButton = useRef<HTMLButtonElement>(null);
@@ -265,7 +269,11 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const node = run?.node;
     const choices = useMemo(() => node?.kind === 'decision' ? shuffleChoices(node.choices) : [], [node]);
     const fen = run ? boardFen(run) : level?.root.fen;
-    const playing = run?.phase === 'decision' && !payout.sequence && !paused && !expirationActive;
+    const playing = run?.phase === 'decision' && !payout.sequence && !paused && !tutorial.paused && !expirationActive;
+    const tutorialStep = page === 'game' && !paused && !expirationActive ? tutorial.step : null;
+    const tutorialMove = choices.find(choice => choice.quality === 'best' && choice.playerMove.uci.slice(0, 2) === boardSelection?.from)
+        ?? choices.find(choice => choice.playerMove.uci.slice(0, 2) === boardSelection?.from)
+        ?? choices.find(choice => choice.quality === 'best') ?? choices[0];
     const checkpointReward = run?.phase === 'checkpoint'
         ? run.checkpointRewards.find(reward => reward.afterRound === run.levelIndex + 1) : undefined;
     const activeRules = run?.rules ?? rules;
@@ -447,7 +455,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     }
 
     useEffect(() => {
-        if (paused || expirationActive || waitingForCheckmate || payout.sequence?.preview || (run?.phase !== 'reveal' && run?.phase !== 'reply' && run?.phase !== 'level-ended')) return;
+        if (paused || tutorial.paused || expirationActive || waitingForCheckmate || payout.sequence?.preview || (run?.phase !== 'reveal' && run?.phase !== 'reply' && run?.phase !== 'level-ended')) return;
         const timer = window.setTimeout(() => {
             if (run.phase === 'level-ended') {
                 setPreview(null);
@@ -459,7 +467,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             }
         }, run.phase === 'level-ended' ? 1500 : run.phase === 'reveal' ? 1400 : 1000);
         return () => window.clearTimeout(timer);
-    }, [run, payout.sequence?.preview, paused, expirationActive, waitingForCheckmate]);
+    }, [run, payout.sequence?.preview, paused, tutorial.paused, expirationActive, waitingForCheckmate]);
 
     function bringItem(id: ItemId) {
         const selected = latestSelectedItems.current;
@@ -467,15 +475,17 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         setSelectedItems({ ...selected, [id]: (selected[id] ?? 0) + 1 });
     }
 
-    function beginRun(set: PieceSetId) {
+    function beginRun(set: PieceSetId, guided = false) {
         if (!pool.length || !isPieceSetUnlocked(set, progression.profile)) return;
+        const initialItems = guided || (page === 'play' && progression.profile.finishedRuns === 0)
+            ? {} : { ...latestSelectedItems.current };
         const next = startRun(pool, set === 'default' ? rules : { ...rules, startingHealth: PIECE_SETS[set].startingHealth },
-            Math.random, latestSelectedItems.current);
-        if (!progression.buyLoadout(latestSelectedItems.current)) {
+            Math.random, initialItems);
+        if (!progression.buyLoadout(initialItems)) {
             setProfileSaveMessage('Not enough coins for these items. Adjust your loadout.');
             return;
         }
-        regularInitialItems.current = { ...latestSelectedItems.current };
+        regularInitialItems.current = initialItems;
         setSelectedItems({});
         setPreview(null);
         setPendingChoice(null);
@@ -490,6 +500,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         setRegularSelectedSet(set);
         navigate({ page: 'game' });
         setRun(next);
+        tutorial.begin(next, progression.profile.finishedRuns === 0, guided);
     }
 
     function openMenu() {
@@ -559,6 +570,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         setBoardSelection(null);
         if (pendingChoice !== uci) {
             setPendingChoice(uci);
+            tutorial.selectedPiece();
             return;
         }
         commitMove(uci);
@@ -675,6 +687,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         }
         if (!choices.some(choice => choice.playerMove.uci.slice(0, 2) === square)) return;
         setBoardSelection({ from: square, to: null });
+        tutorial.selectedPiece();
         setPendingChoice(null);
         setPreview(null);
     }
@@ -709,6 +722,13 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             squareStyles[to] = { boxShadow: `inset 0 0 0 4px ${color}` };
         });
         squareStyles[boardSelection.from] = { boxShadow: `inset 0 0 0 5px ${CONFIRM_COLOR}` };
+    }
+    if (playing && run?.node.kind === 'decision' && tutorialStep === 'destination' && boardSelection?.from) {
+        const suggested = tutorialMove;
+        if (suggested) {
+            const square = suggested.playerMove.uci.slice(2, 4);
+            squareStyles[square] = { ...squareStyles[square], backgroundColor: '#e8c87380' };
+        }
     }
     const boardOptions: ChessboardOptions = {
         ...BOARD_APPEARANCE,
@@ -749,7 +769,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             {page !== 'play' && (page !== 'profile' || editingProfile) && <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); if (!expirationActive) openMenu(); }}>
                 <img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="38" height="42" /><strong>Knightfall</strong>
             </a>}
-            {showNavigation && <PrimaryNavigation active={activeDestination} onNavigate={navigate} />}
+            {showNavigation && <PrimaryNavigation active={activeDestination} onNavigate={navigate} locked={firstPlayLocked} />}
             <div className="top-actions">
                 {page === 'game' && run?.daily && <button ref={leaderboardButton} className="leaderboard-button" disabled={!leaderboardDungeon || expirationActive}
                     aria-label="Daily leaderboard" title="Daily leaderboard" onClick={openLeaderboard}><Trophy size={20} aria-hidden="true" /></button>}
@@ -788,10 +808,21 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                 result={showingResult} dailyRun={!!run?.daily} dailyStatus={dailyDungeon?.attempt?.status}
                 dailyClosed={!!dailyDungeon && daily.now >= dailyDungeon.expiresAt} editingProfile={editingProfile} endless={endless.session} />
             <button className="primary-small" data-modal-focus autoFocus onClick={() => setShowRules(false)}>Got it</button>
+            {(page === 'play' || page === 'regular' || page === 'regular-items' || (page === 'game' && run && !run.daily && run.phase !== 'finished'))
+                && <button className="text-button" onClick={() => {
+                    setShowRules(false);
+                    if (page === 'game' && run) { setPendingChoice(null); setBoardSelection(null); setPreview(null); tutorial.begin(run, true, true); }
+                    else beginRun('default', true);
+                }}>{page === 'game' ? 'Replay play tutorial' : 'Start guided run'}</button>}
         </Modal>}
         <div className={`page-content${(page === 'game' && !showingResult) || (page === 'endless-game' && endless.session?.phase !== 'finished') ? ' game-content' : page === 'daily' || page === 'leaderboards' ? ' daily-content' : page === 'regular' || page === 'regular-items' || page === 'endless' || page === 'endless-items' ? ' regular-content' : page === 'profile' ? ' profile-content' : ''}`} ref={content}>
-        {page === 'play' && <PlayMenu daily={daily.today} now={daily.now} available={!!pool.length}
-            onRegular={() => navigate({ page: 'regular' })} onDaily={() => navigate({ page: 'daily' })}
+        {page === 'play' && <PlayMenu daily={daily.today} now={daily.now} available={!!pool.length} locked={firstPlayLocked}
+            onRegular={() => {
+                if (progression.profile.finishedRuns === 0) {
+                    if (resumableRegular) resumeRegular();
+                    else beginRun('default');
+                } else navigate({ page: 'regular' });
+            }} onDaily={() => navigate({ page: 'daily' })}
             onEndless={() => navigate({ page: 'endless' })} endlessMove={endless.session && endless.session.phase !== 'finished' ? endless.session.moves + 1 : undefined}
             dailyRank={standings.find(entry => entry.id === 'you')?.rank}
             regularFloor={resumableRegular ? Math.min(resumableRegular.run.levelIndex + 1, resumableRegular.run.levels.length) : undefined}
@@ -834,7 +865,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                 : <ProfileOverview asPage profile={playerProfile} history={runHistory.history} endlessRecords={endless.records}
                     onEdit={() => setEditingProfile(true)} onPlay={openMenu} />}
         </section>}
-        {page === 'game' && (!showingResult || run?.daily) && <section id="game" className="game-layout" aria-label={run?.daily ? 'Daily game' : 'Regular game'} tabIndex={-1} data-page-focus>
+        {page === 'game' && (!showingResult || run?.daily) && <section id="game" className={`game-layout${tutorialStep ? ` tutorial-focus-${tutorialStep}` : ''}`} aria-label={run?.daily ? 'Daily game' : 'Regular game'} tabIndex={-1} data-page-focus>
             <div className={`board-column${run?.daily ? ' daily-board-column' : ''}`}>
                 {run?.daily && <div className="daily-run-label"><span className="daily-run-banner"><DoorOpen size={14} aria-hidden="true" />DAILY DUNGEON</span>
                     <time aria-label="Time until dungeon expires"><Clock3 size={14} aria-hidden="true" />{formatCountdown(run.daily.expiresAt, daily.now)}</time></div>}
@@ -909,6 +940,10 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             onShare={openRunShare} finishedAt={runHistory.history.runs.find(record => record.id === run!.id)?.finishedAt} />}
         {levelWarnings.length > 0 && <details className="catalog-warnings"><summary>{levelWarnings.length} floor file(s) could not be loaded</summary><ul>{levelWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
         </div>
+        {tutorialStep && run && <PlayTutorial step={tutorialStep} run={run} selectedFrom={boardSelection?.from}
+            targetSquare={tutorialStep === 'piece' ? tutorialMove?.playerMove.uci.slice(0, 2) : tutorialMove?.playerMove.uci.slice(2, 4)}
+            targetMove={tutorialMove?.playerMove.uci}
+            pendingMove={pendingChoice !== null} onNext={tutorial.next} onSkip={tutorial.skip} />}
         {profileSaveMessage && <p className="profile-save-toast" role="status">{profileSaveMessage}</p>}
     </main>;
 }

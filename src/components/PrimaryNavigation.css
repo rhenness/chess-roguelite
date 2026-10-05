@@ -1,9 +1,10 @@
 .primary-navigation { display: flex; align-items: center; gap: 4px; margin-inline: auto; }
 .primary-navigation a { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 14px; border-radius: 7px; color: #58645d; text-decoration: none; font-size: 15px; font-weight: 600; }
-.primary-navigation a:hover { color: #234b40; background: #e7ece3; }
+.primary-navigation a:hover:not([aria-disabled="true"]) { color: #234b40; background: #e7ece3; }
+.primary-navigation a[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 .primary-navigation a[aria-current="page"] { color: #234b40; background: #dfe8dc; }
 .main-menu-topbar .primary-navigation a { color: #e0e9e1; }
-.main-menu-topbar .primary-navigation a:hover, .main-menu-topbar .primary-navigation a[aria-current="page"] { color: #f2d693; background: #285746; }
+.main-menu-topbar .primary-navigation a:hover:not([aria-disabled="true"]), .main-menu-topbar .primary-navigation a[aria-current="page"] { color: #f2d693; background: #285746; }
 .topbar:has(.primary-navigation) { gap: 18px; }
 .profile-page { display: flex; width: min(700px, 100%); height: 100%; min-height: 0; margin: 0 auto; padding: 20px 0; }
 .profile-page > .profile-overview, .profile-page > .profile-editor { flex: 1; min-width: 0; height: 100%; max-height: none; border: 1px solid #d9ddd7; border-radius: 8px; color: #17201d; background: #fafbf9; overflow: hidden; }
