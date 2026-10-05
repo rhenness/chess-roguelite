@@ -3,6 +3,7 @@ import { Clock3, Flag, Heart, Layers3, Ticket } from 'lucide-react';
 import { restoreDailyRun, type DailyDungeon } from '../game/daily';
 import { PIECE_SETS, type PieceSetId } from '../game/pieceSets';
 import type { UserProgression } from '../game/progression';
+import type { ShareRunHandler } from '../game/shareRun';
 import { DailyResults } from './DailyResults';
 import { DailyRewards } from './DailyRewards';
 import { PieceSetPicker } from './PieceSetPicker';
@@ -10,11 +11,12 @@ import { formatCountdown, formatDailyDate } from './PlayMenu';
 import './DailyDungeonContent.css';
 
 export function DailyDungeonPage({ dungeon, today, now, progression, defaultStartingHealth, selected, onSelected,
-    onUpgrade, onEnter, onResume, onToday, rank, persisted }: {
+    onUpgrade, onEnter, onResume, onToday, rank, persisted, onShare }: {
     dungeon: DailyDungeon; today: string; now: number; progression: UserProgression; defaultStartingHealth: number;
     selected: PieceSetId; onSelected: (set: PieceSetId) => void; onUpgrade: (set: PieceSetId, button: HTMLButtonElement) => void;
     onEnter: () => void; onResume: () => void; onToday: () => void;
     rank?: number; persisted: boolean;
+    onShare?: ShareRunHandler;
 }) {
     const attempt = dungeon.attempt;
     const restored = useMemo(() => dungeon.attempt && dungeon.attempt.status !== 'expired' ? restoreDailyRun(dungeon) : null, [dungeon]);
@@ -43,7 +45,7 @@ export function DailyDungeonPage({ dungeon, today, now, progression, defaultStar
                     </div>
                     </div>
                 </> : attempt?.status === 'finished' && restored && attempt.payout && rank !== undefined ? <>
-                    <DailyResults run={restored} payout={attempt.payout} rank={rank} />
+                    <DailyResults run={restored} payout={attempt.payout} rank={rank} onShare={onShare} finishedAt={attempt.finishedAt ?? undefined} />
                 </> : <div className="daily-attempt-status"><h2>{attempt?.status === 'expired' ? 'Attempt expired' : 'Dungeon closed'}</h2>{attempt?.status === 'expired' && <span>No rewards earned</span>}</div>}
                 {!persisted && <p className="daily-storage-warning" role="status">Progress is only saved for this session. Browser storage is unavailable.</p>}
             </div>

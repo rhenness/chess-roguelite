@@ -43,10 +43,12 @@ export function EndlessSetup({ page, controller, profile, buyLoadout, navigate }
             {itemsStep ? <ItemLoadout selected={items} coins={profile.coins} onChange={setItems} onBring={bring} /> : <>
                 <div className="endless-modes" role="group" aria-label="Endless difficulty">
                     <button aria-pressed={mode === 'standard'} onClick={() => setMode('standard')}>
-                        <Heart size={22} aria-hidden="true" /><strong>Standard</strong><span>Lives and items</span>
+                        <span className="endless-mode-title"><Heart size={22} aria-hidden="true" /><strong>Standard</strong></span>
+                        <span className="endless-mode-description">Lives and items</span>
                     </button>
                     <button aria-pressed={mode === 'hardcore'} onClick={() => setMode('hardcore')}>
-                        <Flame size={22} aria-hidden="true" /><strong>Hardcore</strong><span>One mistake ends the streak</span>
+                        <span className="endless-mode-title"><Flame size={22} aria-hidden="true" /><strong>Hardcore</strong></span>
+                        <span className="endless-mode-description">One mistake ends the streak</span>
                     </button>
                 </div>
                 <PieceSetPicker showHeading={false} selectionOnly selectedSet={set} onSelect={setSet}

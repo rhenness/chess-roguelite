@@ -20,6 +20,7 @@
   "license": "ISC",
   "dependencies": {
     "chess.js": "^1.4.0",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^1.49.0",
     "react": "^19.1.1",
     "react-chessboard": "^5.12.1",

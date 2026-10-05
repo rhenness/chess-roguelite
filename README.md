@@ -37,6 +37,23 @@ set `VITE_SITE_URL` to the full public site URL when building for another host.
 Artwork generation details and the original prompt are in
 [`docs/social-preview.md`](docs/social-preview.md).
 
+## Share a run
+
+At the end of a Regular run, Daily dungeon, Endless Standard game, or Hardcore
+game, choose **Share run** to preview a square player card with your banner,
+avatar, final score, mode stats, and Best/Good/Inaccuracy/Bad decision counts.
+Swipe through **Player card**, **Spotlight**, and **Decision breakdown** layouts,
+or use the arrows, style dots, or left/right keys. Sharing and downloading use
+the selected layout; switching back to a prepared card reuses its image.
+Losses can be shared too. A personal-best badge appears when the score exceeds
+your other saved results in that mode.
+
+**Share** opens the device share sheet when the browser supports PNG file
+sharing. **Save image** downloads a 1080 × 1080 PNG; **Copy text** provides a
+pasteable summary with the game link. When clipboard access is unavailable,
+the summary is shown for manual copying. Images are generated locally in the
+browser with `html-to-image`; no server or image upload is required.
+
 ## Play a run
 
 ### Main menu
@@ -223,7 +240,7 @@ piece renderers, profile, wallet, and navigation serve all modes.
 Regular-run setup includes three consumables with matching minus/plus controls,
 prices beside their names, and one total below the list. Select up to three
 copies in any combination; **Start run** purchases the whole loadout. Changing
-the selection before entry costs nothing. **Play again** returns to setup with
+the selection before entry costs nothing. **Play again** returns to set selection with
 the previous piece set selected and an empty item selection.
 
 - **Triple Crown (30 coins):** triple move points for the next three player decisions.
@@ -369,8 +386,8 @@ opponent reply. The skull notification finishes before the board payout
 begins. Completing the selected levels also ends the run.
 
 The regular result page shows the multiplied score and earned coins, with level,
-decision, and move-quality counts under **Run details**. **Play again** immediately
-starts a fresh run with the same set; **Change set** opens regular setup. The daily
+decision, and move-quality counts under **Run details**. **Play again** returns to
+chess set selection; **Share run** opens an image and text sharing preview. The daily
 page combines daily results and rewards, with standings on **Leaderboards**. Setup and result pages scroll
 on mobile, while gameplay keeps its viewport layout. Rules open in a modal and
 return to their opener. Rules are configurable through `DEFAULT_RULES`

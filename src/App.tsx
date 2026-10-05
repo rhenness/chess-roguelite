@@ -23,6 +23,9 @@ import { MultiplierUpgrades } from './components/MultiplierUpgrades';
 import { PlayerAvatar } from './components/PlayerAvatar';
 import { ProfileEditor } from './components/ProfileEditor';
 import { ProfileOverview } from './components/ProfileOverview';
+import { ShareRunButton } from './components/ShareRunButton';
+import { ShareRunDialog } from './components/ShareRunDialog';
+import { isSharePersonalBest, shareRegularRun, type ShareRunData, type ShareRunHandler } from './game/shareRun';
 import { DailyLeaderboard } from './components/DailyLeaderboard';
 import { dailyLeaderboard } from './game/leaderboard';
 import { loadPlayerProfile, savePlayerProfile, type PlayerProfile } from './game/playerProfile';
@@ -130,30 +133,34 @@ function Feedback({ run }: { run: RunState }) {
     </div>;
 }
 
-function RunSummary({ run, payout, restart, onChangeLoadout }: {
+function RunSummary({ run, payout, restart, onShare, finishedAt }: {
     run: RunState;
     payout: PayoutResult;
     restart: () => void;
-    onChangeLoadout: () => void;
+    onShare?: ShareRunHandler;
+    finishedAt?: number;
 }) {
     return <section className="summary result-page" aria-labelledby="result-title">
         <h1 id="result-title" tabIndex={-1} data-page-focus>{run.result === 'complete' ? 'Run complete' : 'Run over'}</h1>
-        <span className="summary-score-label">Total score</span>
-        <strong className="summary-score">{payout.finalScore.toLocaleString()}</strong>
-        <p className="summary-calculation">{payout.baseScore.toLocaleString()} {formatMultiplier(payout.multiplier)}</p>
+        <div className="summary-score-group">
+            <span className="summary-score-label">Total score</span>
+            <strong className="summary-score">{payout.finalScore.toLocaleString()}</strong>
+            <p className="summary-calculation">{payout.baseScore.toLocaleString()} {formatMultiplier(payout.multiplier)}</p>
+        </div>
         <span className="coin-balance summary-coins" aria-label={`Earned ${runCoinReward(run)} coins`}>
             <Coins size={17} aria-hidden="true" /><strong>+{runCoinReward(run).toLocaleString()}</strong>
+            <span>Coins earned</span>
         </span>
-        <details className="reward-details"><summary>Run details</summary><dl className="summary-stats">
+        <div className="summary-details" aria-label="Run details"><dl className="summary-stats">
             <div><dt>Floors completed</dt><dd>{run.levelsCompleted} / {run.levels.length}</dd></div>
             <div><dt>Total decisions</dt><dd>{run.decisionsMade}</dd></div>
         </dl>
         <div className="quality-counts" aria-label="Move counts">
             {QUALITY_ORDER.map(quality => <div key={quality}><strong>{run.moveCounts[quality]}</strong><span>{QUALITY_LABELS[quality]}</span></div>)}
         </div>
-        </details>
+        </div>
         <div className="result-actions"><button className="primary-small" onClick={restart}>Play again</button>
-            <button className="text-button" onClick={onChangeLoadout}>Change loadout</button></div>
+            <ShareRunButton result={shareRegularRun(run, payout, finishedAt)} onShare={onShare} /></div>
     </section>;
 }
 
@@ -196,6 +203,8 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const [expirationActive, setExpirationActive] = useState(false);
     const regularRun = useRef<{ run: RunState; set: PieceSetId } | null>(savedRegular);
     const [playerProfile, setPlayerProfile] = useState(loadPlayerProfile);
+    const [sharedRun, setSharedRun] = useState<{ result: ShareRunData; profile: PlayerProfile } | null>(null);
+    const shareReturnFocus = useRef<HTMLButtonElement | null>(null);
     const [showProfile, setShowProfile] = useState(false);
     const [editingProfile, setEditingProfile] = useState(false);
     const [profileSaveMessage, setProfileSaveMessage] = useState<string | null>(null);
@@ -271,6 +280,12 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         ?? (run?.phase === 'finished' && payout.result && !payout.sequence && !showRules ? unlockNotice : null);
     const endlessActive = page === 'endless-game' && !showRules && !showProfile && !showLeaderboard && !upgradeSet;
     const endless = useEndlessSession(endlessActive, progression.claimCoins);
+    const openRunShare: ShareRunHandler = (result, trigger) => {
+        shareReturnFocus.current = trigger;
+        setSharedRun({ result: { ...result, personalBest: isSharePersonalBest(result, runHistory.history.runs, endless.records) },
+            profile: { ...playerProfile } });
+    };
+    useEffect(() => { setSharedRun(null); }, [location.page, location.day]);
     const endlessPage = page === 'endless' || page === 'endless-items' || page === 'endless-game';
 
     const resetDailyDungeon = useCallback(() => {
@@ -735,7 +750,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                     aria-label="Daily leaderboard" title="Daily leaderboard" onClick={openLeaderboard}><Trophy size={20} aria-hidden="true" /></button>}
                 <div className="help-anchor">
                     <button ref={helpButton} disabled={!!payout.sequence || expirationActive} className="text-button help-button" aria-label="Help for this page" aria-expanded={showRules} aria-controls="game-rules" onClick={() => setShowRules(value => !value)}>?</button>
-                    <HelpWelcome home={page === 'play'} blocked={showRules || showProfile || showLeaderboard || !!upgradeSet || !!payout.sequence || expirationActive} anchor={helpButton} />
+                    <HelpWelcome home={page === 'play'} blocked={showRules || showProfile || showLeaderboard || !!sharedRun || !!upgradeSet || !!payout.sequence || expirationActive} anchor={helpButton} />
                 </div>
                 <span className="coin-balance" aria-label={`Coins: ${progression.profile.coins}`} title={`${progression.profile.coins.toLocaleString()} coins`}>
                     <Coins size={20} aria-hidden="true" />
@@ -750,6 +765,9 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         </header>
         {upgradeSet && <Modal className="upgrade-modal" titleId="multiplier-upgrade-title" onClose={() => setUpgradeSet(null)} returnFocus={upgradeReturnFocus}>
             <MultiplierUpgrades set={upgradeSet} profile={progression.profile} baseBoard={payout.profileFor(upgradeSet).board} onBuy={progression.buyUpgrade} />
+        </Modal>}
+        {sharedRun && <Modal className="share-run-modal" titleId="share-run-title" onClose={() => setSharedRun(null)} returnFocus={shareReturnFocus}>
+            <ShareRunDialog result={sharedRun.result} profile={sharedRun.profile} />
         </Modal>}
         {showLeaderboard && leaderboardDungeon && <Modal className="leaderboard-modal" titleId="daily-leaderboard-title" onClose={() => setShowLeaderboard(false)} returnFocus={leaderboardButton}>
             <DailyLeaderboard dungeon={leaderboardDungeon} now={daily.now} entries={standings} profile={playerProfile} />
@@ -774,7 +792,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             regularFloor={resumableRegular ? Math.min(resumableRegular.run.levelIndex + 1, resumableRegular.run.levels.length) : undefined}
             dailyFloor={resumableDaily ? Math.min(resumableDaily.levelIndex + 1, resumableDaily.levels.length) : undefined} />}
         {endlessPage && <EndlessPage page={page} controller={endless} active={endlessActive}
-            profile={progression.profile} buyLoadout={progression.buyLoadout} navigate={navigate} />}
+            profile={progression.profile} buyLoadout={progression.buyLoadout} navigate={navigate} onShare={openRunShare} />}
         {(page === 'regular' || page === 'regular-items') && <section className="regular-page" aria-labelledby="regular-page-title">
             <div className="regular-setup-body" data-page-scroll="regular-setup">
                 <header className="page-heading regular-setup-heading">
@@ -803,7 +821,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             progression={progression.profile} defaultStartingHealth={rules.startingHealth} selected={dailySelectedSet} onSelected={setDailySelectedSet}
             onUpgrade={openUpgrades} onEnter={() => beginDaily(dailySelectedSet)} onResume={resumeDaily}
             onToday={() => navigate({ page: 'daily' })}
-            rank={standings.find(entry => entry.id === 'you')?.rank} persisted={daily.persisted} />}
+            rank={standings.find(entry => entry.id === 'you')?.rank} persisted={daily.persisted} onShare={openRunShare} />}
         {page === 'daily' && !dailyDungeon && <p className="empty-state" role="status">No dungeon available.</p>}
         {page === 'leaderboards' && <LeaderboardsPage dungeon={daily.today} now={daily.now} entries={standings} profile={playerProfile} />}
         {page === 'profile' && <section className="profile-page" aria-labelledby="profile-page-title">
@@ -870,7 +888,8 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                 </section>
             </aside>
         </section>}
-        {showingResult && !run!.daily && <RunSummary run={run!} payout={payout.result!} restart={() => navigate({ page: 'regular-items' })} onChangeLoadout={() => navigate({ page: 'regular' })} />}
+        {showingResult && !run!.daily && <RunSummary run={run!} payout={payout.result!} restart={() => navigate({ page: 'regular' })}
+            onShare={openRunShare} finishedAt={runHistory.history.runs.find(record => record.id === run!.id)?.finishedAt} />}
         {levelWarnings.length > 0 && <details className="catalog-warnings"><summary>{levelWarnings.length} floor file(s) could not be loaded</summary><ul>{levelWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
         </div>
         {profileSaveMessage && <p className="profile-save-toast" role="status">{profileSaveMessage}</p>}

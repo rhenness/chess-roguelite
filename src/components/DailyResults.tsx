@@ -2,8 +2,10 @@ import { Trophy } from 'lucide-react';
 import { formatMultiplier, type PayoutResult } from '../game/multipliers';
 import { QUALITY_LABELS, QUALITY_ORDER, type RunState } from '../game/run';
 import { DailyRewardReceipt } from './DailyRewards';
+import { ShareRunButton } from './ShareRunButton';
+import { shareRegularRun, type ShareRunHandler } from '../game/shareRun';
 
-export function DailyResults({ run, payout, rank }: { run: RunState; payout: PayoutResult; rank: number }) {
+export function DailyResults({ run, payout, rank, onShare, finishedAt }: { run: RunState; payout: PayoutResult; rank: number; onShare?: ShareRunHandler; finishedAt?: number }) {
     const completed = run.result === 'complete' && run.levelsCompleted === run.levels.length;
     return <div className="daily-results">
         {completed && <div className="daily-results-heading">
@@ -20,5 +22,6 @@ export function DailyResults({ run, payout, rank }: { run: RunState; payout: Pay
                 {QUALITY_ORDER.map(quality => <div key={quality}><strong>{run.moveCounts[quality]}</strong><span>{QUALITY_LABELS[quality]}</span></div>)}
             </div>
         </div>
+        <ShareRunButton result={shareRegularRun(run, payout, finishedAt)} onShare={onShare} />
     </div>;
 }

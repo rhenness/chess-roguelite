@@ -7,6 +7,8 @@ import { RunItems } from '../../components/RunItems';
 import { PIECE_RENDERERS } from '../../components/pieces/pieceRenderers';
 import { BoardNotification } from '../../components/BoardNotification';
 import { QUALITY_LABELS } from '../../game/run';
+import { ShareRunButton } from '../../components/ShareRunButton';
+import { shareEndlessRun, type ShareRunHandler } from '../../game/shareRun';
 import type { PageLocation } from '../../game/usePageNavigation';
 import { createChess } from './chess';
 import { canUseItem, coinReward } from './session';
@@ -15,8 +17,9 @@ import type { EndlessController } from './useEndlessSession';
 const PIECE_NAMES: Record<string, string> = { q: 'queen', r: 'rook', b: 'bishop', n: 'knight' };
 const completeNotice = () => undefined;
 
-export function EndlessGame({ controller, active, navigate }: {
+export function EndlessGame({ controller, active, navigate, onShare }: {
     controller: EndlessController; active: boolean; navigate: (location: PageLocation) => void;
+    onShare?: ShareRunHandler;
 }) {
     const { session, error } = controller;
     const [pending, setPending] = useState<string | null>(null);
@@ -77,11 +80,10 @@ export function EndlessGame({ controller, active, navigate }: {
         <dl className="summary-stats">
             <div><dt>Longest streak</dt><dd>{session.longestStreak}</dd></div>
             <div><dt>Moves played</dt><dd>{session.moves}</dd></div>
-            <div><dt>Games completed</dt><dd>{session.gamesCompleted}</dd></div>
         </dl>
         {session.lastMove && <p className="endless-final-move">{session.lastMove.san} · {QUALITY_LABELS[session.lastMove.quality]}</p>}
         <div className="result-actions"><button className="primary-small" onClick={() => navigate({ page: 'endless' })}>Play again</button>
-            <button className="text-button" onClick={() => navigate({ page: 'play' })}>Home</button></div>
+            <ShareRunButton result={shareEndlessRun(session)} onShare={onShare} /></div>
     </section>;
 
     const chess = createChess(session.pgn);
