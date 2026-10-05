@@ -11,15 +11,15 @@ button:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-v
 h2, p { margin: 0; }
 .app-shell { width: min(1280px, calc(100% - 40px)); margin: 0 auto; min-height: 100vh; }
 .topbar { height: 88px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
-.brand { display: flex; align-items: center; gap: 12px; color: var(--green); text-decoration: none; font: 21px Georgia, "Times New Roman", serif; }
+.brand { display: flex; align-items: center; gap: 12px; color: var(--green); text-decoration: none; font: 23px Georgia, "Times New Roman", serif; }
 .brand strong { font-weight: 600; }
 .top-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
-.top-actions .coin-balance { padding-inline: 6px; white-space: nowrap; }
+.top-actions .coin-balance { padding-inline: 6px; white-space: nowrap; font-size: 15px; }
 .coin-amount-compact { display: none; }
 .text-button, .primary-small { border: 0; border-radius: 5px; font-weight: 600; }
 .text-button { display: inline-flex; align-items: center; gap: 7px; background: transparent; padding: 10px 12px; }
 .text-button:hover { background: rgba(35, 75, 64, 0.08); }
-.help-button { width: 32px; height: 32px; padding: 0; justify-content: center; color: #7b827e; }
+.help-button { width: 36px; height: 36px; padding: 0; justify-content: center; color: #7b827e; font-size: 18px; }
 .primary-small { padding: 11px 17px; color: white; background: var(--green); box-shadow: 0 5px 15px rgba(35, 75, 64, 0.16); }
 .primary-small:hover:enabled { background: #183a31; }
 .game-layout { display: grid; grid-template-columns: minmax(360px, 660px) minmax(350px, 1fr); gap: clamp(36px, 6vw, 86px); align-items: center; padding: 52px 16px 38px; }
@@ -177,13 +177,13 @@ h2, p { margin: 0; }
     .app-shell { width: calc(100% - 20px); }
     .app-shell { --header-height: 62px; }
     .topbar { gap: 8px; }
-    .brand { gap: 8px; font-size: 18px; }
-    .brand img { width: 30px; height: 35px; }
+    .brand { gap: 8px; font-size: 20px; }
+    .brand img { width: 34px; height: 38px; }
     .top-actions { gap: 2px; }
     .top-actions .coin-amount { display: none; }
     .top-actions .coin-amount-compact { display: inline; }
     .text-button { padding: 9px 7px; font-size: 12px; }
-    .help-button { width: 24px; }
+    .help-button { width: 28px; font-size: 16px; }
     .primary-small { padding: 9px 11px; font-size: 12px; }
     .run-stats { gap: 12px; }
     .move-picker { padding: 3px 0; }

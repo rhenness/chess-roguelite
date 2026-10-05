@@ -786,7 +786,7 @@ describe('daily rewards interface', () => {
             act(() => { vi.advanceTimersByTime(1400); });
             act(() => { vi.advanceTimersByTime(1000); });
             finishPayout();
-            fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Change loadout' }));
             expect(screen.getByLabelText('Coins: 139')).toBeInTheDocument();
             startRegular('Gilded Court');
             openRegular();
@@ -968,7 +968,7 @@ describe('gameplay interface', () => {
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
         act(() => { window.history.replaceState(null, '', '#/game'); window.dispatchEvent(new PopStateEvent('popstate')); });
         expect(loadUserProgression()).toEqual(saved);
-        fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Change loadout' }));
         expect(screen.getByRole('button', { name: 'Obsidian Order' })).toBeEnabled();
         expect(screen.getByRole('button', { name: 'Gilded Court' })).toHaveTextContent('3/8');
         startRegular('Obsidian Order');
@@ -1138,7 +1138,7 @@ describe('gameplay interface', () => {
             expect(screen.getByText('75 1.3x')).toBeInTheDocument();
             expect(screen.getByText('Total score').nextElementSibling).toHaveTextContent('98');
             expect(window.localStorage.getItem(MULTIPLIER_STORAGE_KEY)).toBeNull();
-            fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Change loadout' }));
             startRegular('Default');
             expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
             expect(screen.getByTestId('board')).toHaveAttribute('data-piece-set', 'default');
@@ -1438,7 +1438,7 @@ describe('gameplay interface', () => {
         expect(screen.getByRole('region', { name: 'Run complete' })).toBeInTheDocument();
         expect(document.body).not.toHaveTextContent(/difficulty/i);
         expect(screen.getByLabelText('Move counts')).toHaveTextContent('0Best1Good1Inaccuracy0Bad');
-        fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Change loadout' }));
         startRegular('Default');
         const restartedProgress = screen.getByRole('progressbar', { name: 'Run progress' });
         expect(restartedProgress).toHaveAttribute('aria-valuenow', '1');
@@ -1476,7 +1476,7 @@ describe('gameplay interface', () => {
         expect(screen.getByLabelText('Move counts')).toHaveTextContent('0Best0Good0Inaccuracy1Bad');
         act(() => { vi.runOnlyPendingTimers(); });
         expect(screen.queryByTestId('board')).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Change loadout' }));
         startRegular('Default');
         expect(screen.getByLabelText('Available moves')).toBeInTheDocument();
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', level.root.fen);
@@ -1624,7 +1624,7 @@ describe('gameplay interface', () => {
             if (index < 3) act(() => { vi.advanceTimersByTime(1500); });
         });
         finishPayout();
-        fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Change loadout' }));
         startRegular('Default');
         expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
         expect(screen.queryByRole('status', { name: '+1 health' })).not.toBeInTheDocument();
@@ -1708,7 +1708,7 @@ describe('gameplay interface', () => {
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
         act(() => { window.history.replaceState(null, '', '#/game'); window.dispatchEvent(new PopStateEvent('popstate')); });
         expect(loadMultiplierProfile()).toEqual(saved);
-        fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Change loadout' }));
         startRegular('Default');
         expect(loadMultiplierProfile()).toEqual(saved);
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
@@ -1729,7 +1729,7 @@ describe('gameplay interface', () => {
         const saved = loadMultiplierProfile('obsidian');
         expect(Object.values(saved.board).reduce((sum, value) => sum + value, 0)).toBe(737);
         expect(window.localStorage.getItem(MULTIPLIER_STORAGE_KEY)).toBeNull();
-        fireEvent.click(screen.getByRole('button', { name: 'Change set' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Change loadout' }));
         startRegular('Default');
         expect(loadMultiplierProfile()).toEqual(initialMultiplierProfile());
         expect(loadMultiplierProfile('obsidian')).toEqual(saved);

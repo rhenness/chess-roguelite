@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { Chess, type Square } from 'chess.js';
 import { Chessboard, type ChessboardOptions } from 'react-chessboard';
-import { ArrowUp, Check, Clock3, Coins, DoorOpen, Flame, Heart, House, Shield, Sparkles, Trophy, Unlock, X } from 'lucide-react';
+import { ArrowUp, Check, Clock3, Coins, DoorOpen, Flame, Heart, Shield, Sparkles, Trophy, Unlock, X } from 'lucide-react';
 import type { GeneratedLevel, PlayerChoice } from './types/level';
 import { selectLevels } from './game/levels';
 import { BoardNotification, type BoardNotice } from './components/BoardNotification';
@@ -147,7 +147,7 @@ function RunSummary({ run, payout, restart, onChangeSet }: {
         </div>
         </details>
         <div className="result-actions"><button className="primary-small" onClick={restart}>Play again</button>
-            <button className="text-button" onClick={onChangeSet}>Change set</button></div>
+            <button className="text-button" onClick={onChangeSet}>Change loadout</button></div>
     </section>;
 }
 
@@ -683,17 +683,16 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     return <main className={`app-shell${page === 'play' ? ' main-menu-shell' : ''}${showNavigation ? ' has-navigation' : ''}${hasRunItems ? ' has-run-items' : ''}`}
         onPointerDownCapture={() => { keyboardOption.current = null; }}>
         <header className={`topbar${page === 'play' ? ' main-menu-topbar' : ''}`}>
-            {page !== 'play' && <a className={`brand${page === 'game' ? ' game-home' : ''}`} href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); if (!expirationActive) openMenu(); }}>
-                {page === 'game' ? <><House size={20} aria-hidden="true" /><strong>Home</strong></>
-                    : <><img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="34" height="38" /><strong>Knightfall</strong></>}
+            {page !== 'play' && <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); if (!expirationActive) openMenu(); }}>
+                <img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="38" height="42" /><strong>Knightfall</strong>
             </a>}
             {showNavigation && <PrimaryNavigation active={activeDestination} onNavigate={navigate} />}
             <div className="top-actions">
                 {page === 'game' && run?.daily && <button ref={leaderboardButton} className="leaderboard-button" disabled={!leaderboardDungeon || expirationActive}
-                    aria-label="Daily leaderboard" title="Daily leaderboard" onClick={openLeaderboard}><Trophy size={18} aria-hidden="true" /></button>}
+                    aria-label="Daily leaderboard" title="Daily leaderboard" onClick={openLeaderboard}><Trophy size={20} aria-hidden="true" /></button>}
                 <button ref={helpButton} disabled={!!payout.sequence || expirationActive} className="text-button help-button" aria-label="How to play" aria-expanded={showRules} aria-controls="game-rules" onClick={() => setShowRules(value => !value)}>?</button>
                 <span className="coin-balance" aria-label={`Coins: ${progression.profile.coins}`} title={`${progression.profile.coins.toLocaleString()} coins`}>
-                    <Coins size={17} aria-hidden="true" />
+                    <Coins size={20} aria-hidden="true" />
                     <strong className="coin-amount">{progression.profile.coins.toLocaleString()}</strong>
                     <strong className="coin-amount-compact" aria-hidden="true">{progression.profile.coins.toLocaleString(undefined,
                         progression.profile.coins >= 10_000 ? { notation: 'compact', maximumFractionDigits: 1 } : undefined)}</strong>

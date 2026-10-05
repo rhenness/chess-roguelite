@@ -13,17 +13,17 @@ function finishDecision(state: RunState, quality: MoveQuality = 'best'): RunStat
 }
 
 describe('run state', () => {
-    it('samples ten distinct scored levels from the whole pool and plays them in difficulty order', () => {
+    it('samples ten distinct scored levels evenly across difficulty and plays them in order', () => {
         const levels = Array.from({ length: 20 }, (_, index) => makeLevel(`level-${index}`, index));
         const pool = [...levels, levels[0]!, makeLevel('unscored', -1)];
         const original = [...pool];
         const state = startRun(pool, DEFAULT_RULES, () => 0.999);
         expect(state.levels).toHaveLength(10);
         expect(new Set(state.levels.map(level => level.id)).size).toBe(10);
-        expect(state.levels.map(level => level.difficulty)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 19]);
+        expect(state.levels.map(level => level.difficulty)).toEqual([1, 3, 5, 7, 9, 11, 13, 15, 17, 19]);
         expect(pool).toEqual(original);
         const restarted = startRun(pool, DEFAULT_RULES, () => 0);
-        expect(restarted.levels.map(level => level.difficulty)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        expect(restarted.levels.map(level => level.difficulty)).toEqual([0, 2, 4, 6, 8, 10, 12, 14, 16, 18]);
     });
 
     it('ends after the ten selected levels rather than continuing through the catalog', () => {

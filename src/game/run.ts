@@ -1,5 +1,5 @@
 import type { ChessMove, GeneratedLevel, MoveQuality, PlayerChoice, TreeNode } from '../types/level';
-import { selectLevels } from './levels';
+import { sampleRunLevels } from './levels';
 import { isItemInventory, itemCount, LOADOUT_LIMIT, resolveItemEffects, type ActiveEffect, type ItemInventory, type ItemUse, type MoveResolution } from './items';
 
 export const QUALITY_LABELS: Record<MoveQuality, string> = {
@@ -95,16 +95,7 @@ let nextRunId = 0;
 export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFAULT_RULES, random = Math.random, items: ItemInventory = {}): RunState {
     validateRules(rules);
     if (!isItemInventory(items) || itemCount(items) > LOADOUT_LIMIT) throw new Error('Invalid item loadout.');
-    const levels = selectLevels(pool);
-    if (levels.length > RUN_LEVEL_COUNT) {
-        // Sample uniformly without replacement, then restore difficulty progression.
-        for (let i = 0; i < RUN_LEVEL_COUNT; i++) {
-            const j = i + Math.floor(random() * (levels.length - i));
-            [levels[i], levels[j]] = [levels[j]!, levels[i]!];
-        }
-        levels.length = RUN_LEVEL_COUNT;
-        levels.sort((a, b) => a.difficulty - b.difficulty || a.id.localeCompare(b.id));
-    }
+    const levels = sampleRunLevels(pool, RUN_LEVEL_COUNT, random);
     const first = levels[0];
     if (!first) throw new Error('No scored floors are available.');
     return settleNode({

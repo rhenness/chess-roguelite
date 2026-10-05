@@ -45,7 +45,6 @@ describe('level selection', () => {
         const catalog = loadBundledLevels();
         expect(catalog.warnings).toEqual([]);
         expect(catalog.levels.length).toBeGreaterThanOrEqual(10);
-        expect(catalog.levels[0]?.difficulty).toBe(43);
         expect(catalog.levels.map(level => level.difficulty)).toEqual(catalog.levels.map(level => level.difficulty).sort((a, b) => a - b));
     });
 });

@@ -16,6 +16,6 @@ export function PrimaryNavigation({ active, onNavigate }: { active: Page; onNavi
                 if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
                 event.preventDefault();
                 onNavigate({ page });
-            }}><Icon size={20} aria-hidden="true" /><span>{label}</span></a>)}
+            }}><Icon size={22} aria-hidden="true" /><span>{label}</span></a>)}
     </nav>;
 }

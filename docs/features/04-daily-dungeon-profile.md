@@ -29,6 +29,8 @@ scroll regions.
 - One daily attempt per local player, per UTC day.
 - Everyone gets the same ten levels; players bring their own unlocked piece set
   and multipliers. The loadout is frozen when Enter dungeon is pressed.
+- New daily draws use the same balanced difficulty bands as regular runs, with
+  date-seeded randomness. Previously saved daily selections remain unchanged.
 - The payout lands on an individually random square. Personal multipliers
   contribute to the leaderboard score.
 - Daily coin rewards are five times the normal reward, including the normal

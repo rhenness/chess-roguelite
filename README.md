@@ -216,8 +216,11 @@ Definitions, prices, and effect handlers live in [`src/game/items.ts`](src/game/
 
 The game loads the
 precomputed JSON files in `src/levels`, skips unscored files (`difficulty: -1`),
-and randomly picks 10 distinct scored levels for each new run, then plays those
-levels in ascending difficulty order. If fewer than 10 playable levels are
+and selects 10 distinct scored levels spread across difficulty. The available
+minimum-to-maximum score range is divided into ten equal-width bands, with one
+random level per populated band before any band receives a second level. Empty
+or exhausted bands redistribute slots evenly among bands with levels remaining.
+Selected levels play in ascending difficulty order. If fewer than 10 playable levels are
 available, the run uses them all. New runs draw a fresh selection from the catalog.
 Malformed files are skipped with a warning. Equal scores use a stable ID order.
 The board faces the level's player color. Four colored buttons match the arrows

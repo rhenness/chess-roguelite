@@ -57,6 +57,34 @@ export function selectLevels(levels: readonly GeneratedLevel[]): GeneratedLevel[
     }).sort((a, b) => a.difficulty - b.difficulty || a.id.localeCompare(b.id));
 }
 
+/** Give equally wide difficulty bands equal representation, regardless of catalog density. */
+export function sampleRunLevels(pool: readonly GeneratedLevel[], count: number, random = Math.random): GeneratedLevel[] {
+    if (!Number.isSafeInteger(count) || count <= 0) throw new Error('Run level count must be a positive integer.');
+    const levels = selectLevels(pool);
+    if (levels.length <= count) return levels;
+    const minimum = levels[0]!.difficulty;
+    const range = levels[levels.length - 1]!.difficulty - minimum + 1;
+    const bands = Array.from({ length: count }, () => ({ available: [] as GeneratedLevel[], picked: 0 }));
+    for (const level of levels) {
+        const index = Math.floor((level.difficulty - minimum) * count / range);
+        bands[index]!.available.push(level);
+    }
+    const selected: GeneratedLevel[] = [];
+    while (selected.length < count) {
+        const available = bands.filter(band => band.available.length > 0);
+        const fewestPicked = Math.min(...available.map(band => band.picked));
+        const candidates = available.filter(band => band.picked === fewestPicked);
+        const band = candidates[Math.floor(random() * candidates.length)]!;
+        const index = Math.floor(random() * band.available.length);
+        const level = band.available[index]!;
+        band.available[index] = band.available[band.available.length - 1]!;
+        band.available.pop();
+        band.picked++;
+        selected.push(level);
+    }
+    return selected.sort((a, b) => a.difficulty - b.difficulty || a.id.localeCompare(b.id));
+}
+
 export function loadLevelCatalog(files: Record<string, unknown>): LevelCatalog {
     const levels: GeneratedLevel[] = [];
     const warnings: string[] = [];

@@ -40,7 +40,7 @@ If storage is unavailable, retain progression in memory for the session. Show a
 shared board notification for a newly unlocked set after payout and any square
 upgrade, before opening the final score modal.
 
-Each run randomly selects 10 distinct scored levels, or all playable levels if fewer are available, then sorts the selection in ascending difficulty order. The player starts with the easiest selected level and progresses through increasingly difficult levels while health and score persist across the entire run.
+Each run selects 10 distinct scored levels evenly across the available difficulty range, or all playable levels if fewer are available, then sorts the selection in ascending difficulty order. The player starts with the easiest selected level and progresses through increasingly difficult levels while health and score persist across the entire run.
 
 The run ends when the player's health reaches 0.
 
@@ -108,7 +108,10 @@ At the beginning of the run, load all available precomputed levels with a valid 
 For the initial POC:
 
 - Exclude levels with `difficulty: -1`.
-- Randomly select 10 distinct playable levels for each new run; use all levels if fewer than 10 are available.
+- Divide the available minimum-to-maximum difficulty range into ten equal-width bands.
+- Randomly select one playable level from each populated band before taking a second from any band.
+- If bands are empty or exhausted, distribute remaining slots evenly across bands with unused levels, randomly breaking ties.
+- Select 10 distinct levels; use all levels if fewer than 10 are available. Band boundaries depend on scores, not the number of levels in each band.
 - Sort the selected levels in ascending order by `difficulty`, with stable ID ordering for equal scores.
 - Start the run with the lowest-difficulty selected level.
 - After a level is completed, advance to the next level in difficulty order.
@@ -325,7 +328,6 @@ The POC should support:
 
 This story does not include:
 
-- Random difficulty-based run generation.
 - Acts.
 - Boss levels.
 - Relics and additional progression systems beyond square multipliers, coins, and set unlocks.
@@ -362,6 +364,6 @@ The implementation should favor the same patterns and technologies already used 
 
 ## POC Goal
 
-Given a pool of precomputed level JSON files with difficulty scores, randomly select up to 10 distinct levels per run and play them from easiest to hardest while maintaining health and score, ending when the player runs out of health or completes the selected levels.
+Given a pool of precomputed level JSON files with difficulty scores, randomly select up to 10 distinct levels evenly across difficulty and play them from easiest to hardest while maintaining health and score, ending when the player runs out of health or completes the selected levels.
 
 The implementation should use the same core React, TypeScript, Vite, chess.js, and react-chessboard stack as `fourced-move`.

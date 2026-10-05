@@ -55,7 +55,7 @@
 .leaderboard-footer { display: flex; align-items: center; gap: 8px; padding-top: 12px; padding-bottom: max(16px, env(safe-area-inset-bottom)); border-top: 1px solid #d9ddd7; margin-top: 12px; }
 .leaderboard-pinned { flex: 1; min-width: 0; }
 .leaderboard-jump { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 6px; background: #e1e7e0; color: #234b40; }
-.leaderboard-button { display: grid; place-items: center; width: 32px; height: 36px; padding: 0; border: 0; border-radius: 5px; color: #234b40; background: transparent; }
+.leaderboard-button { display: grid; place-items: center; width: 36px; height: 40px; padding: 0; border: 0; border-radius: 5px; color: #234b40; background: transparent; }
 .leaderboard-button:hover { background: rgba(35, 75, 64, .08); }
 .daily-reward-lines { display: grid; gap: 12px; margin: 0; padding: 18px 0; font-size: 13px; }
 .daily-reward-lines > div { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
