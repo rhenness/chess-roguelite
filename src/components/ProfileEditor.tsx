@@ -8,10 +8,11 @@ import { PlayerAvatar } from './PlayerAvatar';
 import { PlayerRow } from './PlayerRow';
 import './ProfileEditor.css';
 
-export function ProfileEditor({ profile, onSave, onCancel }: {
+export function ProfileEditor({ profile, onSave, onCancel, asPage = false }: {
     profile: PlayerProfile;
     onSave: (profile: PlayerProfile) => void;
     onCancel: () => void;
+    asPage?: boolean;
 }) {
     const [draft, setDraft] = useState(profile);
     const [nameTouched, setNameTouched] = useState(false);
@@ -23,9 +24,11 @@ export function ProfileEditor({ profile, onSave, onCancel }: {
         if (!error) onSave({ ...draft, displayName: normalizeDisplayName(draft.displayName) });
     }
 
-    return <form className="profile-editor" onSubmit={save} noValidate>
+    return <form className="profile-editor" onSubmit={save} noValidate onKeyDown={event => {
+        if (asPage && event.key === 'Escape') { event.preventDefault(); onCancel(); }
+    }}>
         <header className="profile-editor-header">
-            <h2 id="profile-title">Edit profile</h2>
+            {asPage ? <h1 id="profile-page-title" tabIndex={-1} data-page-focus>Edit profile</h1> : <h2 id="profile-title">Edit profile</h2>}
             <PlayerRow profile={{ ...draft, displayName: normalizeDisplayName(draft.displayName) || DEFAULT_DISPLAY_NAME }}
                 rank={1} score={12500} label="Leaderboard appearance" />
         </header>

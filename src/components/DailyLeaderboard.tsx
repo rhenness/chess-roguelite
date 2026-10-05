@@ -28,7 +28,7 @@ export function DailyLeaderboard({ dungeon, now, entries, profile, embedded = fa
     return <div className="daily-leaderboard">
         {!embedded && <><div className="daily-view-heading"><h2 id="daily-leaderboard-title">Daily leaderboard</h2></div>
             <div className="daily-menu-meta"><span>{formatDailyDate(dungeon.day)}</span><span className="daily-countdown">{now >= dungeon.expiresAt ? 'Closed' : formatCountdown(dungeon.expiresAt, now)}</span></div></>}
-        <ol className="leaderboard-list" ref={list} aria-label="Daily standings" tabIndex={0} onScroll={() => {
+        <ol className="leaderboard-list" ref={list} aria-label="Daily standings" data-page-scroll="standings" tabIndex={0} onScroll={() => {
             if (active) scrollPosition.current = list.current?.scrollTop ?? 0;
         }}>
             {entries.map(entry => <li key={entry.id} data-player-id={entry.id} className={entry.id === 'you' ? 'your-standing' : undefined}

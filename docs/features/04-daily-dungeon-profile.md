@@ -10,12 +10,19 @@ actual result.
    avatar background color, SVG banner, live row preview, Save/Cancel, local storage.
 2. Daily foundations: complete. Deterministic ten-level daily selection,
    saved/resumable attempt, entry loadout snapshot, finished result, hard expiration.
-3. Play/navigation: complete. Regular/Daily tabs, explicit daily entry, resume,
-   results access, countdown, and access to upgrades before entry.
+3. Play/navigation: complete. Home/Dungeon/Leaderboards/Profile destinations,
+   mobile bottom navigation and desktop header links, regular setup from Home,
+   explicit daily entry, resume, results access, countdown, and pre-entry upgrades.
 4. Daily leaderboard: complete. Stable mock players, final multiplied score,
    shared ranks for ties, own-row highlighting, and profile appearance.
 5. Rewards/results: complete. Reward preview, five times regular coin earnings,
    existing completion upgrade, automatic one-time granting, persistent receipt.
+
+Navigation hides during gameplay and payout; the header Home link returns to Home
+while preserving the run. Profile is a routed page with editing, plus an overlay
+during gameplay. Leaderboards opens the current daily standings. Browser history
+and page scroll restoration include the inner dungeon, standings, and profile
+scroll regions.
 
 ## Agreed rules
 

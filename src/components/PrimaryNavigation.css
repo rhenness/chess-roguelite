@@ -1,0 +1,35 @@
+.primary-navigation { display: flex; align-items: center; gap: 4px; margin-inline: auto; }
+.primary-navigation a { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 12px; border-radius: 7px; color: #58645d; text-decoration: none; font-size: 13px; font-weight: 600; }
+.primary-navigation a:hover { color: #234b40; background: #e7ece3; }
+.primary-navigation a[aria-current="page"] { color: #234b40; background: #dfe8dc; }
+.main-menu-topbar .primary-navigation a { color: #e0e9e1; }
+.main-menu-topbar .primary-navigation a:hover, .main-menu-topbar .primary-navigation a[aria-current="page"] { color: #f2d693; background: #285746; }
+.topbar:has(.primary-navigation) { gap: 18px; }
+.brand.game-home { gap: 7px; min-height: 44px; }
+.brand.game-home strong { display: inline; font: 600 13px/1.2 ui-sans-serif, system-ui, sans-serif; }
+.profile-page { display: flex; width: min(700px, 100%); height: 100%; min-height: 0; margin: 0 auto; padding: 20px 0; }
+.profile-page > .profile-overview, .profile-page > .profile-editor { flex: 1; min-width: 0; height: 100%; max-height: none; border: 1px solid #d9ddd7; border-radius: 8px; color: #17201d; background: #fafbf9; overflow: hidden; }
+.profile-page .profile-overview h1 { margin-bottom: 20px; font: 600 28px/1.2 Georgia, serif; }
+.profile-page .profile-editor h1 { font: 600 28px/1.2 Georgia, serif; }
+.leaderboards-page { display: flex; flex-direction: column; width: min(860px, 100%); height: 100%; min-height: 0; margin: 0 auto; padding: 24px 16px 0; }
+.leaderboards-page .page-heading { flex-shrink: 0; flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 12px; }
+.leaderboards-page .daily-leaderboard { flex: 1; }
+.profile-content { display: flex; flex-direction: column; overflow: hidden; }
+@media (max-width: 900px) {
+    .app-shell.has-navigation { padding-bottom: calc(67px + env(safe-area-inset-bottom)); }
+    .topbar .primary-navigation { position: fixed; z-index: 5; inset: auto 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0; padding: 6px max(8px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); border-top: 1px solid #d9ddd7; color: #234b40; background: #fafbf9; box-shadow: 0 -4px 18px rgba(23, 32, 29, .06); }
+    .topbar .primary-navigation a { flex-direction: column; gap: 4px; min-width: 0; height: 54px; padding: 5px 2px; color: #58645d; background: transparent; font-size: 11px; line-height: 1.2; }
+    .topbar .primary-navigation a[aria-current="page"] { color: #234b40; background: #e7ece3; }
+    .topbar.main-menu-topbar .primary-navigation { border-top-color: #55705b; background: #17362d; }
+    .main-menu-topbar .primary-navigation a { color: #e0e9e1; }
+    .topbar.main-menu-topbar .primary-navigation a[aria-current="page"] { color: #f2d693; background: #285746; }
+    .has-navigation .profile-save-toast { bottom: calc(82px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 560px) {
+    .profile-page { padding: 12px 0; }
+    .profile-page .profile-overview-header, .profile-page .profile-editor-header { padding: 20px 16px 16px; }
+    .profile-page .profile-overview-body { padding-inline: 16px; }
+    .profile-page .profile-overview h1, .profile-page .profile-editor h1 { font-size: 26px; }
+    .leaderboards-page { padding: 16px 4px 0; }
+    .leaderboards-page .leaderboard-footer { padding-bottom: 14px; }
+}

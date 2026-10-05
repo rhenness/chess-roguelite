@@ -9,6 +9,7 @@
 .menu-identity { display: grid; justify-items: center; gap: 12px; }
 .menu-identity img { display: block; width: 64px; height: 72px; border-radius: 14px; box-shadow: 0 0 0 1px rgba(223, 188, 119, .25), 0 8px 24px rgba(4, 12, 10, .3); }
 .menu-identity #play-title { color: #f5efdc; font: 600 42px/1.1 Georgia, serif; letter-spacing: -.03em; text-shadow: 0 3px 18px rgba(4, 12, 10, .65); }
+.menu-subtitle { max-width: 30ch; min-height: 2.8em; margin: 0; color: #e5c782; font: italic 15px/1.4 Georgia, serif; text-align: center; text-wrap: balance; text-shadow: 0 2px 8px #04120d; }
 .menu-actions { display: grid; gap: 12px; width: 100%; }
 .menu-continue-slot { height: 88px; }
 .menu-action { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; padding: 18px 20px; border: 1px solid #55705b; border-radius: 10px; color: #f5efdc; background: #193b32; box-shadow: 0 5px 20px rgba(4, 12, 10, .22); text-align: left; }

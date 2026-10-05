@@ -47,16 +47,28 @@ run, with its mode and level shown beneath the action. Other active runs remain
 accessible from their mode's setup page. Daily checkpoints also offer Continue
 after refresh. New run opens regular set selection without replacing an active run.
 The daily card shows the countdown and coin bonus, or your final score and rank
-after finishing. **Menu** and the header logo return here while pausing gameplay.
+after finishing. The header **Home** link or logo returns here while pausing gameplay.
 The menu fits a phone screen and adapts to landscape. When there is no active
 run, New run sits directly below the logo and title without an empty Continue slot.
 The home page uses a torchlit chess-hall background, with a portrait companion
 for phones, ivory lettering, and green controls. Artwork and generation prompts
 are documented in [`docs/main-menu-artwork.md`](docs/main-menu-artwork.md).
+A random chess or dungeon quip appears beneath the title on each visit and stays
+the same until you leave the menu.
+
+Navigation has four destinations: **Home**, **Dungeon**, **Leaderboards**, and
+**Profile**. Phones and tablets use a bottom bar with safe-area padding; desktop
+uses the same links in the header. Regular set selection remains under Home.
+The bar hides during gameplay and payout, then returns on result pages. The
+header Home link returns without resetting the run, and Continue resumes it.
+Browser Back/Forward and direct links to `#/profile` and `#/leaderboards` work.
+Switching destinations preserves page scroll, dungeon selection, and active moves.
 
 ### Player profile
 
-Open the avatar button in the header to view your profile. The overview shows
+Choose **Profile** or the header avatar to open the profile page. During gameplay,
+the header avatar opens an overlay that pauses play and returns to the same board.
+The overview shows
 your best regular and daily final scores with dates, fully cleared runs, and
 checkmates across finished runs. Score history switches between Daily and Regular
 and between 30 days and All time. Daily history shows each dungeon day's attempt;
@@ -71,12 +83,13 @@ Background colors use preset swatches. The leaderboard-row
 preview updates as you edit, using sample rank and score values. The same avatar,
 circle color, name, and banner appear in daily standings. Save changes updates the header avatar and writes
 `knightfall.player-profile.v1` to localStorage and returns to the overview.
-Cancel, closing, and Escape in the editor discard the draft and return to the
-overview. Closing the overview returns to the previous screen.
+Cancel and Escape in the editor discard the draft and return to the overview.
+Leaving the profile page also discards an unsaved draft. In the gameplay overlay,
+closing the editor returns to the overview and closing the overview resumes play.
 Profile appearance saves separately from unlocks, coins, multipliers, and history.
 If browser storage is unavailable, changes remain available for the current session.
-The profile uses a desktop dialog and a full-screen panel on phones, and pauses
-move playback and automatic floor advancement while open.
+The gameplay overlay uses a desktop dialog and a full-screen panel on phones,
+and pauses move playback and automatic floor advancement while open.
 
 Finished runs, including defeats, save their final payout scores to
 `knightfall.run-history.v1`. Regular history begins with newly finished runs;
@@ -98,14 +111,15 @@ free square upgrade for clearing all ten levels. After the payout, the daily pag
 automatically shows the score, placement, and reward receipt. Interrupted
 finished rewards recover without double granting coins or upgrades.
 
-The daily page uses **Dungeon** and **Leaderboard** tabs. Set selection and results
-stay in Dungeon, with Enter or Resume pinned beneath the scrollable content.
-Leaderboard shows every player in one scrollable list: stable mock players plus
+Set selection and results stay in **Dungeon**, with Enter or Resume pinned
+beneath the scrollable content. **Leaderboards** opens the current daily standings
+as its own page and shows every player in one scrollable list: stable mock players plus
 your actual multiplied score. Ties share ranks; your row is highlighted and pinned.
-Switching tabs preserves selection and scroll position. **Menu** stays in the
-header, alongside the profile shortcut. The trophy shortcut appears only in daily
+Switching destinations preserves selection and scroll position. The header logo
+returns to Home. The trophy shortcut appears only in daily
 games and opens standings in a modal; closing it returns to the same game and
-move selection. Profile editing preserves standings and returns focus to your row.
+move selection. Profile editing updates your standings appearance; returning to
+Leaderboards restores its scroll position.
 Dungeon rules and rewards use compact badges and icon tiles. Set cards show
 starting hearts and square bonuses, with a checkmark on the selected set.
 Reward rates, earned coins, and result calculations are visible without expanding sections.
@@ -276,7 +290,7 @@ begins. Completing the selected levels also ends the run.
 The regular result page shows the multiplied score and earned coins, with level,
 decision, and move-quality counts under **Run details**. **Play again** immediately
 starts a fresh run with the same set; **Change set** opens regular setup. The daily
-page combines daily results, rewards, and standings. Setup and result pages scroll
+page combines daily results and rewards, with standings on **Leaderboards**. Setup and result pages scroll
 on mobile, while gameplay keeps its viewport layout. Rules open in a modal and
 return to their opener. Rules are configurable through `DEFAULT_RULES`
 and `RunRules` in [`src/game/run.ts`](src/game/run.ts), or by supplying the `rules`

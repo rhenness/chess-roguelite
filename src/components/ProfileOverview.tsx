@@ -75,19 +75,20 @@ function ScoreHistory({ history, now }: { history: RunHistory; now: number }) {
     </section>;
 }
 
-export function ProfileOverview({ profile, history, onEdit, now }: {
-    profile: PlayerProfile; history: RunHistory; onEdit: () => void; now: number;
+export function ProfileOverview({ profile, history, onEdit, now, asPage = false }: {
+    profile: PlayerProfile; history: RunHistory; onEdit: () => void; now: number; asPage?: boolean;
 }) {
     const stats = useMemo(() => profileStats(history), [history]);
     return <div className="profile-overview">
-        <header className="profile-overview-header"><h2 id="profile-title">Your profile</h2>
+        <header className="profile-overview-header">{asPage ? <h1 id="profile-page-title" tabIndex={-1} data-page-focus>Your profile</h1>
+            : <h2 id="profile-title">Your profile</h2>}
             <div className="profile-identity" style={{ backgroundImage: `url("${profileAsset('banners', profile.bannerId)}")` }}>
                 <PlayerAvatar profile={profile} />
                 <strong>{profile.displayName}</strong>
                 <button className="profile-edit" onClick={onEdit} autoFocus data-modal-focus><Pencil size={15} aria-hidden="true" />Edit profile</button>
             </div>
         </header>
-        <div className="profile-overview-body">
+        <div className="profile-overview-body" data-page-scroll="profile">
             <dl className="profile-stat-grid" aria-label="Lifetime stats">
                 {([['Best regular score', stats.bestRegular], ['Best daily score', stats.bestDaily]] as const).map(([label, best]) =>
                     <div key={label}><dt>{label}</dt><dd>{best ? best.score.toLocaleString() : 'No runs yet'}</dd>

@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { Chess, type Square } from 'chess.js';
 import { Chessboard, type ChessboardOptions } from 'react-chessboard';
-import { ArrowUp, Check, Clock3, Coins, DoorOpen, Flame, Heart, Sparkles, Trophy, Unlock, X } from 'lucide-react';
+import { ArrowUp, Check, Clock3, Coins, DoorOpen, Flame, Heart, House, Sparkles, Trophy, Unlock, X } from 'lucide-react';
 import type { GeneratedLevel, PlayerChoice } from './types/level';
 import { selectLevels } from './game/levels';
 import { BoardNotification, type BoardNotice } from './components/BoardNotification';
 import { PlayMenu, formatCountdown } from './components/PlayMenu';
 import { PieceSetPicker } from './components/PieceSetPicker';
 import { DailyDungeonPage } from './components/DailyDungeonPage';
+import { LeaderboardsPage } from './components/LeaderboardsPage';
+import { PrimaryNavigation } from './components/PrimaryNavigation';
 import { usePageNavigation } from './game/usePageNavigation';
 import { MultiplierUpgrades } from './components/MultiplierUpgrades';
 import { PlayerAvatar } from './components/PlayerAvatar';
@@ -186,6 +188,8 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const [upgradeSet, setUpgradeSet] = useState<PieceSetId | null>(null);
     const [preview, setPreview] = useState<string | null>(null);
     const [pendingChoice, setPendingChoice] = useState<string | null>(null);
+    const moveOptions = useRef<HTMLDivElement>(null);
+    const keyboardOption = useRef<number | null>(null);
     const [boardSelection, setBoardSelection] = useState<{ from: string; to: string | null } | null>(null);
     const [showRules, setShowRules] = useState(false);
     const [boardNotice, setBoardNotice] = useState<BoardNotice | null>(null);
@@ -206,7 +210,8 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const profileReturnFocus = useRef<HTMLButtonElement | null>(null);
     const upgradeReturnFocus = useRef<HTMLButtonElement | null>(null);
     const dailyDungeon = location.day ? daily.archive.days[location.day] ?? daily.today : daily.today;
-    const leaderboardDungeon = page === 'game' && run?.daily ? daily.archive.days[run.daily.day] : dailyDungeon;
+    const leaderboardDungeon = page === 'game' && run?.daily ? daily.archive.days[run.daily.day]
+        : page === 'leaderboards' ? daily.today : dailyDungeon;
     const standings = useMemo(() => leaderboardDungeon ? dailyLeaderboard(leaderboardDungeon.day, playerProfile,
         leaderboardDungeon.attempt?.status === 'finished' ? leaderboardDungeon.attempt.payout?.finalScore ?? null : null) : [],
     [leaderboardDungeon?.day, leaderboardDungeon?.attempt?.payout, playerProfile]);
@@ -237,6 +242,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         setShowRules(false);
         setShowProfile(false);
         setShowLeaderboard(false);
+        setEditingProfile(false);
         setUpgradeSet(null);
     }, [page, location.day]);
 
@@ -275,6 +281,11 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     }, [profileSaveMessage]);
 
     function openProfile(button?: HTMLButtonElement) {
+        if (page !== 'game' || showingResult) {
+            setEditingProfile(false);
+            navigate({ page: 'profile' });
+            return;
+        }
         profileReturnFocus.current = button ?? profileButton.current;
         setShowRules(false);
         setProfileSaveMessage(null);
@@ -447,6 +458,53 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         commitMove(uci);
     }
 
+    useEffect(() => {
+        if (!playing || keyboardOption.current === null) return;
+        const active = document.activeElement;
+        if (active !== document.body && active !== content.current?.querySelector('#game')
+            && !moveOptions.current?.contains(active)) return;
+        const buttons = moveOptions.current?.querySelectorAll<HTMLButtonElement>('button');
+        if (!buttons?.length) return;
+        if (keyboardOption.current >= buttons.length) keyboardOption.current = 0;
+        buttons[keyboardOption.current]!.focus({ preventScroll: true });
+    }, [playing, choices]);
+
+    useEffect(() => {
+        if (!playing) return;
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+            const buttons = Array.from(moveOptions.current?.querySelectorAll<HTMLButtonElement>('button') ?? []);
+            if (!buttons.length) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (target?.closest('dialog, input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+            if (target?.closest('button, a[href], [role="button"]') && !moveOptions.current?.contains(target)) return;
+
+            const direction = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
+                : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+            const activate = event.key === 'Enter' || event.key === ' ';
+            if (!direction && !activate) return;
+            event.preventDefault();
+            if (activate && event.repeat) return;
+
+            const current = buttons.findIndex(button => button === document.activeElement);
+            let index = Math.max(0, current);
+            if (direction) {
+                index = current < 0 ? (direction > 0 ? 0 : buttons.length - 1)
+                    : (current + direction + buttons.length) % buttons.length;
+            }
+            if (direction) {
+                keyboardOption.current = index;
+                setPendingChoice(null);
+                setBoardSelection(null);
+            }
+            if (activate && keyboardOption.current !== null) keyboardOption.current = index;
+            buttons[index]!.focus();
+            if (activate) selectMove(choices[index]!.playerMove.uci);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    });
+
     function commitMove(uci: string) {
         if (!playing || !choices.some(choice => choice.playerMove.uci === uci)) return;
         setPreview(null);
@@ -552,9 +610,16 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const resumableDaily = daily.today && daily.now < daily.today.expiresAt ? savedDailyRun : null;
     const continueDaily = !!resumableDaily && (!!run?.daily || !resumableRegular);
     const continueRun = continueDaily ? resumableDaily : resumableRegular?.run;
-    return <main className={`app-shell${page === 'play' ? ' main-menu-shell' : ''}`}>
+    const showNavigation = page !== 'game' || showingResult;
+    const activeDestination = page === 'game' ? 'play' : page;
+    return <main className={`app-shell${page === 'play' ? ' main-menu-shell' : ''}${showNavigation ? ' has-navigation' : ''}`}
+        onPointerDownCapture={() => { keyboardOption.current = null; }}>
         <header className={`topbar${page === 'play' ? ' main-menu-topbar' : ''}`}>
-            {page !== 'play' && <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); if (!expirationActive) openMenu(); }}><img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="34" height="38" /><strong>Knightfall</strong></a>}
+            {page !== 'play' && <a className={`brand${page === 'game' ? ' game-home' : ''}`} href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); if (!expirationActive) openMenu(); }}>
+                {page === 'game' ? <><House size={20} aria-hidden="true" /><strong>Home</strong></>
+                    : <><img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="34" height="38" /><strong>Knightfall</strong></>}
+            </a>}
+            {showNavigation && <PrimaryNavigation active={activeDestination} onNavigate={navigate} />}
             <div className="top-actions">
                 {page === 'game' && run?.daily && <button ref={leaderboardButton} className="leaderboard-button" disabled={!leaderboardDungeon || expirationActive}
                     aria-label="Daily leaderboard" title="Daily leaderboard" onClick={openLeaderboard}><Trophy size={18} aria-hidden="true" /></button>}
@@ -583,13 +648,14 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         {showRules && !payout.sequence && !showProfile && <Modal className="rules-panel" titleId="game-rules" onClose={() => setShowRules(false)} returnFocus={helpButton}>
             <h2 id="game-rules">How to play</h2>
             <p>Tap a piece, then an offered destination. Or tap a colored option twice.</p>
+            <p>Use arrow keys to switch colored options. Press Enter or Space once to select, then again to confirm.</p>
             <p>Start with {activeRules.startingHealth} health. Health and score carry across floors.</p>
             <p>{BEST_MOVE_STREAK_LENGTH} Best in a row: +1 HP.</p>
             <p>Every run ends with a square multiplier. Complete all 10 floors to permanently upgrade one square.</p>
             <ul>{QUALITY_ORDER.map(quality => <li key={quality}><strong>{QUALITY_LABELS[quality]}</strong><span>+{activeRules.points[quality]} points / {activeRules.damage[quality]} health lost</span></li>)}</ul>
             <button className="primary-small" data-modal-focus autoFocus onClick={() => setShowRules(false)}>Got it</button>
         </Modal>}
-        <div className={`page-content${page === 'game' && !showingResult ? ' game-content' : page === 'daily' ? ' daily-content' : ''}`} ref={content}>
+        <div className={`page-content${page === 'game' && !showingResult ? ' game-content' : page === 'daily' || page === 'leaderboards' ? ' daily-content' : page === 'profile' ? ' profile-content' : ''}`} ref={content}>
         {page === 'play' && <PlayMenu daily={daily.today} now={daily.now} available={!!pool.length}
             onRegular={() => navigate({ page: 'regular' })} onDaily={() => navigate({ page: 'daily' })}
             dailyRank={standings.find(entry => entry.id === 'you')?.rank}
@@ -606,8 +672,13 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             progression={progression.profile} defaultStartingHealth={rules.startingHealth} selected={dailySelectedSet} onSelected={setDailySelectedSet}
             onUpgrade={openUpgrades} onEnter={() => beginDaily(dailySelectedSet)} onResume={resumeDaily}
             onToday={() => navigate({ page: 'daily' })}
-            entries={standings} profile={playerProfile} persisted={daily.persisted} />}
+            rank={standings.find(entry => entry.id === 'you')?.rank} persisted={daily.persisted} />}
         {page === 'daily' && !dailyDungeon && <p className="empty-state" role="status">No dungeon available.</p>}
+        {page === 'leaderboards' && <LeaderboardsPage dungeon={daily.today} now={daily.now} entries={standings} profile={playerProfile} />}
+        {page === 'profile' && <section className="profile-page" aria-labelledby="profile-page-title">
+            {editingProfile ? <ProfileEditor asPage profile={playerProfile} onSave={updateProfile} onCancel={() => setEditingProfile(false)} />
+                : <ProfileOverview asPage profile={playerProfile} history={runHistory.history} now={daily.now} onEdit={() => setEditingProfile(true)} />}
+        </section>}
         {page === 'game' && (!showingResult || run?.daily) && <section id="game" className="game-layout" aria-label={run?.daily ? 'Daily game' : 'Regular game'} tabIndex={-1} data-page-focus>
             <div className={`board-column${run?.daily ? ' daily-board-column' : ''}`}>
                 {run?.daily && <div className="daily-run-label"><span className="daily-run-banner"><DoorOpen size={14} aria-hidden="true" />DAILY DUNGEON</span>
@@ -634,7 +705,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             <aside className="play-panel">
                 <div className="options-area">
                     {!pool.length && <div className="empty-state" role="status">No scored, playable floors.</div>}
-                    {playing && <div className="move-picker"><div className="move-options" role="group" aria-label="Available moves">
+                    {playing && <div className="move-picker"><div ref={moveOptions} className="move-options" role="group" aria-label="Available moves">
                         {choices.map((choice, index) => {
                             const pending = pendingChoice === choice.playerMove.uci;
                             const promotion = choice.playerMove.uci[4];

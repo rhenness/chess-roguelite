@@ -1,20 +1,27 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-export type Page = 'play' | 'regular' | 'daily' | 'game';
+export type Page = 'play' | 'regular' | 'daily' | 'profile' | 'leaderboards' | 'game';
 export interface PageLocation { page: Page; day?: string }
 
 function readLocation(): PageLocation {
-    const match = /^#\/(play|regular|daily|game)(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(window.location.hash);
+    const match = /^#\/(play|regular|daily|profile|leaderboards|game)(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(window.location.hash);
     return match ? { page: match[1] as Page, day: match[1] === 'daily' ? match[2] : undefined } : { page: 'play' };
 }
 
 export function usePageNavigation() {
     const [location, setLocation] = useState(readLocation);
     const current = useRef(location);
-    const scroll = useRef(new Map<string, number>());
+    const scroll = useRef(new Map<string, { top: number; regions: Record<string, number> }>());
     const content = useRef<HTMLDivElement>(null);
     const key = (value: PageLocation) => `${value.page}/${value.day ?? ''}`;
-    const rememberScroll = () => scroll.current.set(key(current.current), content.current?.scrollTop ?? 0);
+    const rememberScroll = () => {
+        const element = content.current;
+        scroll.current.set(key(current.current), {
+            top: element?.scrollTop ?? 0,
+            regions: Object.fromEntries(Array.from(element?.querySelectorAll<HTMLElement>('[data-page-scroll]') ?? [])
+                .map(region => [region.dataset.pageScroll!, region.scrollTop])),
+        });
+    };
 
     const navigate = useCallback((next: PageLocation, replace = false) => {
         rememberScroll();
@@ -26,8 +33,9 @@ export function usePageNavigation() {
 
     useEffect(() => {
         const synchronize = () => {
-            rememberScroll();
             const next = readLocation();
+            if (key(next) === key(current.current)) return;
+            rememberScroll();
             current.current = next;
             setLocation(next);
         };
@@ -41,7 +49,11 @@ export function usePageNavigation() {
 
     useLayoutEffect(() => {
         if (!content.current) return;
-        content.current.scrollTop = scroll.current.get(key(location)) ?? 0;
+        const saved = scroll.current.get(key(location));
+        content.current.scrollTop = saved?.top ?? 0;
+        content.current.querySelectorAll<HTMLElement>('[data-page-scroll]').forEach(region => {
+            region.scrollTop = saved?.regions[region.dataset.pageScroll!] ?? 0;
+        });
         content.current.querySelector<HTMLElement>('[data-page-focus]')?.focus({ preventScroll: true });
     }, [location.page, location.day]);
 

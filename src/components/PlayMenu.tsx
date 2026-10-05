@@ -1,7 +1,23 @@
+import { useState } from 'react';
 import { ChevronRight, Clock3, Coins, DoorOpen, Play, Trophy } from 'lucide-react';
 import type { DailyDungeon } from '../game/daily';
 import './DailyDungeon.css';
 import './PlayMenu.css';
+
+const MENU_SUBTITLES = [
+    'One more floor. One more fork.',
+    'Trust your knight. Mostly.',
+    'Every pawn has a dark side.',
+    'Check yourself before you wreck yourself.',
+    'The dungeon plays for keeps.',
+    'Good knights. Bad decisions.',
+    'Your next blunder awaits.',
+    'Small board. Big consequences.',
+    'Fortune favors the fork.',
+    'Keep calm and castle on.',
+    'No pressure. Just your entire run.',
+    'A horse walks into a dungeon...',
+];
 
 export const formatDailyDate = (day: string) => new Intl.DateTimeFormat('en-US', {
     month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
@@ -17,12 +33,14 @@ export function PlayMenu({ daily, now, onRegular, onDaily, continuation, dailyRa
     onRegular: () => void; onDaily: () => void;
     continuation?: { mode: 'regular' | 'daily'; level: number; onContinue: () => void };
 }) {
+    const [subtitle] = useState(() => MENU_SUBTITLES[Math.floor(Math.random() * MENU_SUBTITLES.length)]);
     const status = daily?.attempt?.status;
     const score = daily?.attempt?.payout?.finalScore;
     return <section className="play-page main-menu" aria-labelledby="play-title">
         <div className="menu-identity">
             <img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="72" height="80" />
             <h1 id="play-title" tabIndex={-1} data-page-focus>Knightfall</h1>
+            <p className="menu-subtitle">{subtitle}</p>
         </div>
         <div className="menu-actions">
             {continuation && <div className="menu-continue-slot">
