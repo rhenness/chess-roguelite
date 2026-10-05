@@ -14,6 +14,7 @@ import { PIECE_RENDERERS } from './components/pieces/pieceRenderers';
 import App from './App';
 import { HELP_WELCOME_STORAGE_KEY } from './components/HelpWelcome';
 import { finishPlayTutorial, initialPlayTutorial, PLAY_TUTORIAL_STORAGE_KEY, savePlayTutorial } from './game/playTutorial';
+import { finishItemTutorial, initialItemTutorial, ITEM_TUTORIAL_STORAGE_KEY, saveItemTutorial } from './game/itemTutorial';
 import { initialPlayerProfile, loadPlayerProfile, PLAYER_PROFILE_STORAGE_KEY } from './game/playerProfile';
 import { loadRunHistory, RUN_HISTORY_STORAGE_KEY, saveRunHistory, type RunRecord } from './game/runHistory';
 import { ENDLESS_STORAGE_KEY, saveState } from './features/endless/storage';
@@ -41,6 +42,7 @@ vi.mock('react-chessboard', async () => ({
 afterEach(() => { vi.useRealTimers(); window.localStorage.removeItem(PROGRESSION_STORAGE_KEY); });
 beforeEach(() => {
     savePlayTutorial(finishPlayTutorial(initialPlayTutorial()));
+    saveItemTutorial(finishItemTutorial(initialItemTutorial()));
     window.history.replaceState(null, '', '#/play');
     window.localStorage.removeItem(HELP_WELCOME_STORAGE_KEY);
     window.localStorage.removeItem(DAILY_STORAGE_KEY);
@@ -139,6 +141,7 @@ function openProfileEditor() {
 describe('first play tutorial', () => {
     function newPlayer() {
         window.localStorage.removeItem(PLAY_TUTORIAL_STORAGE_KEY);
+        window.localStorage.removeItem(ITEM_TUTORIAL_STORAGE_KEY);
         saveUserProgression(initialUserProgression());
     }
     function continueLessons() {
@@ -254,14 +257,18 @@ describe('first play tutorial', () => {
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', move.fenAfterPlayerMove);
     });
 
-    it('waits for a checkpoint, guides a real item activation, and then gets out of the way', () => {
+    it.each([0, 1])('guides checkpoint item activation with %i prior finished runs, then gets out of the way', finishedRuns => {
         vi.useFakeTimers();
         newPlayer();
+        if (finishedRuns) {
+            saveUserProgression({ ...initialUserProgression(), finishedRuns });
+            savePlayTutorial(finishPlayTutorial(initialPlayTutorial()));
+        }
         const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`tutorial-${index}`, index));
         renderGame(<App levels={levels} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        if (!finishedRuns) fireEvent.click(screen.getByRole('button', { name: 'Next' }));
         selectQuality(levels[0]!, 'best');
-        continueLessons();
+        if (!finishedRuns) continueLessons();
         expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
         finishPlayback();
         for (let index = 1; index < 3; index++) { selectQuality(levels[index]!, 'best'); finishPlayback(); }
@@ -280,6 +287,7 @@ describe('first play tutorial', () => {
         expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
         expect(screen.getByLabelText('Available moves')).toBeInTheDocument();
         expect(JSON.parse(window.localStorage.getItem(PLAY_TUTORIAL_STORAGE_KEY)!).status).toBe('done');
+        expect(JSON.parse(window.localStorage.getItem(ITEM_TUTORIAL_STORAGE_KEY)!).status).toBe('done');
     });
 
     it('resumes guidance after refresh, permits skipping, and leaves the multiplier presentation unchanged', () => {
@@ -303,6 +311,73 @@ describe('first play tutorial', () => {
         expect(screen.queryByRole('heading', { name: 'Your first run' })).not.toBeInTheDocument();
     });
 
+    it('teaches purchased items in the second run after finishing the first without reaching a checkpoint', () => {
+        vi.useFakeTimers();
+        newPlayer();
+        const level = makeLevel('late-item-guide');
+        let view = renderGame(<App levels={[level]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        selectQuality(level, 'best');
+        continueLessons();
+        finishPlayback();
+        finishPayout();
+        expect(loadUserProgression().finishedRuns).toBe(1);
+        expect(screen.queryByRole('heading', { name: 'Try your item' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
+        openRegularItems();
+        fireEvent.click(screen.getByRole('button', { name: 'Bring Healing Potion for 20 coins' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Start run' }));
+        expect(screen.getByRole('heading', { name: 'Try your item' })).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Your first run' })).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+        view.unmount();
+        view = render(<App levels={[level]} />);
+        resumeRegularFromHome();
+        expect(screen.getByRole('heading', { name: 'Try your item' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Healing Potion, 1 remaining' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm use of Healing Potion' }));
+        expect(screen.getByRole('heading', { name: 'You’re ready' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Continue playing' }));
+        expect(JSON.parse(window.localStorage.getItem(ITEM_TUTORIAL_STORAGE_KEY)!).status).toBe('done');
+        expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
+    });
+
+    it('teaches dungeon inventory once even after the basic guide is finished', () => {
+        window.localStorage.removeItem(ITEM_TUTORIAL_STORAGE_KEY);
+        const level = makeLevel('dungeon-item-guide', 10, 2);
+        let view = render(<App levels={[level]} />);
+        openDaily();
+        expect(screen.queryByRole('heading', { name: 'Try your item' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        expect(screen.getByRole('heading', { name: 'Try your item' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Keep for later' }));
+        expect(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' })).toBeInTheDocument();
+        view.unmount();
+        view = render(<App levels={[level]} />);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' }));
+        expect(screen.queryByRole('heading', { name: 'Try your item' })).not.toBeInTheDocument();
+        expect(JSON.parse(window.localStorage.getItem(ITEM_TUTORIAL_STORAGE_KEY)!).status).toBe('done');
+    });
+
+    it('can dismiss the item lesson without spending an item and remembers that choice in later runs', () => {
+        window.localStorage.removeItem(ITEM_TUTORIAL_STORAGE_KEY);
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 70 });
+        renderSetup(<App levels={[makeLevel('skip-item-guide', 10, 2)]} />);
+        openRegularItems();
+        fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
+        startRegular();
+        expect(screen.getByRole('heading', { name: 'Try your item' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Skip tutorial' }));
+        expect(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' })).toBeInTheDocument();
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).checkpoint.itemUses).toHaveLength(0);
+        openRegularItems();
+        fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
+        startRegular();
+        expect(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' })).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Try your item' })).not.toBeInTheDocument();
+    });
+
     it('replays from Help on the current run without spending coins, replacing the run, or making a move', () => {
         const level = makeLevel('replay-guide', 10, 2);
         renderGame(<App levels={[level]} />);
@@ -318,7 +393,7 @@ describe('first play tutorial', () => {
         expect(screen.getByRole('heading', { name: 'Read your move' })).toBeInTheDocument();
     });
 
-    it('keeps guidance out of a dungeon while preserving the paused regular tutorial', () => {
+    it('keeps the basic guide paused while independently teaching dungeon items', () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
         const level = makeLevel('tutorial-daily', 10, 2);
@@ -329,7 +404,9 @@ describe('first play tutorial', () => {
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
         openDaily();
         fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
-        expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Choose a move' })).not.toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Try your item' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Keep for later' }));
         selectQuality(level, 'best');
         expect(JSON.parse(window.localStorage.getItem(PLAY_TUTORIAL_STORAGE_KEY)!).step).toBe('piece');
         resumeRegularFromHome();
@@ -620,7 +697,7 @@ describe('welcome help tip', () => {
         expect(tip.parentElement).toContainElement(screen.getByRole('button', { name: 'Help for this page' }));
         expect(screen.getByRole('heading', { name: 'Knightfall', level: 1 })).toHaveFocus();
         expect(within(tip).getByRole('button', { name: 'OK' })).toBeVisible();
-        expect(within(tip).getByRole('button', { name: 'Don’t show this again' })).toBeVisible();
+        expect(within(tip).getAllByRole('button')).toHaveLength(1);
     });
 
     it('waits for the first Home entry and stays dismissed when returning during the same visit', () => {
@@ -635,21 +712,22 @@ describe('welcome help tip', () => {
         expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
     });
 
-    it('dismisses OK for this visit, restores focus to help, and welcomes users on the next visit', () => {
+    it('remembers OK across visits and restores focus to help', () => {
         const view = render(<App levels={[makeLevel()]} />);
         const okay = screen.getByRole('button', { name: 'OK' });
         okay.focus();
         fireEvent.click(okay);
         expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Help for this page' })).toHaveFocus();
+        expect(window.localStorage.getItem(HELP_WELCOME_STORAGE_KEY)).toBe('true');
         view.unmount();
         render(<App levels={[makeLevel()]} />);
-        expect(screen.getByRole('complementary', { name: 'Need help?' })).toBeVisible();
+        expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
     });
 
-    it('remembers Don’t show this again across visits while keeping page help available', () => {
+    it('keeps page help available after dismissing the welcome tip', () => {
         const view = render(<App levels={[makeLevel()]} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Don’t show this again' }));
+        fireEvent.click(screen.getByRole('button', { name: 'OK' }));
         view.unmount();
         render(<App levels={[makeLevel()]} />);
         expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
@@ -672,7 +750,7 @@ describe('welcome help tip', () => {
         render(<App levels={[makeLevel()]} />);
         const save = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage unavailable'); });
         try {
-            fireEvent.click(screen.getByRole('button', { name: 'Don’t show this again' }));
+            fireEvent.click(screen.getByRole('button', { name: 'OK' }));
             expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
         } finally { save.mockRestore(); }
     });

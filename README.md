@@ -157,7 +157,8 @@ See [development phases and rules](docs/features/04-daily-dungeon-profile.md).
 The main menu sends new players straight into a Default regular run. They
 receive a centered introduction followed
 by tooltips pointing out move controls, feedback, hearts, healing streaks, floor
-progress, and item activation after claiming a checkpoint reward. The guide
+progress. A separate item lesson appears the first time inventory is available
+during regular or dungeon gameplay, including purchases in a later run. The guide
 highlights the Best move's colored option and explains board controls too.
 Players perform the real
 actions; Next advances explanations. The damage example does not affect health.

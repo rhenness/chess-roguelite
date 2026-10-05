@@ -128,7 +128,7 @@ export function PlayTutorial({ step, run, selectedFrom, targetSquare, targetMove
         carryover: { title: 'Keep going between rounds', text: 'Hearts, score, items, and active effects carry into the next round. The bars under the board track your progress; the dots mark rewards after rounds 3 and 6.' },
         'waiting-checkpoint': { title: '', text: '' },
         item: { title: 'Try your item', text: 'Tap an item below the board, then tap its green check to activate it before your move. The red X cancels. You can also save it for later.' },
-        ready: { title: 'You’re ready', text: 'Your item has been used. Keep choosing moves, watch your hearts, and use your supplies when they help. You can replay this guide from Help.' },
+        ready: { title: 'You’re ready', text: `Your item has been used. Keep choosing moves, watch your hearts, and use your supplies when they help.${run.daily ? '' : ' You can replay this guide from Help.'}` },
     };
     return createPortal(<>{step !== 'welcome' && position && position.targetWidth > 0 && position.targetHeight > 0
         && <div className="tutorial-highlight" aria-hidden="true" style={{ top: position.targetTop, left: position.targetLeft,

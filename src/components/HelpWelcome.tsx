@@ -66,8 +66,7 @@ export function HelpWelcome({ home, blocked, anchor }: {
     return <aside ref={tip} className="help-welcome" aria-labelledby="help-welcome-title">
         <p role="status"><strong id="help-welcome-title">Need help?</strong> This Help menu explains whatever page you’re viewing.</p>
         <div className="help-welcome-actions">
-            <button className="primary-small" onClick={() => dismiss()}>OK</button>
-            <button className="text-button" onClick={() => dismiss(true)}>Don’t show this again</button>
+            <button className="primary-small" onClick={() => dismiss(true)}>OK</button>
         </div>
     </aside>;
 }

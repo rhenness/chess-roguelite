@@ -20,8 +20,10 @@ export const initialPlayTutorial = (): PlayTutorialState => ({
 export function loadPlayTutorial(): PlayTutorialState {
     try {
         const stored = JSON.parse(window.localStorage.getItem(PLAY_TUTORIAL_STORAGE_KEY) ?? 'null');
-        // Retire the checkpoint explanation without losing an in-progress guide.
-        const value = (stored?.step === 'checkpoint' ? { ...stored, step: 'waiting-checkpoint' } : stored) as PlayTutorialState | null;
+        // Item guidance has its own progress; these players have finished the basic play lessons.
+        const value = (stored?.version === 1 && ['unseen', 'active', 'done'].includes(stored.status)
+            && ['checkpoint', 'waiting-checkpoint', 'item', 'ready'].includes(stored.step)
+            ? { ...stored, status: 'done', step: 'carryover' } : stored) as PlayTutorialState | null;
         if (value?.version === 1 && ['unseen', 'active', 'done'].includes(value.status)
             && (value.runId === null || typeof value.runId === 'string')
             && (value.status !== 'active' || !!value.runId)
@@ -44,7 +46,7 @@ export const tutorialBelongsToRun = (state: PlayTutorialState, run: RunState | n
     state.status === 'active' && !!run && !run.daily && run.id === state.runId;
 
 export function beginPlayTutorial(run: RunState): PlayTutorialState {
-    return { ...initialPlayTutorial(), status: 'active', runId: run.id,
+    return { ...initialPlayTutorial(), status: run.phase === 'checkpoint' ? 'done' : 'active', runId: run.id,
         step: run.phase === 'checkpoint' ? 'waiting-checkpoint' : 'welcome', startingDecision: run.decisionsMade,
         itemUsesAtPrompt: run.itemUses.length };
 }
@@ -52,7 +54,7 @@ export function beginPlayTutorial(run: RunState): PlayTutorialState {
 export const finishPlayTutorial = (state: PlayTutorialState): PlayTutorialState => ({ ...state, status: 'done' });
 
 export const tutorialPausesPlay = (step: PlayTutorialStep): boolean =>
-    ['welcome', 'feedback', 'health', 'healing', 'carryover', 'ready'].includes(step);
+    ['welcome', 'feedback', 'health', 'healing', 'carryover'].includes(step);
 
 /** Observe real actions; tutorial explanations never change run totals or inventory. */
 export function observePlayTutorial(state: PlayTutorialState, run: RunState | null): PlayTutorialState {
@@ -60,14 +62,9 @@ export function observePlayTutorial(state: PlayTutorialState, run: RunState | nu
     if ((state.step === 'piece' || state.step === 'destination') && run.decisionsMade > state.startingDecision) {
         return { ...state, step: 'feedback' };
     }
-    if (run.phase === 'finished' && ['piece', 'destination', 'waiting-checkpoint', 'item'].includes(state.step)) {
+    if ((run.phase === 'finished' || run.phase === 'checkpoint') && ['piece', 'destination'].includes(state.step)) {
         return finishPlayTutorial(state);
     }
-    if (['piece', 'destination'].includes(state.step) && run.phase === 'checkpoint') return { ...state, step: 'waiting-checkpoint' };
-    if (state.step === 'waiting-checkpoint' && run.phase === 'decision' && Object.values(run.items).some(count => (count ?? 0) > 0)) {
-        return { ...state, step: 'item', itemUsesAtPrompt: run.itemUses.length };
-    }
-    if (state.step === 'item' && run.itemUses.length > state.itemUsesAtPrompt) return { ...state, step: 'ready' };
     return state;
 }
 
@@ -78,14 +75,6 @@ export function advancePlayTutorial(state: PlayTutorialState, run: RunState | nu
     };
     const step = next[state.step];
     if (step) return { ...state, step };
-    if (state.step === 'carryover') {
-        if (run.phase === 'finished') return finishPlayTutorial(state);
-        if (run.checkpointRewards.some(reward => reward.selected === null)) return { ...state, step: 'waiting-checkpoint' };
-        if (Object.values(run.items).some(count => (count ?? 0) > 0)) {
-            return { ...state, step: 'item', itemUsesAtPrompt: run.itemUses.length };
-        }
-        return finishPlayTutorial(state);
-    }
-    if (state.step === 'item' || state.step === 'ready') return finishPlayTutorial(state);
+    if (state.step === 'carryover') return finishPlayTutorial(state);
     return state;
 }

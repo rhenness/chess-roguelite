@@ -23,7 +23,7 @@ describe('play tutorial progress', () => {
     });
 
     it('persists the associated run, current step, and action counts across refresh', () => {
-        const state = { ...beginPlayTutorial(startRun([makeLevel()])), step: 'item' as const, itemUsesAtPrompt: 2 };
+        const state = { ...beginPlayTutorial(startRun([makeLevel()])), step: 'feedback' as const };
         savePlayTutorial(state);
         expect(loadPlayTutorial()).toEqual(state);
         savePlayTutorial(finishPlayTutorial(state));
@@ -46,15 +46,15 @@ describe('play tutorial progress', () => {
         expect(loadPlayTutorial()).toEqual({ ...state, step: 'piece' });
     });
 
-    it('resumes old checkpoint guidance silently and waits until the reward has been claimed', () => {
+    it('retires old checkpoint guidance without replaying the basic play lessons', () => {
         const run = startRun(Array.from({ length: 10 }, (_, index) => makeLevel(`checkpoint-${index}`, index)));
         const state = { ...beginPlayTutorial(run), step: 'checkpoint' };
         window.localStorage.setItem(PLAY_TUTORIAL_STORAGE_KEY, JSON.stringify(state));
         const restored = loadPlayTutorial();
-        expect(restored.step).toBe('waiting-checkpoint');
+        expect(restored.status).toBe('done');
         expect(observePlayTutorial(restored, { ...run, phase: 'checkpoint' })).toBe(restored);
         expect(observePlayTutorial(restored, run)).toBe(restored);
-        expect(observePlayTutorial(restored, { ...run, items: { 'healing-potion': 1 } }).step).toBe('item');
+        expect(observePlayTutorial(restored, { ...run, items: { 'healing-potion': 1 } })).toBe(restored);
     });
 
     it('ignores another run and a dungeon while the guided regular run is paused', () => {
@@ -69,7 +69,6 @@ describe('play tutorial progress', () => {
         const finished = advancePlayback(advancePlayback(chooseMove(run, run.node.kind === 'decision' ? run.node.choices[0]!.playerMove.uci : '')));
         const state = { ...beginPlayTutorial(run), step: 'carryover' as const };
         expect(advancePlayTutorial(state, finished).status).toBe('done');
-        expect(observePlayTutorial({ ...state, step: 'waiting-checkpoint' }, finished).status).toBe('done');
         // Replaying the guide during the last move's animation cannot wait for a nonexistent next move.
         const replay = { ...beginPlayTutorial(finished), step: 'piece' as const };
         expect(observePlayTutorial(replay, finished).status).toBe('done');

@@ -6,5 +6,3 @@
 .help-welcome-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .help-welcome-actions button { min-height: 44px; font-size: 12px; }
 .help-welcome-actions .primary-small { padding: 9px 14px; }
-.help-welcome-actions .text-button { padding: 9px 7px; color: #58645d; }
-.help-welcome-actions .text-button:hover { color: var(--green); background: #e7ece3; }
