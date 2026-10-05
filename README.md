@@ -180,6 +180,40 @@ those boards for display and payouts. A finished run snapshots its board before
 shopping, so purchases cannot change an already-earned payout. The free random
 upgrade for completing all 10 levels still applies.
 
+### Run items
+
+Regular-run setup includes three consumables with matching minus/plus controls,
+prices beside their names, and one total below the list. Select up to three
+copies in any combination; **Start run** purchases the whole loadout. Changing
+the selection before entry costs nothing. **Play again** returns to setup with
+the previous piece set selected and an empty item selection.
+
+- **Triple Crown (30 coins):** triple move points for the next three player decisions.
+- **King’s Guard (20 coins):** block all damage from the next player decision,
+  including lethal damage. The shield is spent even on a safe move; move quality
+  and streak breaking still apply.
+- **Healing Potion (20 coins):** immediately restore one heart, with no new health cap.
+
+During play, an item bar beneath health and score shows unused quantities. Tap
+an item to show a red cancel square and green confirm square immediately above
+it. The green check uses the item; the red X, Escape, or clicking elsewhere
+dismisses the confirmation without spending it. Active effects show their icons and remaining player
+moves; replies and animations do not spend charges. Effects cross floors, and
+the same timed effect cannot be activated twice at once. Activation clears any
+pending move confirmation. Notifications announce activation, healing, and
+prevented damage; move feedback displays the actual boosted points.
+
+Unused supplies and effects are discarded when the run finishes. Replacing or
+refreshing an unfinished regular run also loses its purchased supplies without
+a refund. Items do not enter permanent progression storage. Boost points count
+toward the final square payout but are excluded from coin rewards and early
+checkmate bonuses for unplayed decisions.
+
+New daily attempts receive one free copy of each item. Saved daily checkpoints
+replay item activations at their original decisions without charging coins or
+replaying notifications. Existing attempts without item rules remain item-free.
+Definitions, prices, and effect handlers live in [`src/game/items.ts`](src/game/items.ts).
+
 The game loads the
 precomputed JSON files in `src/levels`, skips unscored files (`difficulty: -1`),
 and randomly picks 10 distinct scored levels for each new run, then plays those

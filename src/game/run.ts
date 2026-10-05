@@ -1,5 +1,6 @@
 import type { ChessMove, GeneratedLevel, MoveQuality, PlayerChoice, TreeNode } from '../types/level';
 import { selectLevels } from './levels';
+import { isItemInventory, itemCount, LOADOUT_LIMIT, resolveItemEffects, type ActiveEffect, type ItemInventory, type ItemUse, type MoveResolution } from './items';
 
 export const QUALITY_LABELS: Record<MoveQuality, string> = {
     best: 'Best', good: 'Good', inaccuracy: 'Inaccuracy', bad: 'Bad',
@@ -37,6 +38,11 @@ export interface RunState {
     result: 'defeat' | 'complete' | null;
     health: number;
     score: number;
+    itemBonusPoints: number;
+    items: ItemInventory;
+    activeEffects: ActiveEffect[];
+    itemUses: ItemUse[];
+    lastMoveResolution: MoveResolution | null;
     decisionsMade: number;
     bestMoveStreak: number;
     lastHealthBonus: number;
@@ -74,6 +80,8 @@ function settleNode(state: RunState): RunState {
     return {
         ...state,
         score: state.score + mateBonus,
+        items: lastLevel ? {} : state.items,
+        activeEffects: lastLevel ? [] : state.activeEffects,
         phase: lastLevel ? 'finished' : 'level-ended',
         result: lastLevel ? 'complete' : null,
         levelsCompleted: state.levelsCompleted + Number(completed),
@@ -84,8 +92,9 @@ function settleNode(state: RunState): RunState {
 
 let nextRunId = 0;
 
-export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFAULT_RULES, random = Math.random): RunState {
+export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFAULT_RULES, random = Math.random, items: ItemInventory = {}): RunState {
     validateRules(rules);
+    if (!isItemInventory(items) || itemCount(items) > LOADOUT_LIMIT) throw new Error('Invalid item loadout.');
     const levels = selectLevels(pool);
     if (levels.length > RUN_LEVEL_COUNT) {
         // Sample uniformly without replacement, then restore difficulty progression.
@@ -102,6 +111,7 @@ export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFA
         id: globalThis.crypto?.randomUUID?.() ?? `run-${Date.now()}-${++nextRunId}`,
         levels, rules: structuredClone(rules), levelIndex: 0, node: first.root, phase: 'decision', result: null,
         health: rules.startingHealth, score: 0, decisionsMade: 0, bestMoveStreak: 0, lastHealthBonus: 0,
+        items: { ...items }, activeEffects: [], itemUses: [], itemBonusPoints: 0, lastMoveResolution: null,
         moveCounts: { best: 0, good: 0, inaccuracy: 0, bad: 0 }, levelsCompleted: 0,
         highestDifficultyReached: first.difficulty, highestDifficultyCompleted: null, outcomes: [], lastChoice: null, history: [],
     });
@@ -114,9 +124,12 @@ export function chooseMove(state: RunState, uci: string): RunState {
     if (!choice) return state;
     const bestMoveStreak = choice.quality === 'best' ? (state.bestMoveStreak ?? 0) + 1 : 0;
     const lastHealthBonus = bestMoveStreak > 0 && bestMoveStreak % BEST_MOVE_STREAK_LENGTH === 0 ? 1 : 0;
-    const health = Math.max(0, state.health - state.rules.damage[choice.quality] + lastHealthBonus);
+    const { resolution, activeEffects } = resolveItemEffects(state.activeEffects, state.rules.points[choice.quality], state.rules.damage[choice.quality], lastHealthBonus);
+    const health = Math.max(0, state.health - resolution.damageTaken + lastHealthBonus);
     return {
-        ...state, health, bestMoveStreak, lastHealthBonus, score: state.score + state.rules.points[choice.quality],
+        ...state, health, bestMoveStreak, lastHealthBonus, score: state.score + resolution.awardedPoints,
+        activeEffects: health === 0 ? [] : activeEffects, items: health === 0 ? {} : state.items, lastMoveResolution: resolution,
+        itemBonusPoints: state.itemBonusPoints + resolution.awardedPoints - resolution.normalPoints,
         decisionsMade: state.decisionsMade + 1,
         moveCounts: { ...state.moveCounts, [choice.quality]: state.moveCounts[choice.quality] + 1 },
         lastChoice: choice, phase: health === 0 ? 'finished' : 'reveal', result: health === 0 ? 'defeat' : null,
@@ -141,7 +154,7 @@ export function nextLevel(state: RunState): RunState {
     const levelIndex = state.levelIndex + 1;
     const level = state.levels[levelIndex]!;
     return settleNode({
-        ...state, levelIndex, node: level.root, lastChoice: null, lastHealthBonus: 0,
+        ...state, levelIndex, node: level.root, lastChoice: null, lastHealthBonus: 0, lastMoveResolution: null,
         highestDifficultyReached: level.difficulty,
     });
 }

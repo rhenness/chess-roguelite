@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Square } from 'chess.js';
 import type { MultiplierBoard } from './multipliers';
-import { purchaseMultiplierUpgrade } from './economy';
+import { purchaseLoadout, purchaseMultiplierUpgrade } from './economy';
+import type { ItemInventory } from './items';
 import type { PieceSetId } from './pieceSets';
 import type { RunState } from './run';
 import { loadUserProgression, newlyUnlockedSets, recordFinishedRun, saveUserProgression } from './progression';
@@ -33,6 +34,14 @@ export function useUserProgression(run: RunState | null) {
 
     const advanceUnlock = useCallback(() => setPendingUnlocks(current => current.slice(1)), []);
     const dismissUnlocks = useCallback(() => setPendingUnlocks([]), []);
+    const buyLoadout = useCallback((items: ItemInventory) => {
+        const next = purchaseLoadout(latestProfile.current, items);
+        if (!next) return false;
+        latestProfile.current = next;
+        saveUserProgression(next);
+        setProfile(next);
+        return true;
+    }, []);
     const buyUpgrade = useCallback((set: PieceSetId, square: Square, baseBoard: MultiplierBoard) => {
         // Read the latest balance synchronously so rapid taps cannot overspend.
         const purchase = purchaseMultiplierUpgrade(latestProfile.current, set, square, baseBoard);
@@ -42,5 +51,5 @@ export function useUserProgression(run: RunState | null) {
         setProfile(purchase.profile);
         return purchase.upgrade;
     }, []);
-    return { profile, pendingUnlocks, advanceUnlock, dismissUnlocks, buyUpgrade, recordRun };
+    return { profile, pendingUnlocks, advanceUnlock, dismissUnlocks, buyUpgrade, buyLoadout, recordRun };
 }

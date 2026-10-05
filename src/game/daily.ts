@@ -3,6 +3,7 @@ import { isPlayableLevel } from './levels';
 import { BOARD_SQUARES, createPayout, type MultiplierBoard, type PayoutResult } from './multipliers';
 import { PIECE_SET_IDS, type PieceSetId } from './pieceSets';
 import { advancePlayback, chooseMove, DEFAULT_RULES, nextLevel, RUN_LEVEL_COUNT, startRun, type RunRules, type RunState } from './run';
+import { activateItem, DAILY_ITEMS, isItemId, type ItemUse } from './items';
 
 export const DAILY_STORAGE_KEY = 'knightfall.daily.v1';
 export const DAILY_COIN_MULTIPLIER = 5;
@@ -25,6 +26,7 @@ const DAILY_V1_LEVEL_IDS = new Set([
 
 export interface DailyCheckpoint {
     moves: { levelId: string; uci: string }[];
+    itemUses?: ItemUse[];
     levelIndex: number;
     phase: RunState['phase'];
 }
@@ -38,6 +40,7 @@ export interface DailyAttempt {
     status: 'active' | 'finished' | 'expired';
     payout: PayoutResult | null;
     finishedAt: number | null;
+    itemRulesVersion?: 1;
 }
 
 export interface DailyDungeon {
@@ -76,6 +79,7 @@ export function createDailyDungeon(pool: readonly GeneratedLevel[], now = Date.n
 
 const checkpoint = (run: RunState): DailyCheckpoint => ({
     moves: run.history.map(move => ({ levelId: move.levelId, uci: move.playerMove.uci })),
+    itemUses: run.itemUses.map(use => ({ ...use })),
     levelIndex: run.levelIndex, phase: run.phase,
 });
 
@@ -83,10 +87,10 @@ export function enterDailyDungeon(dungeon: DailyDungeon, setId: PieceSetId, rule
     multipliers: MultiplierBoard, now = Date.now()): { dungeon: DailyDungeon; run: RunState } {
     if (now >= dungeon.expiresAt) throw new Error('This dungeon has expired.');
     if (dungeon.attempt) throw new Error('The daily attempt has already been used.');
-    const run = { ...startRun(dungeon.levels, rules), daily: { day: dungeon.day, expiresAt: dungeon.expiresAt } };
+    const run = { ...startRun(dungeon.levels, rules, Math.random, DAILY_ITEMS), daily: { day: dungeon.day, expiresAt: dungeon.expiresAt } };
     return { run, dungeon: { ...dungeon, attempt: {
         id: run.id, setId, rules: structuredClone(rules), multipliers: { ...multipliers },
-        checkpoint: checkpoint(run), status: 'active', payout: null, finishedAt: null,
+        checkpoint: checkpoint(run), status: 'active', payout: null, finishedAt: null, itemRulesVersion: 1,
     } } };
 }
 
@@ -115,10 +119,25 @@ export function recordDailyRun(dungeon: DailyDungeon, run: RunState, now = Date.
 export function restoreDailyRun(dungeon: DailyDungeon): RunState | null {
     const attempt = dungeon.attempt;
     if (!attempt || attempt.status === 'expired') return null;
-    let run = startRun(dungeon.levels, attempt.rules);
+    if (attempt.itemRulesVersion !== undefined && attempt.itemRulesVersion !== 1) throw new Error('Invalid daily item rules.');
+    let run = startRun(dungeon.levels, attempt.rules, Math.random, attempt.itemRulesVersion === 1 ? DAILY_ITEMS : {});
     const moves = attempt.checkpoint.moves;
+    const uses = attempt.checkpoint.itemUses ?? [];
+    if (!Array.isArray(uses) || uses.length > 3 || (uses.length && attempt.itemRulesVersion !== 1)) throw new Error('Invalid saved items.');
+    let useIndex = 0;
+    function replayItems() {
+        while (useIndex < uses.length && uses[useIndex]!.beforeDecision === run.decisionsMade) {
+            const use = uses[useIndex]!;
+            if (!isItemId(use.itemId) || use.levelIndex !== run.levelIndex) throw new Error('Invalid saved item.');
+            const next = activateItem(run, use.itemId);
+            if (next === run) throw new Error('Invalid saved item activation.');
+            run = next;
+            useIndex++;
+        }
+    }
     moves.forEach((move, index) => {
         if (run.phase === 'level-ended') run = nextLevel(run);
+        replayItems();
         if (run.levels[run.levelIndex]?.id !== move.levelId || run.phase !== 'decision') throw new Error('Invalid saved daily move.');
         const updated = chooseMove(run, move.uci);
         if (updated === run) throw new Error('Invalid saved daily choice.');
@@ -129,6 +148,8 @@ export function restoreDailyRun(dungeon: DailyDungeon): RunState | null {
         run = advancePlayback(run);
     });
     if (run.phase === 'level-ended' && attempt.checkpoint.levelIndex === run.levelIndex + 1) run = nextLevel(run);
+    replayItems();
+    if (useIndex !== uses.length) throw new Error('Invalid saved item ordering.');
     if (run.phase !== attempt.checkpoint.phase || run.levelIndex !== attempt.checkpoint.levelIndex) throw new Error('Invalid daily checkpoint.');
     if ((attempt.status === 'finished') !== (run.phase === 'finished')) throw new Error('Invalid daily result.');
     return { ...run, id: attempt.id, daily: { day: dungeon.day, expiresAt: dungeon.expiresAt } };

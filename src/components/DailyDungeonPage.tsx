@@ -30,6 +30,7 @@ export function DailyDungeonPage({ dungeon, today, now, progression, defaultStar
                 {!attempt && !closed ? <>
                     <div className="daily-entry-details"><span><Layers3 size={14} aria-hidden="true" />{dungeon.levels.length} floors</span><span><Ticket size={14} aria-hidden="true" />One attempt</span></div>
                     <DailyRewards />
+                    <div className="daily-supplies"><strong>Daily supplies</strong><span>Triple Crown · King’s Guard · Healing Potion</span></div>
                     <h2 className="daily-set-heading">Choose your set</h2>
                     <PieceSetPicker compact showHeading={false} selectionOnly selectedSet={selected} onSelect={onSelected} onUpgrade={onUpgrade}
                         progression={progression} defaultStartingHealth={defaultStartingHealth} />

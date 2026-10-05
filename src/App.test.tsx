@@ -64,7 +64,7 @@ function openRegular() {
 function startRegular(name = 'Default') {
     openRegular();
     fireEvent.click(screen.getByRole('button', { name }));
-    fireEvent.click(screen.getByRole('button', { name: /^Start (new )?run$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Start (new )?run(?: · \d+ coins)?$/ }));
 }
 
 function openDaily() {
@@ -105,6 +105,119 @@ function openProfileEditor() {
     }
     fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
 }
+
+describe('run supplies', () => {
+    it('selects items in setup, charges once at entry, and brings only selected items', () => {
+        saveUserProgression({ ...initialUserProgression(), coins: 70 });
+        renderSetup(<App levels={[makeLevel('supplies', 10, 3)]} />);
+        expect(screen.queryByRole('link', { name: 'Shop' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Bring King’s Guard for 20 coins' }));
+        expect(loadUserProgression().coins).toBe(70);
+        expect(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Remove King’s Guard' }));
+        startRegular();
+        expect(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'King’s Guard, 1 remaining' })).not.toBeInTheDocument();
+        expect(loadUserProgression().coins).toBe(40);
+    });
+    it('enforces three slots and loses unused items without refunds when replacing a run', () => {
+        saveUserProgression({ ...initialUserProgression(), coins: 100 });
+        renderSetup(<App levels={[makeLevel()]} />);
+        for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole('button', { name: 'Bring Healing Potion for 20 coins' }));
+        expect(screen.getByRole('button', { name: 'Bring King’s Guard for 20 coins' })).toBeDisabled();
+        startRegular();
+        expect(loadUserProgression().coins).toBe(40);
+        fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
+        fireEvent.click(screen.getByRole('button', { name: 'New run' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Start new run' }));
+        expect(loadUserProgression().coins).toBe(40);
+        expect(screen.queryByRole('button', { name: 'Healing Potion, 3 remaining' })).not.toBeInTheDocument();
+    });
+    it('activates a boost, clears pending move confirmation, and shows actual points and duration', () => {
+        vi.useFakeTimers();
+        const level = makeLevel('boost-ui', 10, 3);
+        saveUserProgression({ ...initialUserProgression(), coins: 30 });
+        renderSetup(<App levels={[level]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
+        startRegular();
+        const choice = decision(level).choices[0]!;
+        const option = screen.getByRole('button', { name: name => name.startsWith('Option ') && name.includes(`: ${choice.playerMove.san},`) });
+        fireEvent.click(option);
+        fireEvent.click(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm use of Triple Crown' }));
+        expect(loadUserProgression().coins).toBe(0);
+        expect(screen.getByLabelText(/Triple Crown: 3 moves remaining/)).toBeInTheDocument();
+        fireEvent.click(option);
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+        fireEvent.click(option);
+        expect(screen.getByLabelText('Score: 300')).toBeInTheDocument();
+        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent('+300 points');
+        expect(screen.getByLabelText(/Triple Crown: 2 moves remaining/)).toBeInTheDocument();
+    });
+    it('announces prevented damage without reporting a health loss or ending the run', () => {
+        vi.useFakeTimers();
+        const level = makeLevel('shield-ui', 10, 3);
+        saveUserProgression({ ...initialUserProgression(), coins: 20 });
+        renderSetup(<App levels={[level]} rules={{ ...DEFAULT_RULES, startingHealth: 1 }} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Bring King’s Guard for 20 coins' }));
+        startRegular();
+        fireEvent.click(screen.getByRole('button', { name: 'King’s Guard, 1 remaining' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm use of King’s Guard' }));
+        act(() => { vi.advanceTimersByTime(1200); });
+        selectQuality(level, 'bad');
+        expect(screen.getByLabelText('Health: 1')).toBeInTheDocument();
+        const notice = screen.getByRole('status', { name: 'Prevented 2 damage' });
+        expect(notice).toHaveTextContent('Damage blocked');
+        expect(screen.queryByRole('status', { name: /Run over|−2 health/ })).not.toBeInTheDocument();
+        expect(loadUserProgression().coins).toBe(0);
+    });
+    it('resumes free daily item effects after remount without charging coins or replaying notices', () => {
+        const level = makeLevel('daily-supplies', 10, 3);
+        saveUserProgression({ ...initialUserProgression(), coins: 80 });
+        const view = render(<App levels={[level]} />);
+        openDaily();
+        expect(screen.getByText('Daily supplies')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm use of Triple Crown' }));
+        view.unmount();
+        render(<App levels={[level]} />);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' }));
+        expect(screen.getByLabelText(/Triple Crown: 3 moves remaining/)).toBeInTheDocument();
+        expect(screen.queryByRole('status', { name: /Triple Crown/ })).not.toBeInTheDocument();
+        expect(loadUserProgression().coins).toBe(80);
+    });
+    it('shows square cancel/confirm controls above an item and cancels without spending it', () => {
+        const level = makeLevel('confirmation', 10, 3);
+        saveUserProgression({ ...initialUserProgression(), coins: 20 });
+        renderSetup(<App levels={[level]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Bring Healing Potion for 20 coins' }));
+        startRegular();
+        const item = screen.getByRole('button', { name: 'Healing Potion, 1 remaining' });
+        const open = () => fireEvent.click(item);
+        open();
+        const confirm = screen.getByRole('button', { name: 'Confirm use of Healing Potion' });
+        expect(confirm).toHaveClass('item-confirm');
+        expect(confirm.closest('.item-slot')).toContainElement(item);
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel use of Healing Potion' }));
+        expect(screen.queryByRole('group', { name: 'Use Healing Potion?' })).not.toBeInTheDocument();
+        open();
+        fireEvent.pointerDown(screen.getByTestId('board'));
+        expect(screen.queryByRole('group', { name: 'Use Healing Potion?' })).not.toBeInTheDocument();
+        open();
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByRole('group', { name: 'Use Healing Potion?' })).not.toBeInTheDocument();
+        expect(item).toHaveAttribute('aria-label', 'Healing Potion, 1 remaining');
+        expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
+        open();
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm use of Healing Potion' }));
+        expect(screen.getByLabelText('Health: 4')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Healing Potion, 1 remaining' })).not.toBeInTheDocument();
+        expect(loadUserProgression().coins).toBe(0);
+    });
+});
 
 describe('main navigation', () => {
     it('offers four destinations, leaves regular setup unhighlighted, and hides navigation during gameplay', () => {
@@ -697,7 +810,7 @@ describe('daily rewards interface', () => {
         fireEvent.click(button);
         expect(loadUserProgression().coins).toBe(15);
         finishPayout();
-        expect(screen.getByRole('heading', { name: 'Run over' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Daily dungeon', level: 1 })).toBeInTheDocument();
         expect(screen.getByLabelText('Earned 15 coins')).toHaveTextContent('+15');
     });
 });
@@ -1519,7 +1632,7 @@ describe('gameplay interface', () => {
         expect(screen.getByRole('status')).not.toHaveTextContent('+1 HP');
     });
 
-    it('shows a persistent result and replays directly with the same set', () => {
+    it('shows a persistent result and returns to supplies before replaying with the same set', () => {
         vi.useFakeTimers();
         const level = makeLevel();
         renderSetup(<App levels={[level]} />);
@@ -1531,6 +1644,9 @@ describe('gameplay interface', () => {
         expect(within(result).getByRole('heading', { name: 'Run over' })).toHaveFocus();
         const wallet = loadUserProgression();
         fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
+        expect(screen.getByRole('heading', { name: 'Regular run' })).toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'Run supplies' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Start run' }));
         expect(screen.getByTestId('board')).toHaveAttribute('data-piece-set', 'obsidian');
         expect(screen.getByLabelText('Health: 2')).toBeInTheDocument();
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();

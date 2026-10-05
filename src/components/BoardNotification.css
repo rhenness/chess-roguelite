@@ -54,6 +54,11 @@
 .board-notification-badge.tone-health .board-notification-copy strong, .board-notification-badge.tone-danger .board-notification-copy strong { font-size: 36px; }
 .board-notification-copy > span { color: #7b827e; font-size: 11px; }
 .board-notification-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@container (max-width: 260px) {
+    .board-notification-badge { max-width: calc(100% - 20px); padding: 10px 12px; gap: 8px; }
+    .board-notification-visual { width: 26px; height: 26px; }
+    .board-notification-copy > span { font-size: 10px; }
+}
 .board-notification-layer.animation-death {
     background: radial-gradient(circle, rgba(15, 20, 18, 0.3), rgba(15, 20, 18, 0.6));
     animation: board-death-backdrop var(--notice-duration) ease both;

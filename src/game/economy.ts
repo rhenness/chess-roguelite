@@ -4,6 +4,7 @@ import { PIECE_SET_IDS, PIECE_SETS, type PieceSetId } from './pieceSets';
 import type { UserProgression } from './progression';
 import type { RunState } from './run';
 import { DAILY_COIN_MULTIPLIER } from './daily';
+import { isItemInventory, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemInventory } from './items';
 
 export const COIN_SCORE_STEP = 25;
 export const RUN_COMPLETION_COINS = 20;
@@ -25,7 +26,7 @@ export function normalRunCoinReward(run: RunState): number {
     if (run.phase !== 'finished' || !run.result) return 0;
     const completed = run.result === 'complete' && run.levelsCompleted === run.levels.length;
     return Math.min(Number.MAX_SAFE_INTEGER,
-        Math.floor(run.score / COIN_SCORE_STEP) + (completed ? RUN_COMPLETION_COINS : 0));
+        Math.floor(Math.max(0, run.score - run.itemBonusPoints) / COIN_SCORE_STEP) + (completed ? RUN_COMPLETION_COINS : 0));
 }
 
 export function applyPaidUpgrades(board: MultiplierBoard, counts: Partial<Record<Square, number>> = {}): MultiplierBoard {
@@ -40,6 +41,13 @@ export function runCoinReward(run: RunState): number {
 
 export const squareUpgradePrice = (counts: Partial<Record<Square, number>> | undefined, square: Square): number =>
     Math.min(Number.MAX_SAFE_INTEGER, SQUARE_UPGRADE_BASE_COST + (counts?.[square] ?? 0) * SQUARE_UPGRADE_COST_STEP);
+
+export function purchaseLoadout(profile: UserProgression, items: ItemInventory): UserProgression | null {
+    if (!isItemInventory(items) || itemCount(items) > LOADOUT_LIMIT) return null;
+    const cost = loadoutCost(items);
+    if (cost > profile.coins) return null;
+    return cost === 0 ? profile : { ...profile, coins: profile.coins - cost };
+}
 
 /** A wallet debit and its upgrade form one immutable, persistable transaction. */
 export function purchaseMultiplierUpgrade(profile: UserProgression, set: PieceSetId, square: Square, baseBoard: MultiplierBoard): {

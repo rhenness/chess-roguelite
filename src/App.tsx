@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { Chess, type Square } from 'chess.js';
 import { Chessboard, type ChessboardOptions } from 'react-chessboard';
-import { ArrowUp, Check, Clock3, Coins, DoorOpen, Flame, Heart, House, Sparkles, Trophy, Unlock, X } from 'lucide-react';
+import { ArrowUp, Check, Clock3, Coins, DoorOpen, Flame, Heart, House, Shield, Sparkles, Trophy, Unlock, X } from 'lucide-react';
 import type { GeneratedLevel, PlayerChoice } from './types/level';
 import { selectLevels } from './game/levels';
 import { BoardNotification, type BoardNotice } from './components/BoardNotification';
@@ -10,6 +10,8 @@ import { PieceSetPicker } from './components/PieceSetPicker';
 import { DailyDungeonPage } from './components/DailyDungeonPage';
 import { LeaderboardsPage } from './components/LeaderboardsPage';
 import { PrimaryNavigation } from './components/PrimaryNavigation';
+import { ItemIcon, ItemLoadout, RunItems } from './components/RunItems';
+import { activateItem, ITEMS, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemId, type ItemInventory } from './game/items';
 import { usePageNavigation } from './game/usePageNavigation';
 import { MultiplierUpgrades } from './components/MultiplierUpgrades';
 import { PlayerAvatar } from './components/PlayerAvatar';
@@ -116,7 +118,9 @@ function Feedback({ run }: { run: RunState }) {
     return <div className={`reveal-card quality-${choice.quality}`} role="status" aria-label="Move quality">
         <span className="reveal-kicker">{choice.playerMove.san}</span>
         <strong>{QUALITY_LABELS[choice.quality]}</strong>
-        <span>+{run.rules.points[choice.quality]} points</span>
+        <span>+{run.lastMoveResolution?.awardedPoints ?? run.rules.points[choice.quality]} points</span>
+        {run.lastMoveResolution && run.lastMoveResolution.awardedPoints !== run.lastMoveResolution.normalPoints
+            && <small>{run.lastMoveResolution.normalPoints} ×{run.lastMoveResolution.awardedPoints / run.lastMoveResolution.normalPoints} · Score boost</small>}
     </div>;
 }
 
@@ -169,7 +173,12 @@ function historyRows(run: RunState | null, level: GeneratedLevel | undefined) {
 
 export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES }: AppProps) {
     const pool = useMemo(() => selectLevels(levels), [levels]);
-    const [run, setRun] = useState<RunState | null>(null);
+    const [run, setRunState] = useState<RunState | null>(null);
+    const latestRun = useRef(run);
+    const setRun = useCallback((next: RunState | null) => { latestRun.current = next; setRunState(next); }, []);
+    const [selectedItems, setSelectedItemsState] = useState<ItemInventory>({});
+    const latestSelectedItems = useRef(selectedItems);
+    const setSelectedItems = useCallback((next: ItemInventory) => { latestSelectedItems.current = next; setSelectedItemsState(next); }, []);
     const daily = useDailyDungeon(pool);
     const { location, navigate, content } = usePageNavigation();
     const page = location.page;
@@ -192,14 +201,31 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const keyboardOption = useRef<number | null>(null);
     const [boardSelection, setBoardSelection] = useState<{ from: string; to: string | null } | null>(null);
     const [showRules, setShowRules] = useState(false);
-    const [boardNotice, setBoardNotice] = useState<BoardNotice | null>(null);
+    const [boardNotice, setBoardNoticeState] = useState<BoardNotice | null>(null);
+    const noticeRef = useRef<BoardNotice | null>(null);
+    const noticeQueue = useRef<BoardNotice[]>([]);
+    const setBoardNotice = useCallback((notice: BoardNotice | null) => {
+        noticeQueue.current = [];
+        noticeRef.current = notice;
+        setBoardNoticeState(notice);
+    }, []);
+    const enqueueNotice = useCallback((notice: BoardNotice) => {
+        if (noticeRef.current?.id === notice.id || noticeQueue.current.some(queued => queued.id === notice.id)) return;
+        if (noticeRef.current) noticeQueue.current.push(notice);
+        else { noticeRef.current = notice; setBoardNoticeState(notice); }
+    }, []);
     const dismissBoardNotice = useCallback(() => setBoardNotice(null), []);
     const waitingForCheckmate = run?.phase === 'level-ended'
-        && boardNotice?.id === `checkmate-${run.id}-${run.levelIndex}`;
-    const checkmatedFloor = waitingForCheckmate ? run : null;
+        && (boardNotice?.id === `checkmate-${run.id}-${run.levelIndex}`
+            || noticeQueue.current.some(notice => notice.id === `checkmate-${run.id}-${run.levelIndex}`));
     const completeBoardNotice = useCallback(() => {
-        setBoardNotice(checkmatedFloor ? createNextFloorNotice(checkmatedFloor) : null);
-    }, [checkmatedFloor]);
+        const current = latestRun.current;
+        if (current?.phase === 'level-ended' && noticeRef.current?.id === `checkmate-${current.id}-${current.levelIndex}`)
+            noticeQueue.current.push(createNextFloorNotice(current));
+        const next = noticeQueue.current.shift() ?? null;
+        noticeRef.current = next;
+        setBoardNoticeState(next);
+    }, []);
     const activeDaily = run?.daily ? daily.archive.days[run.daily.day]?.attempt : undefined;
     const paused = page !== 'game' || showProfile || showLeaderboard || !!upgradeSet || showRules;
     const payout = useBoardPayout(run, boardNotice !== null, pieceSet, paused,
@@ -340,18 +366,19 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     }
 
     function changeRun(next: RunState) {
-        if (!daily.update(next)) return;
+        if (!daily.update(next)) return false;
         setRun(next);
         if (next.outcomes.length > (run?.outcomes.length ?? 0) && next.node.kind === 'terminal'
             && next.node.reason === 'checkmate' && next.node.result === next.levels[next.levelIndex]!.playerColor) {
-            setBoardNotice({
+            enqueueNotice({
                 id: `checkmate-${next.id}-${next.levelIndex}`, visual: <Trophy strokeWidth={1.5} />,
                 label: 'Checkmate', announcement: 'Checkmate', tone: 'reward',
             });
         } else if (next.phase === 'level-ended' && run?.phase !== 'level-ended'
             && next.outcomes.at(-1)?.status === 'completed') {
-            setBoardNotice(createNextFloorNotice(next));
+            enqueueNotice(createNextFloorNotice(next));
         }
+        return true;
     }
 
     useEffect(() => {
@@ -369,8 +396,21 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         return () => window.clearTimeout(timer);
     }, [run, payout.sequence?.preview, paused, expirationActive, waitingForCheckmate]);
 
+    function bringItem(id: ItemId) {
+        const selected = latestSelectedItems.current;
+        if (itemCount(selected) >= LOADOUT_LIMIT || loadoutCost(selected) + ITEMS[id].price > progression.profile.coins) return;
+        setSelectedItems({ ...selected, [id]: (selected[id] ?? 0) + 1 });
+    }
+
     function beginRun(set: PieceSetId) {
         if (!pool.length || !isPieceSetUnlocked(set, progression.profile)) return;
+        const next = startRun(pool, set === 'default' ? rules : { ...rules, startingHealth: PIECE_SETS[set].startingHealth },
+            Math.random, latestSelectedItems.current);
+        if (!progression.buyLoadout(latestSelectedItems.current)) {
+            setProfileSaveMessage('Not enough coins for these items. Adjust your loadout.');
+            return;
+        }
+        setSelectedItems({});
         setPreview(null);
         setPendingChoice(null);
         setBoardSelection(null);
@@ -383,7 +423,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         regularRun.current = null;
         setRegularSelectedSet(set);
         navigate({ page: 'game' });
-        setRun(startRun(pool, set === 'default' ? rules : { ...rules, startingHealth: PIECE_SETS[set].startingHealth }));
+        setRun(next);
     }
 
     function openMenu() {
@@ -510,13 +550,40 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         setPreview(null);
         setPendingChoice(null);
         setBoardSelection(null);
-        const updated = chooseMove(run!, uci);
-        changeRun(updated);
-        if (updated !== run && updated.lastChoice && (!run?.daily || Date.now() < run.daily.expiresAt)) {
-            const healthChange = updated.lastHealthBonus - updated.rules.damage[updated.lastChoice.quality];
+        const previous = latestRun.current;
+        if (!previous) return;
+        const updated = chooseMove(previous, uci);
+        if (updated === previous || !changeRun(updated)) return;
+        if (updated.lastChoice && updated.lastMoveResolution) {
+            const resolution = updated.lastMoveResolution;
+            const healthChange = resolution.healthBonus - resolution.damageTaken;
             if (updated.result === 'defeat') setBoardNotice(createDeathNotice());
-            else if (healthChange !== 0) setBoardNotice(createHealthNotice(healthChange));
+            else if (resolution.shieldSpent) {
+                const caption = resolution.damagePrevented > 0 ? `Prevented ${resolution.damagePrevented} damage` : 'No damage to block';
+                enqueueNotice({ id: `shield-${updated.id}-${updated.decisionsMade}`, visual: <Shield />,
+                    label: resolution.damagePrevented > 0 ? 'Damage blocked' : 'Guard spent',
+                    caption: `${caption}${resolution.healthBonus ? ' · +1 health' : ''}`,
+                    announcement: `${caption}${resolution.healthBonus ? '. Gained 1 health' : ''}`, tone: 'reward', durationMs: 1200 });
+            } else if (healthChange !== 0) enqueueNotice(createHealthNotice(healthChange));
         }
+    }
+
+    function useRunItem(id: ItemId) {
+        const current = latestRun.current;
+        if (!playing || !current) return;
+        const next = activateItem(current, id);
+        if (next === current) return;
+        if (!changeRun(next)) return;
+        setPendingChoice(null);
+        setBoardSelection(null);
+        setPreview(null);
+        keyboardOption.current = null;
+        const item = ITEMS[id];
+        const caption = item.effect.kind === 'heal' ? '+1 health' : item.effect.kind === 'scoreMultiplier' ? '×3 points for 3 moves' : 'Next move protected';
+        enqueueNotice({ id: `item-${next.id}-${next.itemUses.length}`, visual: <ItemIcon id={id} />,
+            label: item.effect.kind === 'heal' ? '+1' : item.name,
+            caption: item.effect.kind === 'heal' ? item.name : caption,
+            announcement: `${item.name}. ${caption}`, tone: item.effect.kind === 'heal' ? 'health' : 'reward', durationMs: 1200 });
     }
 
     function selectSquare(square: string) {
@@ -612,7 +679,8 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const continueRun = continueDaily ? resumableDaily : resumableRegular?.run;
     const showNavigation = page !== 'game' || showingResult;
     const activeDestination = page === 'game' ? 'play' : page;
-    return <main className={`app-shell${page === 'play' ? ' main-menu-shell' : ''}${showNavigation ? ' has-navigation' : ''}`}
+    const hasRunItems = !!run && (itemCount(run.items) > 0 || run.activeEffects.length > 0);
+    return <main className={`app-shell${page === 'play' ? ' main-menu-shell' : ''}${showNavigation ? ' has-navigation' : ''}${hasRunItems ? ' has-run-items' : ''}`}
         onPointerDownCapture={() => { keyboardOption.current = null; }}>
         <header className={`topbar${page === 'play' ? ' main-menu-topbar' : ''}`}>
             {page !== 'play' && <a className={`brand${page === 'game' ? ' game-home' : ''}`} href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); if (!expirationActive) openMenu(); }}>
@@ -652,6 +720,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             <p>Start with {activeRules.startingHealth} health. Health and score carry across floors.</p>
             <p>{BEST_MOVE_STREAK_LENGTH} Best in a row: +1 HP.</p>
             <p>Every run ends with a square multiplier. Complete all 10 floors to permanently upgrade one square.</p>
+            <p>Buy up to 3 items when starting a run. Unused items are lost when it ends. Activate them before confirming a move. Only player moves spend charges; effects carry across floors. Shields still allow mistakes to break your streak. Boosts exclude checkmate bonus points and coin earnings.</p>
             <ul>{QUALITY_ORDER.map(quality => <li key={quality}><strong>{QUALITY_LABELS[quality]}</strong><span>+{activeRules.points[quality]} points / {activeRules.damage[quality]} health lost</span></li>)}</ul>
             <button className="primary-small" data-modal-focus autoFocus onClick={() => setShowRules(false)}>Got it</button>
         </Modal>}
@@ -664,8 +733,11 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             <header className="page-heading"><h1 id="regular-page-title" tabIndex={-1} data-page-focus>Regular run</h1></header>
             <PieceSetPicker showHeading={false} selectionOnly selectedSet={regularSelectedSet} onSelect={setRegularSelectedSet}
                 onUpgrade={openUpgrades} progression={progression.profile} defaultStartingHealth={rules.startingHealth} />
+            <ItemLoadout selected={selectedItems} coins={progression.profile.coins}
+                onChange={setSelectedItems} onBring={bringItem} />
             <div className="setup-actions">{resumableRegular && <button className="text-button" onClick={resumeRegular}>Resume regular run</button>}
-                <button className="primary-small" disabled={!pool.length} onClick={() => beginRun(regularSelectedSet)}>{resumableRegular ? 'Start new run' : 'Start run'}</button></div>
+                <button className="primary-small" disabled={!pool.length || loadoutCost(selectedItems) > progression.profile.coins} onClick={() => beginRun(regularSelectedSet)}>
+                    {resumableRegular ? 'Start new run' : 'Start run'}</button></div>
             {resumableRegular && <p className="setup-replacement">Starting a new run replaces your regular run.</p>}
         </section>}
         {page === 'daily' && dailyDungeon && <DailyDungeonPage key={dailyDungeon.day} dungeon={dailyDungeon} today={daily.today?.day ?? dailyDungeon.day} now={daily.now}
@@ -701,6 +773,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                     </div>
                     <span className="move-count" aria-label={`Score: ${displayScore}`}><span>Score</span><strong>{displayScore.toLocaleString()}</strong></span>
                 </div>
+                {run && hasRunItems && !showBonusBoard && <RunItems key={run.id} run={run} enabled={playing} onUse={useRunItem} />}
             </div>
             <aside className="play-panel">
                 <div className="options-area">
@@ -743,7 +816,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                 </section>
             </aside>
         </section>}
-        {showingResult && !run!.daily && <RunSummary run={run!} payout={payout.result!} restart={() => beginRun(pieceSet)} onChangeSet={() => navigate({ page: 'regular' })} />}
+        {showingResult && !run!.daily && <RunSummary run={run!} payout={payout.result!} restart={() => navigate({ page: 'regular' })} onChangeSet={() => navigate({ page: 'regular' })} />}
         {levelWarnings.length > 0 && <details className="catalog-warnings"><summary>{levelWarnings.length} floor file(s) could not be loaded</summary><ul>{levelWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
         </div>
         {profileSaveMessage && <p className="profile-save-toast" role="status">{profileSaveMessage}</p>}

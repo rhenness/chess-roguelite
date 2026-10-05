@@ -1,0 +1,51 @@
+.loadout { margin-top: 24px; padding: 20px; border: 1px solid #d9ddd7; border-radius: 10px; background: #fafbf9; }
+.loadout-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; }
+.loadout-total { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: #8b6425; font-size: 13px; }
+.loadout-list { display: grid; }
+.loadout-item { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 16px 0; border-bottom: 1px solid #e4e7e0; }
+.loadout-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 11px; color: #977022; background: #f4ebd5; }
+.loadout-icon.item-kings-guard { color: #477c9e; background: #e3edf4; }
+.loadout-icon.item-healing-potion { color: #a95843; background: #f5e5e0; }
+.loadout-copy { display: flex; flex-direction: column; gap: 6px; }
+.loadout-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.loadout-copy strong { font-size: 14px; }
+.loadout-copy p { color: #58645d; font-size: 12px; line-height: 1.5; }
+.loadout-controls { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.loadout-price { display: inline-flex; align-items: center; gap: 5px; color: #8b6425; font-size: 12px; font-weight: 600; }
+.loadout-quantity { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 12px; }
+.loadout-quantity button { display: grid; place-items: center; min-width: 36px; min-height: 36px; padding: 6px; border: 1px solid #d9ddd7; border-radius: 7px; background: #eef2ea; color: #234b40; }
+.loadout-quantity button:hover:enabled { background: #dfe8dc; }
+.loadout-quantity > span { min-width: 16px; text-align: center; font-variant-numeric: tabular-nums; }
+.loadout-note { color: #687569; font-size: 11px; }
+.run-items { position: relative; margin-top: 12px; color: #58645d; }
+.item-bar, .active-effects { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.item-button, .effect-badge { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 8px 10px; border: 1px solid #d9ddd7; border-radius: 8px; color: #234b40; background: #fafbf9; font-size: 12px; }
+.item-button.selected { border-color: #977022; background: #f4ebd5; }
+.item-slot { position: relative; display: flex; }
+.item-confirmation { position: absolute; z-index: 12; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); display: flex; gap: 8px; padding: 6px; border: 1px solid #d9ddd7; border-radius: 9px; background: #fafbf9; box-shadow: 0 4px 16px #17201d22; }
+.item-confirmation button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid transparent; border-radius: 6px; color: #fff; }
+.item-cancel { background: #a95843; }
+.item-cancel:hover { background: #8d4432; }
+.item-confirm { background: #2f8a5c; }
+.item-confirm:hover { background: #216b44; }
+.effect-badge { background: #f4ebd5; border-color: #d8bc7a; color: #70501c; }
+.daily-supplies { display: flex; flex-direction: column; gap: 6px; margin: 16px 0; padding: 14px; border: 1px solid #d9ddd7; border-radius: 8px; font-size: 12px; background: #fafbf9; }
+.daily-supplies span { color: #58645d; }
+.loadout button:disabled, .item-button:disabled { opacity: .5; cursor: default; }
+@media (max-width: 650px) {
+    .loadout { padding: 16px; }
+    .loadout-item { grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; }
+    .loadout-icon { width: 36px; height: 36px; }
+    .loadout-copy strong { font-size: 12px; }
+    .loadout-copy p { font-size: 11px; }
+    .loadout-quantity { justify-content: flex-start; }
+}
+@media (max-width: 900px) {
+    .app-shell.has-run-items { --board-footer-height: 144px; }
+    .item-bar { flex-wrap: nowrap; }
+    .item-slot { flex: 1; min-width: 0; }
+    .item-button { flex: 1; justify-content: center; min-width: 0; }
+    .item-button > span { display: none; }
+    .active-effects { flex-wrap: nowrap; }
+    .effect-badge { font-size: 11px; padding: 6px; min-height: 36px; }
+}
