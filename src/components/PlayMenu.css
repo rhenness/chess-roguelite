@@ -25,12 +25,27 @@
 .main-menu .daily-reward-badge { color: #e5c782; }
 .menu-daily-meta > span { display: inline-flex; align-items: center; gap: 5px; }
 .main-menu .empty-state { margin: 0; color: #e9e3d4; font-size: 12px; text-align: center; }
+@media (max-width: 900px) {
+    .play-page.main-menu { gap: 16px; padding: 16px 12px 32px; }
+    .menu-actions { gap: 8px; }
+    .menu-action { min-height: 68px; padding: 12px 16px; }
+    .menu-action strong { font-size: 16px; }
+    .menu-daily-content { gap: 6px; }
+    .menu-daily-meta { gap: 6px 10px; font-size: 11px; }
+}
 @media (max-width: 900px) and (orientation: portrait) {
     .main-menu-shell { --menu-scene: url('/main-menu-chess-hall-mobile.jpg'); }
 }
+@media (max-width: 900px) and (max-height: 650px) and (orientation: portrait) {
+    .play-page.main-menu { gap: 12px; padding-top: 8px; padding-bottom: 24px; }
+    .menu-identity { gap: 8px; }
+    .menu-identity img { width: 48px; height: 54px; }
+    .menu-identity #play-title { font-size: 36px; }
+    .menu-subtitle { font-size: 14px; }
+}
 @media (max-width: 380px) {
     .menu-action { padding-inline: 14px; gap: 10px; }
-    .menu-daily-meta { gap: 8px 10px; }
+    .menu-daily-meta { gap: 6px 10px; }
 }
 @media (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
     .play-page.main-menu { flex-direction: row; max-width: 720px; gap: 32px; padding-block: 16px; }
@@ -38,6 +53,6 @@
     .menu-identity #play-title { font-size: 36px; }
     .menu-actions { flex: 1.4; width: auto; }
     .menu-regular { min-height: 56px; }
-    .menu-daily { min-height: 88px; }
+    .menu-daily { min-height: 68px; }
     .menu-action { padding: 12px 16px; }
 }
