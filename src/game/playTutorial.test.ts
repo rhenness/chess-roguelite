@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeLevel } from '../test/levels';
-import { advancePlayback, chooseMove, DEFAULT_RULES, startRun } from './run';
+import { advancePlayback, chooseMove, startRun } from './run';
+import { activateItem } from './items';
 import { advancePlayTutorial, beginPlayTutorial, finishPlayTutorial, initialPlayTutorial, loadPlayTutorial,
     observePlayTutorial, PLAY_TUTORIAL_STORAGE_KEY, savePlayTutorial } from './playTutorial';
 
@@ -23,7 +24,7 @@ describe('play tutorial progress', () => {
     });
 
     it('persists the associated run, current step, and action counts across refresh', () => {
-        const state = { ...beginPlayTutorial(startRun([makeLevel()])), step: 'feedback' as const };
+        const state = { ...beginPlayTutorial(startRun([makeLevel()])), step: 'item' as const };
         savePlayTutorial(state);
         expect(loadPlayTutorial()).toEqual(state);
         savePlayTutorial(finishPlayTutorial(state));
@@ -55,6 +56,36 @@ describe('play tutorial progress', () => {
         expect(observePlayTutorial(restored, { ...run, phase: 'checkpoint' })).toBe(restored);
         expect(observePlayTutorial(restored, run)).toBe(restored);
         expect(observePlayTutorial(restored, { ...run, items: { 'healing-potion': 1 } })).toBe(restored);
+    });
+
+    it('teaches the starting item after rounds and completes the guide after real activation', () => {
+        const run = startRun([makeLevel('item-after-rounds', 10, 2)], undefined, Math.random, { 'healing-potion': 1 });
+        const piece = advancePlayTutorial(beginPlayTutorial(run), run);
+        expect(piece.step).toBe('piece');
+        const played = chooseMove(run, run.node.kind === 'decision' ? run.node.choices[0]!.playerMove.uci : '');
+        let explanation = observePlayTutorial(piece, played);
+        for (const step of ['feedback', 'health', 'healing']) {
+            expect(explanation.step).toBe(step);
+            explanation = advancePlayTutorial(explanation, played);
+        }
+        expect(explanation.step).toBe('carryover');
+        const waiting = advancePlayTutorial(explanation, played);
+        expect(waiting.step).toBe('waiting-item');
+        const playable = advancePlayback(advancePlayback(played));
+        const lesson = observePlayTutorial(waiting, playable);
+        expect(lesson.step).toBe('item');
+        expect(observePlayTutorial(lesson, playable)).toBe(lesson);
+        const used = activateItem(playable, 'healing-potion');
+        const ready = observePlayTutorial(lesson, used);
+        expect(ready.step).toBe('ready');
+        expect(used.health).toBe(playable.health + 1);
+        expect(used.decisionsMade).toBe(1);
+        expect(used.score).toBe(playable.score);
+        savePlayTutorial(ready);
+        expect(loadPlayTutorial()).toEqual(ready);
+        expect(advancePlayTutorial(ready, used).status).toBe('done');
+        expect(advancePlayTutorial(lesson, playable).status).toBe('done');
+        expect(run.items).toEqual({ 'healing-potion': 1 });
     });
 
     it('ignores another run and a dungeon while the guided regular run is paused', () => {

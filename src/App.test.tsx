@@ -14,7 +14,6 @@ import { PIECE_RENDERERS } from './components/pieces/pieceRenderers';
 import App from './App';
 import { HELP_WELCOME_STORAGE_KEY } from './components/HelpWelcome';
 import { finishPlayTutorial, initialPlayTutorial, PLAY_TUTORIAL_STORAGE_KEY, savePlayTutorial } from './game/playTutorial';
-import { finishItemTutorial, initialItemTutorial, ITEM_TUTORIAL_STORAGE_KEY, saveItemTutorial } from './game/itemTutorial';
 import { initialPlayerProfile, loadPlayerProfile, PLAYER_PROFILE_STORAGE_KEY } from './game/playerProfile';
 import { loadRunHistory, RUN_HISTORY_STORAGE_KEY, saveRunHistory, type RunRecord } from './game/runHistory';
 import { ENDLESS_STORAGE_KEY, saveState } from './features/endless/storage';
@@ -42,7 +41,6 @@ vi.mock('react-chessboard', async () => ({
 afterEach(() => { vi.useRealTimers(); window.localStorage.removeItem(PROGRESSION_STORAGE_KEY); });
 beforeEach(() => {
     savePlayTutorial(finishPlayTutorial(initialPlayTutorial()));
-    saveItemTutorial(finishItemTutorial(initialItemTutorial()));
     window.history.replaceState(null, '', '#/play');
     window.localStorage.removeItem(HELP_WELCOME_STORAGE_KEY);
     window.localStorage.removeItem(DAILY_STORAGE_KEY);
@@ -141,16 +139,24 @@ function openProfileEditor() {
 describe('first play tutorial', () => {
     function newPlayer() {
         window.localStorage.removeItem(PLAY_TUTORIAL_STORAGE_KEY);
-        window.localStorage.removeItem(ITEM_TUTORIAL_STORAGE_KEY);
         saveUserProgression(initialUserProgression());
     }
-    function continueLessons() {
+    function beginMoveLesson() {
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    }
+    function continueLessons(keepItem = true) {
         for (const title of ['Read your move', 'Keep an eye on your hearts', 'Build a Best streak']) {
             expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
             fireEvent.click(screen.getByRole('button', { name: 'Next' }));
         }
         expect(screen.getByRole('heading', { name: 'Keep going between rounds' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Continue playing' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        if (keepItem) {
+            finishPlayback();
+            if (screen.queryByRole('heading', { name: 'Try your item' })) {
+                fireEvent.click(screen.getByRole('button', { name: 'Keep for later' }));
+            }
+        }
     }
     function finishPlayback() {
         act(() => { vi.advanceTimersByTime(1400); });
@@ -235,7 +241,7 @@ describe('first play tutorial', () => {
         expect(screen.queryByLabelText('Available moves')).not.toBeInTheDocument();
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
         expect(screen.queryByText(/multiplier/i)).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        beginMoveLesson();
         expect(screen.getByRole('heading', { name: 'Choose a move' })).toBeInTheDocument();
         expect(screen.getByText(/You can also use the board:/)).toBeInTheDocument();
         expect(screen.getByRole('group', { name: 'Available moves' }).querySelector('.tutorial-target')).toHaveAttribute('data-move', decision(level).choices.find(choice => choice.quality === 'best')!.playerMove.uci);
@@ -257,7 +263,7 @@ describe('first play tutorial', () => {
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', move.fenAfterPlayerMove);
     });
 
-    it.each([0, 1])('guides checkpoint item activation with %i prior finished runs, then gets out of the way', finishedRuns => {
+    it.each([0, 1])('keeps checkpoint choices free of tutorial prompts with %i prior finished runs', finishedRuns => {
         vi.useFakeTimers();
         newPlayer();
         if (finishedRuns) {
@@ -266,28 +272,17 @@ describe('first play tutorial', () => {
         }
         const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`tutorial-${index}`, index));
         renderGame(<App levels={levels} />);
-        if (!finishedRuns) fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        if (!finishedRuns) beginMoveLesson();
         selectQuality(levels[0]!, 'best');
         if (!finishedRuns) continueLessons();
-        expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
         finishPlayback();
         for (let index = 1; index < 3; index++) { selectQuality(levels[index]!, 'best'); finishPlayback(); }
         expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
-        expect(screen.queryByRole('heading', { name: 'Pick a free item' })).not.toBeInTheDocument();
         const offers = screen.getByRole('group', { name: 'Checkpoint items' });
-        const saved = JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).checkpoint;
-        const id = saved.checkpointRewards[0].offers[0] as keyof typeof ITEMS;
         fireEvent.click(within(offers).getAllByRole('button')[0]!);
-        expect(screen.getByRole('heading', { name: 'Try your item' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: `${ITEMS[id].name}, 1 remaining` }));
-        fireEvent.click(screen.getByRole('button', { name: `Confirm use of ${ITEMS[id].name}` }));
-        expect(screen.getByRole('heading', { name: 'You’re ready' })).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: `${ITEMS[id].name}, 1 remaining` })).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Continue playing' }));
-        expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
         expect(screen.getByLabelText('Available moves')).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Try your item' })).not.toBeInTheDocument();
         expect(JSON.parse(window.localStorage.getItem(PLAY_TUTORIAL_STORAGE_KEY)!).status).toBe('done');
-        expect(JSON.parse(window.localStorage.getItem(ITEM_TUTORIAL_STORAGE_KEY)!).status).toBe('done');
     });
 
     it('resumes guidance after refresh, permits skipping, and leaves the multiplier presentation unchanged', () => {
@@ -295,7 +290,7 @@ describe('first play tutorial', () => {
         newPlayer();
         const level = makeLevel('tutorial-resume', 10, 1);
         let view = renderGame(<App levels={[level]} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        beginMoveLesson();
         const move = selectQuality(level, 'good');
         view.unmount();
         view = render(<App levels={[level]} />);
@@ -311,71 +306,63 @@ describe('first play tutorial', () => {
         expect(screen.queryByRole('heading', { name: 'Your first run' })).not.toBeInTheDocument();
     });
 
-    it('teaches purchased items in the second run after finishing the first without reaching a checkpoint', () => {
+    it('teaches the free potion after explaining rounds, then resumes without giving or using it twice', () => {
         vi.useFakeTimers();
         newPlayer();
-        const level = makeLevel('late-item-guide');
+        const level = makeLevel('starting-tutorial-item', 10, 2);
         let view = renderGame(<App levels={[level]} />);
+        const saved = JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!);
+        expect(saved.initialItems).toEqual({ 'healing-potion': 1 });
+        expect(loadUserProgression().coins).toBe(0);
         fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-        selectQuality(level, 'best');
-        continueLessons();
-        finishPlayback();
-        finishPayout();
-        expect(loadUserProgression().finishedRuns).toBe(1);
+        expect(screen.getByRole('heading', { name: 'Choose a move' })).toBeInTheDocument();
         expect(screen.queryByRole('heading', { name: 'Try your item' })).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
-        openRegularItems();
-        fireEvent.click(screen.getByRole('button', { name: 'Bring Healing Potion for 20 coins' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Start run' }));
+        selectQuality(level, 'best');
+        expect(screen.getByRole('heading', { name: 'Read your move' })).toBeInTheDocument();
+        continueLessons(false);
+        finishPlayback();
         expect(screen.getByRole('heading', { name: 'Try your item' })).toBeInTheDocument();
-        expect(screen.queryByRole('heading', { name: 'Your first run' })).not.toBeInTheDocument();
-        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
-        view.unmount();
-        view = render(<App levels={[level]} />);
-        resumeRegularFromHome();
-        expect(screen.getByRole('heading', { name: 'Try your item' })).toBeInTheDocument();
+        expect(screen.queryByLabelText('Available moves')).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
+        const best = decision(level).choices.find(choice => choice.quality === 'best')!;
+        for (const square of [best.playerMove.uci.slice(0, 2), best.playerMove.uci.slice(2, 4)]) {
+            fireEvent.click(screen.getByRole('button', { name: `Square ${square}` }));
+        }
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).checkpoint.moves).toHaveLength(1);
+        fireEvent.click(screen.getByRole('button', { name: 'Healing Potion, 1 remaining' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel use of Healing Potion' }));
+        expect(screen.getByRole('button', { name: 'Healing Potion, 1 remaining' })).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Healing Potion, 1 remaining' }));
         fireEvent.click(screen.getByRole('button', { name: 'Confirm use of Healing Potion' }));
         expect(screen.getByRole('heading', { name: 'You’re ready' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Continue playing' }));
-        expect(JSON.parse(window.localStorage.getItem(ITEM_TUTORIAL_STORAGE_KEY)!).status).toBe('done');
-        expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
-    });
-
-    it('teaches dungeon inventory once even after the basic guide is finished', () => {
-        window.localStorage.removeItem(ITEM_TUTORIAL_STORAGE_KEY);
-        const level = makeLevel('dungeon-item-guide', 10, 2);
-        let view = render(<App levels={[level]} />);
-        openDaily();
-        expect(screen.queryByRole('heading', { name: 'Try your item' })).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
-        expect(screen.getByRole('heading', { name: 'Try your item' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Keep for later' }));
-        expect(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Health: 4')).toBeInTheDocument();
+        expect(screen.getByLabelText('Score: 100')).toBeInTheDocument();
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).checkpoint.itemUses).toHaveLength(1);
         view.unmount();
         view = render(<App levels={[level]} />);
-        openDaily();
-        fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' }));
-        expect(screen.queryByRole('heading', { name: 'Try your item' })).not.toBeInTheDocument();
-        expect(JSON.parse(window.localStorage.getItem(ITEM_TUTORIAL_STORAGE_KEY)!).status).toBe('done');
+        resumeRegularFromHome();
+        expect(screen.getByRole('heading', { name: 'You’re ready' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Health: 4')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Healing Potion, 1 remaining' })).not.toBeInTheDocument();
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).id).toBe(saved.id);
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).checkpoint.itemUses).toHaveLength(1);
+        fireEvent.click(screen.getByRole('button', { name: 'Continue playing' }));
+        expect(screen.getByLabelText('Available moves')).toBeInTheDocument();
+        expect(JSON.parse(window.localStorage.getItem(PLAY_TUTORIAL_STORAGE_KEY)!).status).toBe('done');
+        expect(loadUserProgression().coins).toBe(0);
     });
 
-    it('can dismiss the item lesson without spending an item and remembers that choice in later runs', () => {
-        window.localStorage.removeItem(ITEM_TUTORIAL_STORAGE_KEY);
+    it('leaves normal purchased loadouts unchanged and does not show a separate item guide', () => {
         saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 70 });
-        renderSetup(<App levels={[makeLevel('skip-item-guide', 10, 2)]} />);
-        openRegularItems();
-        fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
-        startRegular();
-        expect(screen.getByRole('heading', { name: 'Try your item' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Skip tutorial' }));
-        expect(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' })).toBeInTheDocument();
-        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).checkpoint.itemUses).toHaveLength(0);
+        renderSetup(<App levels={[makeLevel('normal-items', 10, 2)]} />);
         openRegularItems();
         fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
         startRegular();
         expect(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' })).toBeInTheDocument();
-        expect(screen.queryByRole('heading', { name: 'Try your item' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Healing Potion, 1 remaining' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
+        expect(loadUserProgression().coins).toBe(40);
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).initialItems).toEqual({ 'triple-crown': 1 });
     });
 
     it('replays from Help on the current run without spending coins, replacing the run, or making a move', () => {
@@ -393,7 +380,7 @@ describe('first play tutorial', () => {
         expect(screen.getByRole('heading', { name: 'Read your move' })).toBeInTheDocument();
     });
 
-    it('keeps the basic guide paused while independently teaching dungeon items', () => {
+    it('keeps the regular guide paused during dungeon play', () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
         const level = makeLevel('tutorial-daily', 10, 2);
@@ -405,8 +392,7 @@ describe('first play tutorial', () => {
         openDaily();
         fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
         expect(screen.queryByRole('heading', { name: 'Choose a move' })).not.toBeInTheDocument();
-        expect(screen.getByRole('heading', { name: 'Try your item' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Keep for later' }));
+        expect(screen.queryByRole('button', { name: 'Skip tutorial' })).not.toBeInTheDocument();
         selectQuality(level, 'best');
         expect(JSON.parse(window.localStorage.getItem(PLAY_TUTORIAL_STORAGE_KEY)!).step).toBe('piece');
         resumeRegularFromHome();
@@ -423,7 +409,7 @@ describe('first play tutorial', () => {
         expect(screen.queryByRole('region', { name: 'Run supplies' })).not.toBeInTheDocument();
         expect(loadUserProgression().coins).toBe(0);
         const saved = JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!);
-        expect(saved.initialItems).toEqual({});
+        expect(saved.initialItems).toEqual({ 'healing-potion': 1 });
         const id = saved.id;
         fireEvent.click(screen.getByRole('button', { name: 'Skip tutorial' }));
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
@@ -437,7 +423,7 @@ describe('first play tutorial', () => {
         newPlayer();
         const level = makeLevel('option-guide', 10, 2);
         renderGame(<App levels={[level]} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        beginMoveLesson();
         const bestMove = decision(level).choices.find(choice => choice.quality === 'best')!;
         const option = screen.getByRole('button', { name: name => name.startsWith('Option ') && name.includes(`: ${bestMove.playerMove.san},`) });
         expect(option).toHaveClass('tutorial-target');

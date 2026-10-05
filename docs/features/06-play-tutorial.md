@@ -6,8 +6,9 @@ existing run. The first regular run starts the play guide. Existing players use
 the usual setup. Skip tutorial is available on
 every visible prompt and is remembered. Help offers Replay play tutorial during
 an unfinished regular run, using the current position and inventory. Help on
-Home or regular setup offers Start guided run with the Default set and no item
-purchases. The basic play guide appears only in regular runs.
+Home or regular setup offers Start guided run with the Default set and a free
+Healing Potion. Guided runs charge no coins. The guide appears only in regular
+runs; ordinary runs keep their purchased loadouts.
 
 ## Lessons and actions
 
@@ -20,21 +21,18 @@ purchases. The basic play guide appears only in regular runs.
    points and applied damage. The player advances the explanation with Next.
 5. A labeled heart animation demonstrates Inaccuracy damage independently of
    real health, score, inventory, and move history. Reduced motion is respected.
-6. Prompts explain the four-Best healing streak and carryover between rounds.
-7. The basic guide finishes after carryover. A separate item lesson appears the
-   first time inventory is nonempty during playable regular or dungeon gameplay.
-   This includes purchased starting supplies, dungeon supplies, and checkpoint
-   rewards in any later run. It explains the green check and red X controls.
-   Reward selection itself has no tutorial overlay.
-8. Activating an item finishes the hands-on lesson. Keep for later also permits
-   finishing without using supplies.
+6. Prompts explain the four-Best healing streak, rounds, and checkpoint markers.
+7. After explaining rounds, the player learns the item bar's green check and red
+   X controls using their free Healing Potion at the next playable decision.
+   Activation restores one real heart; Keep for later leaves the potion unused.
+   This finishes the guide. Reward selection has no tutorial overlay.
 
 Next advances explanations. Gameplay actions use the normal move, checkpoint,
-and item functions. Informational lessons hold playback and move input; action
-lessons leave their controls usable. Defeat or a short run can finish the guide
-without waiting for a checkpoint. Finishing or skipping the basic guide leaves
-the item lesson pending until items are available. The multiplier presentation
-is unchanged.
+and item functions. Informational lessons hold playback and move input. The
+item lesson enables item controls while holding move input. It waits for the
+first move's playback to finish before appearing. Defeat or
+a short run can finish the guide without waiting for a checkpoint. The
+multiplier presentation is unchanged.
 
 ## Presentation and persistence
 
@@ -47,23 +45,19 @@ retargets the green activation check when item confirmation opens.
 Move selection and confirmation prompts sit outside the entire row of options,
 while the gold pointer and highlight still identify the individual move square.
 
-`knightfall.play-tutorial.v1` stores the basic guide's status, run ID, lesson, and
-initial decision count separately from the replayable run.
-`knightfall.item-tutorial.v1` independently stores the item lesson's status, run
-ID, step, and item-use baseline. Using an item advances its feedback; Keep for
-later or Skip tutorial dismisses it without spending anything. Completion and
-dismissal are remembered across runs. Replay from Help resets both guides.
-Refresh restores
-guidance without making moves or spending items. Destination selection is UI
-state, so refreshing that step asks for a move again. Older saved checkpoint
-lessons retire the basic guide while leaving item guidance pending; existing
-item lessons retain their progress and dismissals. Unavailable storage
-keeps tutorial state in memory for the session. Skipping the guide affects only
-guidance, and replaying it retains the current run and wallet.
+`knightfall.play-tutorial.v1` stores status, run ID, lesson, initial decision
+count, and item-use baseline for the entire guide. Item guidance has no separate
+tracking. The free potion is saved in the regular run's starting inventory, so
+refresh and resume neither grant it again nor repeat its activation.
+Destination selection is UI state, so refreshing that step asks for a move
+again. Old checkpoint waits retire without replaying completed play lessons.
+Unavailable storage keeps tutorial state in memory for the session. Skipping
+affects only guidance. Replay from Help retains the current run and wallet,
+teaching its existing items after the rounds explanation if available.
 
 Checks cover real actions, explanatory playback holds, isolated demonstrations,
-checkpoint rewards in later runs, purchased second-run items, dungeon inventory,
-skipping, refresh, replay, unavailable storage, and
+free starting inventory, real activation after the rounds explanation, unchanged purchased
+loadouts, skipping, refresh, replay, unavailable storage, and
 keeping the regular guide paused during dungeon play. Browser checks verify
 tooltip fit, reachable board and item controls, centered introduction, visible
 highlights, and unchanged board bounds on desktop, phone, and landscape layouts.

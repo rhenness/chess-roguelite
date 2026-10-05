@@ -155,17 +155,16 @@ See [development phases and rules](docs/features/04-daily-dungeon-profile.md).
 ### Regular runs
 
 The main menu sends new players straight into a Default regular run. They
-receive a centered introduction followed
-by tooltips pointing out move controls, feedback, hearts, healing streaks, floor
-progress. A separate item lesson appears the first time inventory is available
-during regular or dungeon gameplay, including purchases in a later run. The guide
+receive a free Healing Potion and a centered introduction. Tooltips explain move
+controls, feedback, hearts, healing streaks, and rounds, followed by item usage.
+The guide
 highlights the Best move's colored option and explains board controls too.
 Players perform the real
 actions; Next advances explanations. The damage example does not affect health.
 Prompts and highlights float above the page without moving the board. Guidance
 can be skipped, resumed after refresh, or replayed from Help on the current run.
-Help on Home or regular setup also offers a Default guided run without item
-purchases. See [the tutorial rules](docs/features/06-play-tutorial.md).
+Help on Home or regular setup also offers a Default guided run with the same
+free potion and no coin charge. See [the tutorial rules](docs/features/06-play-tutorial.md).
 
 ```powershell
 npm start

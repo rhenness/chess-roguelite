@@ -2,7 +2,7 @@ import type { RunState } from './run';
 
 export const PLAY_TUTORIAL_STORAGE_KEY = 'knightfall.play-tutorial.v1';
 export const PLAY_TUTORIAL_STEPS = ['welcome', 'piece', 'destination', 'feedback', 'health', 'healing',
-    'carryover', 'waiting-checkpoint', 'item', 'ready'] as const;
+    'carryover', 'waiting-checkpoint', 'waiting-item', 'item', 'ready'] as const;
 export type PlayTutorialStep = typeof PLAY_TUTORIAL_STEPS[number];
 export interface PlayTutorialState {
     version: 1;
@@ -20,9 +20,9 @@ export const initialPlayTutorial = (): PlayTutorialState => ({
 export function loadPlayTutorial(): PlayTutorialState {
     try {
         const stored = JSON.parse(window.localStorage.getItem(PLAY_TUTORIAL_STORAGE_KEY) ?? 'null');
-        // Item guidance has its own progress; these players have finished the basic play lessons.
+        // Retire the old checkpoint wait; guided runs now provide their own starting item.
         const value = (stored?.version === 1 && ['unseen', 'active', 'done'].includes(stored.status)
-            && ['checkpoint', 'waiting-checkpoint', 'item', 'ready'].includes(stored.step)
+            && ['checkpoint', 'waiting-checkpoint'].includes(stored.step)
             ? { ...stored, status: 'done', step: 'carryover' } : stored) as PlayTutorialState | null;
         if (value?.version === 1 && ['unseen', 'active', 'done'].includes(value.status)
             && (value.runId === null || typeof value.runId === 'string')
@@ -54,7 +54,7 @@ export function beginPlayTutorial(run: RunState): PlayTutorialState {
 export const finishPlayTutorial = (state: PlayTutorialState): PlayTutorialState => ({ ...state, status: 'done' });
 
 export const tutorialPausesPlay = (step: PlayTutorialStep): boolean =>
-    ['welcome', 'feedback', 'health', 'healing', 'carryover'].includes(step);
+    ['welcome', 'feedback', 'health', 'healing', 'carryover', 'ready'].includes(step);
 
 /** Observe real actions; tutorial explanations never change run totals or inventory. */
 export function observePlayTutorial(state: PlayTutorialState, run: RunState | null): PlayTutorialState {
@@ -62,9 +62,15 @@ export function observePlayTutorial(state: PlayTutorialState, run: RunState | nu
     if ((state.step === 'piece' || state.step === 'destination') && run.decisionsMade > state.startingDecision) {
         return { ...state, step: 'feedback' };
     }
-    if ((run.phase === 'finished' || run.phase === 'checkpoint') && ['piece', 'destination'].includes(state.step)) {
+    if (run.phase === 'finished' && ['piece', 'destination', 'waiting-item', 'item', 'ready'].includes(state.step)) {
         return finishPlayTutorial(state);
     }
+    if (run.phase === 'checkpoint' && ['piece', 'destination'].includes(state.step)) return finishPlayTutorial(state);
+    if (state.step === 'waiting-item' && run.phase === 'decision') {
+        return Object.values(run.items).some(count => (count ?? 0) > 0)
+            ? { ...state, step: 'item', itemUsesAtPrompt: run.itemUses.length } : finishPlayTutorial(state);
+    }
+    if (state.step === 'item' && run.itemUses.length > state.itemUsesAtPrompt) return { ...state, step: 'ready' };
     return state;
 }
 
@@ -75,6 +81,13 @@ export function advancePlayTutorial(state: PlayTutorialState, run: RunState | nu
     };
     const step = next[state.step];
     if (step) return { ...state, step };
-    if (state.step === 'carryover') return finishPlayTutorial(state);
+    if (state.step === 'carryover') {
+        if (run.phase === 'finished' || !Object.values(run.items).some(count => (count ?? 0) > 0)) return finishPlayTutorial(state);
+        return { ...state, step: run.phase === 'decision' ? 'item' : 'waiting-item', itemUsesAtPrompt: run.itemUses.length };
+    }
+    if (state.step === 'item' || state.step === 'ready') {
+        return run.phase === 'decision' && run.decisionsMade === state.startingDecision
+            ? { ...state, step: 'piece' } : finishPlayTutorial(state);
+    }
     return state;
 }

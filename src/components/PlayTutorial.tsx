@@ -38,7 +38,7 @@ export function PlayTutorial({ step, run, selectedFrom, targetSquare, targetMove
             welcome: '.board-wrap', piece: `.move-option[data-move="${targetMove}"]`,
             destination: pendingMove ? '.move-option.pending' : `[data-square="${targetSquare}"], [aria-label="Square ${targetSquare}"]`,
             feedback: '.reveal-card', health: '.health-count', healing: '.health-stats', carryover: '.level-progress',
-            'waiting-checkpoint': '.level-progress', item: '.item-confirmation .item-confirm, .run-items', ready: '.active-effects, .health-count',
+            'waiting-checkpoint': '.level-progress', 'waiting-item': '.run-items', item: '.item-confirmation .item-confirm, .run-items', ready: '.active-effects, .health-count',
         };
         const findTarget = () => selectors[step].split(', ').map(selector => document.querySelector<HTMLElement>(`#game ${selector}`)).find(Boolean)
             ?? document.querySelector<HTMLElement>('#game .board-wrap');
@@ -127,8 +127,9 @@ export function PlayTutorial({ step, run, selectedFrom, targetSquare, targetMove
         healing: { title: 'Build a Best streak', text: `${BEST_MOVE_STREAK_LENGTH} consecutive Best moves restore one heart. A different move quality resets the streak. The flame beside your hearts tracks your progress.` },
         carryover: { title: 'Keep going between rounds', text: 'Hearts, score, items, and active effects carry into the next round. The bars under the board track your progress; the dots mark rewards after rounds 3 and 6.' },
         'waiting-checkpoint': { title: '', text: '' },
+        'waiting-item': { title: '', text: '' },
         item: { title: 'Try your item', text: 'Tap an item below the board, then tap its green check to activate it before your move. The red X cancels. You can also save it for later.' },
-        ready: { title: 'You’re ready', text: `Your item has been used. Keep choosing moves, watch your hearts, and use your supplies when they help.${run.daily ? '' : ' You can replay this guide from Help.'}` },
+        ready: { title: 'You’re ready', text: 'Your item has been used. Keep choosing moves, watch your hearts, and use your supplies when they help.' },
     };
     return createPortal(<>{step !== 'welcome' && position && position.targetWidth > 0 && position.targetHeight > 0
         && <div className="tutorial-highlight" aria-hidden="true" style={{ top: position.targetTop, left: position.targetLeft,
@@ -144,7 +145,7 @@ export function PlayTutorial({ step, run, selectedFrom, targetSquare, targetMove
         <div className="tutorial-actions">
             <button className="text-button" onClick={onSkip}>Skip tutorial</button>
             {hasNext && <button className="primary-small" onClick={onNext}>
-                {step === 'item' ? 'Keep for later' : step === 'carryover' || step === 'ready' ? 'Continue playing' : 'Next'}</button>}
+                {step === 'item' ? 'Keep for later' : step === 'ready' ? 'Continue playing' : 'Next'}</button>}
         </div>
     </section></>, document.body);
 }

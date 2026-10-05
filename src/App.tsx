@@ -14,7 +14,6 @@ import { PageHelp } from './components/PageHelp';
 import { HelpWelcome } from './components/HelpWelcome';
 import { PlayTutorial } from './components/PlayTutorial';
 import { usePlayTutorial } from './game/usePlayTutorial';
-import { useItemTutorial } from './game/useItemTutorial';
 import { ItemIcon, ItemLoadout, RunItems } from './components/RunItems';
 import { RunCheckpointReward } from './components/RunCheckpointReward';
 import { activateItem, canActivateItem, ITEMS, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemId, type ItemInventory } from './game/items';
@@ -252,9 +251,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     }, []);
     const activeDaily = run?.daily ? daily.archive.days[run.daily.day]?.attempt : undefined;
     const paused = page !== 'game' || showProfile || showLeaderboard || !!upgradeSet || showRules;
-    const itemTutorial = useItemTutorial(run, !paused && !expirationActive && !tutorial.step);
-    const tutorialPaused = tutorial.paused || itemTutorial.paused;
-    const payout = useBoardPayout(run, boardNotice !== null, pieceSet, paused || tutorialPaused,
+    const payout = useBoardPayout(run, boardNotice !== null, pieceSet, paused || tutorial.paused,
         progression.profile.paidUpgrades, activeDaily?.multipliers, activeDaily?.payout);
     const helpButton = useRef<HTMLButtonElement>(null);
     const profileButton = useRef<HTMLButtonElement>(null);
@@ -272,8 +269,9 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const node = run?.node;
     const choices = useMemo(() => node?.kind === 'decision' ? shuffleChoices(node.choices) : [], [node]);
     const fen = run ? boardFen(run) : level?.root.fen;
-    const playing = run?.phase === 'decision' && !payout.sequence && !paused && !tutorialPaused && !expirationActive;
-    const tutorialStep = page === 'game' && !paused && !expirationActive ? tutorial.step ?? itemTutorial.step : null;
+    const itemInteraction = run?.phase === 'decision' && !payout.sequence && !paused && !tutorial.paused && !expirationActive;
+    const playing = itemInteraction && tutorial.step !== 'item';
+    const tutorialStep = page === 'game' && !paused && !expirationActive ? tutorial.step : null;
     const tutorialMove = choices.find(choice => choice.quality === 'best' && choice.playerMove.uci.slice(0, 2) === boardSelection?.from)
         ?? choices.find(choice => choice.playerMove.uci.slice(0, 2) === boardSelection?.from)
         ?? choices.find(choice => choice.quality === 'best') ?? choices[0];
@@ -458,7 +456,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     }
 
     useEffect(() => {
-        if (paused || tutorialPaused || expirationActive || waitingForCheckmate || payout.sequence?.preview || (run?.phase !== 'reveal' && run?.phase !== 'reply' && run?.phase !== 'level-ended')) return;
+        if (paused || tutorial.paused || expirationActive || waitingForCheckmate || payout.sequence?.preview || (run?.phase !== 'reveal' && run?.phase !== 'reply' && run?.phase !== 'level-ended')) return;
         const timer = window.setTimeout(() => {
             if (run.phase === 'level-ended') {
                 setPreview(null);
@@ -470,7 +468,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             }
         }, run.phase === 'level-ended' ? 1500 : run.phase === 'reveal' ? 1400 : 1000);
         return () => window.clearTimeout(timer);
-    }, [run, payout.sequence?.preview, paused, tutorialPaused, expirationActive, waitingForCheckmate]);
+    }, [run, payout.sequence?.preview, paused, tutorial.paused, expirationActive, waitingForCheckmate]);
 
     function bringItem(id: ItemId) {
         const selected = latestSelectedItems.current;
@@ -480,11 +478,13 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
 
     function beginRun(set: PieceSetId, guided = false) {
         if (!pool.length || !isPieceSetUnlocked(set, progression.profile)) return;
-        const initialItems = guided || (page === 'play' && progression.profile.finishedRuns === 0)
+        const startsTutorial = guided || (progression.profile.finishedRuns === 0 && tutorial.state.status !== 'done');
+        const purchasedItems = startsTutorial || (page === 'play' && progression.profile.finishedRuns === 0)
             ? {} : { ...latestSelectedItems.current };
+        const initialItems: ItemInventory = startsTutorial ? { 'healing-potion': 1 } : purchasedItems;
         const next = startRun(pool, set === 'default' ? rules : { ...rules, startingHealth: PIECE_SETS[set].startingHealth },
             Math.random, initialItems);
-        if (!progression.buyLoadout(initialItems)) {
+        if (!progression.buyLoadout(purchasedItems)) {
             setProfileSaveMessage('Not enough coins for these items. Adjust your loadout.');
             return;
         }
@@ -504,7 +504,6 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         navigate({ page: 'game' });
         setRun(next);
         tutorial.begin(next, progression.profile.finishedRuns === 0, guided);
-        if (guided) itemTutorial.replay();
     }
 
     function openMenu() {
@@ -652,7 +651,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
 
     function useRunItem(id: ItemId) {
         const current = latestRun.current;
-        if (!playing || !current) return;
+        if (!itemInteraction || !current) return;
         const next = activateItem(current, id);
         if (next === current) return;
         if (!changeRun(next)) return;
@@ -815,7 +814,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             {(page === 'play' || page === 'regular' || page === 'regular-items' || (page === 'game' && run && !run.daily && run.phase !== 'finished'))
                 && <button className="text-button" onClick={() => {
                     setShowRules(false);
-                    if (page === 'game' && run) { setPendingChoice(null); setBoardSelection(null); setPreview(null); tutorial.begin(run, true, true); itemTutorial.replay(); }
+                    if (page === 'game' && run) { setPendingChoice(null); setBoardSelection(null); setPreview(null); tutorial.begin(run, true, true); }
                     else beginRun('default', true);
                 }}>{page === 'game' ? 'Replay play tutorial' : 'Start guided run'}</button>}
         </Modal>}
@@ -904,7 +903,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                     <span className="move-count" aria-label={`Score: ${displayScore}`}><span>Score</span><strong>{displayScore.toLocaleString()}</strong></span>
                 </div>
                 {run && hasRunItems && !showBonusBoard && <RunItems key={run.id} items={run.items} activeEffects={run.activeEffects}
-                    canUse={id => canActivateItem(run, id)} enabled={playing} onUse={useRunItem} />}
+                    canUse={id => canActivateItem(run, id)} enabled={itemInteraction} onUse={useRunItem} />}
             </div>
             {!checkpointReward && <aside className="play-panel">
                 <div className="options-area">
@@ -947,8 +946,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         {tutorialStep && run && <PlayTutorial step={tutorialStep} run={run} selectedFrom={boardSelection?.from}
             targetSquare={tutorialStep === 'piece' ? tutorialMove?.playerMove.uci.slice(0, 2) : tutorialMove?.playerMove.uci.slice(2, 4)}
             targetMove={tutorialMove?.playerMove.uci}
-            pendingMove={pendingChoice !== null}
-            onNext={tutorial.step ? tutorial.next : itemTutorial.next} onSkip={tutorial.step ? tutorial.skip : itemTutorial.skip} />}
+            pendingMove={pendingChoice !== null} onNext={tutorial.next} onSkip={tutorial.skip} />}
         {profileSaveMessage && <p className="profile-save-toast" role="status">{profileSaveMessage}</p>}
     </main>;
 }

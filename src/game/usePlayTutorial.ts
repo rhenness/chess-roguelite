@@ -25,6 +25,6 @@ export function usePlayTutorial(run: RunState | null) {
     const skip = useCallback(() => update(finishPlayTutorial), [update]);
     const active = tutorialBelongsToRun(state, run);
     return { state, begin, selectedPiece, next, skip,
-        step: active && run.phase !== 'checkpoint' && state.step !== 'waiting-checkpoint' ? state.step : null,
+        step: active && run.phase !== 'checkpoint' && state.step !== 'waiting-checkpoint' && state.step !== 'waiting-item' ? state.step : null,
         paused: active && tutorialPausesPlay(state.step) };
 }
