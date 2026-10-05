@@ -95,5 +95,21 @@ export function useDailyDungeon(pool: readonly GeneratedLevel[]) {
     }, [refresh]);
 
     const clearExpiration = useCallback(() => setExpired(null), []);
-    return { archive, today: archive.days[utcDay(now)], now, persisted, expired, begin, update, resume, clearExpiration };
+    const reset = useCallback((): string => {
+        const time = Date.now();
+        const day = utcDay(time);
+        const dungeon = latest.current.days[day] ?? (pool.length ? createDailyDungeon(pool, time) : null);
+        if (!dungeon) throw new Error('No daily dungeon available to reset.');
+        const next = storeDailyDungeon(latest.current, { ...dungeon, attempt: null });
+        // Entry checks storage again, so the reset must be saved before allowing a retry.
+        if (!saveDailyArchive(next)) throw new Error('Could not save the daily dungeon reset. Browser storage is unavailable.');
+        latest.current = next;
+        setArchive(next);
+        setPersisted(true);
+        setNow(time);
+        setExpired(null);
+        return day;
+    }, [pool]);
+
+    return { archive, today: archive.days[utcDay(now)], now, persisted, expired, begin, update, resume, clearExpiration, reset };
 }

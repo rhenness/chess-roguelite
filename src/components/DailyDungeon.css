@@ -3,6 +3,10 @@
 .page-content { flex: 1; min-height: 0; overflow-y: auto; scrollbar-color: #b5c4bc transparent; }
 .play-page, .regular-page, .daily-page { margin: 0 auto; padding: 24px 16px 40px; }
 .play-page, .regular-page { max-width: 860px; }
+.regular-content { display: flex; flex-direction: column; overflow: hidden; }
+.regular-page { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; padding-bottom: 0; }
+.regular-setup-body { flex: 1; min-height: 0; overflow-y: auto; padding: 5px 5px 24px; scrollbar-color: #b5c4bc transparent; }
+.regular-setup-footer { flex-shrink: 0; padding: 14px 5px max(14px, env(safe-area-inset-bottom)); border-top: 1px solid #d0d7cf; background: #f4f0e8; }
 .daily-content { display: flex; flex-direction: column; overflow: hidden; }
 .daily-page { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; max-width: 860px; padding-bottom: 0; }
 .daily-page .page-heading { flex-shrink: 0; flex-direction: column; align-items: stretch; gap: 8px; margin-bottom: 16px; }
@@ -12,7 +16,7 @@
 .page-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
 .page-heading p { margin-top: 8px; color: #58645d; font-size: 12px; }
 .daily-countdown { display: inline-flex; align-items: center; gap: 6px; }
-.setup-actions { display: flex; align-items: stretch; gap: 12px; margin-top: 24px; }
+.setup-actions { display: flex; align-items: stretch; gap: 12px; }
 .setup-actions > button { flex: 1; min-width: 0; min-height: 44px; justify-content: center; }
 .setup-replacement { margin-top: 12px; color: #58645d; text-align: right; font-size: 12px; }
 .piece-set-card[aria-pressed="true"] { outline: 3px solid #234b40; outline-offset: 3px; }
@@ -107,7 +111,6 @@
     .daily-page .reward-details[open] > summary::before { content: '▾'; }
     .page-content h1 { font-size: 28px; }
     .page-heading { align-items: flex-start; }
-    .setup-actions { position: sticky; bottom: 0; padding: 14px 0; background: #f4f0e8; }
     .modal.leaderboard-modal { width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; margin: 0; padding: 40px 14px 16px; border: 0; border-radius: 0; }
     .leaderboard-modal .daily-leaderboard { display: flex; flex-direction: column; height: 100%; min-height: 0; }
     .leaderboard-modal .daily-leaderboard > :not(.leaderboard-list) { flex-shrink: 0; }

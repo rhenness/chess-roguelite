@@ -1,4 +1,5 @@
 .loadout { margin-top: 24px; padding: 20px; border: 1px solid #d9ddd7; border-radius: 10px; background: #fafbf9; }
+.regular-setup-heading { flex-direction: column; align-items: stretch; gap: 20px; }
 .loadout-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; }
 .loadout-total { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: #8b6425; font-size: 13px; }
 .loadout-list { display: grid; }

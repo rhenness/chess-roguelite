@@ -19,6 +19,7 @@ export interface NotificationConsole {
     death: () => void;
     payout: (options?: PayoutPreviewOptions) => void;
     dismiss: () => void;
+    resetDailyDungeon: () => string;
 }
 
 declare global {
@@ -70,7 +71,7 @@ export function createDeathNotice(): BoardNotice {
 
 /** Install while the app is mounted; restore any previous object on cleanup. */
 export function installNotificationConsole(show: (notice: BoardNotice) => void, dismiss: () => void,
-    previewPayout: (options?: PayoutPreviewOptions) => void): () => void {
+    previewPayout: (options?: PayoutPreviewOptions) => void, resetDailyDungeon: () => string): () => void {
     const previous = window.knightfall;
     const api: NotificationConsole = {
         notify: options => show(createNotice(typeof options === 'string' ? { label: options } : options)),
@@ -78,6 +79,7 @@ export function installNotificationConsole(show: (notice: BoardNotice) => void, 
         death: () => show(createDeathNotice()),
         payout: previewPayout,
         dismiss,
+        resetDailyDungeon,
     };
     window.knightfall = api;
     return () => {

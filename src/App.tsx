@@ -124,11 +124,11 @@ function Feedback({ run }: { run: RunState }) {
     </div>;
 }
 
-function RunSummary({ run, payout, restart, onChangeSet }: {
+function RunSummary({ run, payout, restart, onChangeLoadout }: {
     run: RunState;
     payout: PayoutResult;
     restart: () => void;
-    onChangeSet: () => void;
+    onChangeLoadout: () => void;
 }) {
     return <section className="summary result-page" aria-labelledby="result-title">
         <h1 id="result-title" tabIndex={-1} data-page-focus>{run.result === 'complete' ? 'Run complete' : 'Run over'}</h1>
@@ -147,7 +147,7 @@ function RunSummary({ run, payout, restart, onChangeSet }: {
         </div>
         </details>
         <div className="result-actions"><button className="primary-small" onClick={restart}>Play again</button>
-            <button className="text-button" onClick={onChangeSet}>Change loadout</button></div>
+            <button className="text-button" onClick={onChangeLoadout}>Change loadout</button></div>
     </section>;
 }
 
@@ -262,7 +262,31 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const visibleNotice = expirationActive ? boardNotice : paused ? null : payout.notice ?? boardNotice
         ?? (run?.phase === 'finished' && payout.result && !payout.sequence && !showRules ? unlockNotice : null);
 
-    useEffect(() => installNotificationConsole(setBoardNotice, dismissBoardNotice, payout.preview), [dismissBoardNotice, payout.preview]);
+    const resetDailyDungeon = useCallback(() => {
+        const day = daily.reset();
+        if (latestRun.current?.daily) {
+            const regular = regularRun.current;
+            setRun(regular?.run ?? null);
+            setPieceSet(regular?.set ?? 'default');
+            payout.reset(regular?.set ?? 'default');
+            regularRun.current = null;
+        }
+        setBoardNotice(null);
+        setExpirationActive(false);
+        setPreview(null);
+        setPendingChoice(null);
+        setBoardSelection(null);
+        setShowRules(false);
+        setShowProfile(false);
+        setShowLeaderboard(false);
+        setUpgradeSet(null);
+        setProfileSaveMessage(null);
+        navigate({ page: 'daily' }, true);
+        return day;
+    }, [daily.reset, setRun, payout.reset, setBoardNotice, navigate]);
+
+    useEffect(() => installNotificationConsole(setBoardNotice, dismissBoardNotice, payout.preview, resetDailyDungeon),
+        [setBoardNotice, dismissBoardNotice, payout.preview, resetDailyDungeon]);
 
     useEffect(() => {
         setShowRules(false);
@@ -723,21 +747,34 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             <ul>{QUALITY_ORDER.map(quality => <li key={quality}><strong>{QUALITY_LABELS[quality]}</strong><span>+{activeRules.points[quality]} points / {activeRules.damage[quality]} health lost</span></li>)}</ul>
             <button className="primary-small" data-modal-focus autoFocus onClick={() => setShowRules(false)}>Got it</button>
         </Modal>}
-        <div className={`page-content${page === 'game' && !showingResult ? ' game-content' : page === 'daily' || page === 'leaderboards' ? ' daily-content' : page === 'profile' ? ' profile-content' : ''}`} ref={content}>
+        <div className={`page-content${page === 'game' && !showingResult ? ' game-content' : page === 'daily' || page === 'leaderboards' ? ' daily-content' : page === 'regular' || page === 'regular-items' ? ' regular-content' : page === 'profile' ? ' profile-content' : ''}`} ref={content}>
         {page === 'play' && <PlayMenu daily={daily.today} now={daily.now} available={!!pool.length}
             onRegular={() => navigate({ page: 'regular' })} onDaily={() => navigate({ page: 'daily' })}
             dailyRank={standings.find(entry => entry.id === 'you')?.rank}
             continuation={continueRun ? { mode: continueDaily ? 'daily' : 'regular', level: Math.min(continueRun.levelIndex + 1, continueRun.levels.length), onContinue: continueDaily ? resumeDaily : resumeRegular } : undefined} />}
-        {page === 'regular' && <section className="regular-page" aria-labelledby="regular-page-title">
-            <header className="page-heading"><h1 id="regular-page-title" tabIndex={-1} data-page-focus>Regular run</h1></header>
-            <PieceSetPicker showHeading={false} selectionOnly selectedSet={regularSelectedSet} onSelect={setRegularSelectedSet}
-                onUpgrade={openUpgrades} progression={progression.profile} defaultStartingHealth={rules.startingHealth} />
-            <ItemLoadout selected={selectedItems} coins={progression.profile.coins}
-                onChange={setSelectedItems} onBring={bringItem} />
-            <div className="setup-actions">{resumableRegular && <button className="text-button" onClick={resumeRegular}>Resume regular run</button>}
-                <button className="primary-small" disabled={!pool.length || loadoutCost(selectedItems) > progression.profile.coins} onClick={() => beginRun(regularSelectedSet)}>
-                    {resumableRegular ? 'Start new run' : 'Start run'}</button></div>
-            {resumableRegular && <p className="setup-replacement">Starting a new run replaces your regular run.</p>}
+        {(page === 'regular' || page === 'regular-items') && <section className="regular-page" aria-labelledby="regular-page-title">
+            <div className="regular-setup-body" data-page-scroll="regular-setup">
+                <header className="page-heading regular-setup-heading">
+                    <h1 id="regular-page-title" tabIndex={-1} data-page-focus>{page === 'regular' ? 'Regular run' : 'Choose your items'}</h1>
+                </header>
+                {page === 'regular' ? <PieceSetPicker showHeading={false} selectionOnly selectedSet={regularSelectedSet} onSelect={setRegularSelectedSet}
+                    onUpgrade={openUpgrades} progression={progression.profile} defaultStartingHealth={rules.startingHealth} />
+                    : <ItemLoadout selected={selectedItems} coins={progression.profile.coins}
+                        onChange={setSelectedItems} onBring={bringItem} />}
+            </div>
+            <footer className="regular-setup-footer">
+                <div className="setup-actions">
+                    {page === 'regular' ? <>
+                        {resumableRegular && <button className="text-button" onClick={resumeRegular}>Resume regular run</button>}
+                        <button className="primary-small" disabled={!pool.length} onClick={() => navigate({ page: 'regular-items' })}>Next: items</button>
+                    </> : <>
+                        <button className="text-button" onClick={() => navigate({ page: 'regular' })}>Back to sets</button>
+                        <button className="primary-small" disabled={!pool.length || !isPieceSetUnlocked(regularSelectedSet, progression.profile) || loadoutCost(selectedItems) > progression.profile.coins} onClick={() => beginRun(regularSelectedSet)}>
+                            {resumableRegular ? 'Start new run' : 'Start run'}</button>
+                    </>}
+                </div>
+                {page === 'regular-items' && resumableRegular && <p className="setup-replacement">Starting a new run replaces your regular run.</p>}
+            </footer>
         </section>}
         {page === 'daily' && dailyDungeon && <DailyDungeonPage key={dailyDungeon.day} dungeon={dailyDungeon} today={daily.today?.day ?? dailyDungeon.day} now={daily.now}
             progression={progression.profile} defaultStartingHealth={rules.startingHealth} selected={dailySelectedSet} onSelected={setDailySelectedSet}
@@ -815,7 +852,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                 </section>
             </aside>
         </section>}
-        {showingResult && !run!.daily && <RunSummary run={run!} payout={payout.result!} restart={() => navigate({ page: 'regular' })} onChangeSet={() => navigate({ page: 'regular' })} />}
+        {showingResult && !run!.daily && <RunSummary run={run!} payout={payout.result!} restart={() => navigate({ page: 'regular-items' })} onChangeLoadout={() => navigate({ page: 'regular' })} />}
         {levelWarnings.length > 0 && <details className="catalog-warnings"><summary>{levelWarnings.length} floor file(s) could not be loaded</summary><ul>{levelWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
         </div>
         {profileSaveMessage && <p className="profile-save-toast" role="status">{profileSaveMessage}</p>}

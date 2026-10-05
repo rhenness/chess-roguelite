@@ -15,6 +15,7 @@
 .profile-content { display: flex; flex-direction: column; overflow: hidden; }
 @media (max-width: 900px) {
     .app-shell.has-navigation { padding-bottom: calc(67px + env(safe-area-inset-bottom)); }
+    .has-navigation .regular-setup-footer { padding-bottom: 14px; }
     .topbar .primary-navigation { position: fixed; z-index: 5; inset: auto 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0; padding: 6px max(8px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); border-top: 1px solid #d9ddd7; color: #234b40; background: #fafbf9; box-shadow: 0 -4px 18px rgba(23, 32, 29, .06); }
     .topbar .primary-navigation a { flex-direction: column; gap: 4px; min-width: 0; height: 54px; padding: 5px 2px; color: #58645d; background: transparent; font-size: 11px; line-height: 1.2; }
     .topbar .primary-navigation a[aria-current="page"] { color: #234b40; background: #e7ece3; }

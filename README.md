@@ -285,6 +285,12 @@ Icons accept `heart`, `skull`, `sparkles`, or `trophy`; themes accept `health`, 
 or `danger`. Every call restarts the animation, and the global object is removed
 when the app unmounts.
 
+To replay today's daily dungeon locally, run `knightfall.resetDailyDungeon()` in
+the browser console. It clears today's saved attempt and opens the dungeon entry
+page immediately, keeping the same levels and deadline. It returns the reset UTC
+date. Other days, regular runs, profile data, and earned rewards stay intact;
+daily rewards still only pay once per day.
+
 Every ended run gets a board payout, including runs that end at zero health.
 The 64 squares start as a checkerboard of ×1.0 and ×1.1 for Default, or ×1.0
 and ×1.3 for Obsidian Order. Gilded Court starts with ×1.5 on the four central

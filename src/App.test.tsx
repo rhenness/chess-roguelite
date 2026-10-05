@@ -13,7 +13,7 @@ import { PIECE_RENDERERS } from './components/pieces/pieceRenderers';
 import App from './App';
 import { initialPlayerProfile, loadPlayerProfile, PLAYER_PROFILE_STORAGE_KEY } from './game/playerProfile';
 import { loadRunHistory, RUN_HISTORY_STORAGE_KEY, saveRunHistory, type RunRecord } from './game/runHistory';
-import { createDailyDungeon, DAILY_STORAGE_KEY, enterDailyDungeon, initialDailyArchive, recordDailyRun, saveDailyArchive, storeDailyDungeon } from './game/daily';
+import { createDailyDungeon, DAILY_STORAGE_KEY, enterDailyDungeon, initialDailyArchive, loadDailyArchive, recordDailyRun, saveDailyArchive, storeDailyDungeon } from './game/daily';
 
 // Assert the FEN/orientation sent to the board without depending on drag animations.
 vi.mock('react-chessboard', async () => ({
@@ -54,6 +54,9 @@ function renderSetup(element: ReactElement) {
 }
 
 function openRegular() {
+    if (screen.queryByRole('button', { name: 'Back to sets' })) {
+        fireEvent.click(screen.getByRole('button', { name: 'Back to sets' }));
+    }
     if (!screen.queryByRole('heading', { name: 'Regular run', level: 1 })) {
         const modes = screen.queryByRole('link', { name: 'Knightfall home' });
         if (modes) fireEvent.click(modes);
@@ -64,6 +67,7 @@ function openRegular() {
 function startRegular(name = 'Default') {
     openRegular();
     fireEvent.click(screen.getByRole('button', { name }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next: items' }));
     fireEvent.click(screen.getByRole('button', { name: /^Start (new )?run(?: · \d+ coins)?$/ }));
 }
 
@@ -99,6 +103,11 @@ function finishPayout() {
     expect(screen.queryByText('Total score') ?? screen.queryByText('Final score')).toBeInTheDocument();
 }
 
+function openRegularItems() {
+    openRegular();
+    fireEvent.click(screen.getByRole('button', { name: 'Next: items' }));
+}
+
 function openProfileEditor() {
     if (!screen.queryByRole('dialog', { name: 'Your profile' }) && !screen.queryByRole('heading', { name: 'Your profile', level: 1 })) {
         fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
@@ -106,11 +115,63 @@ function openProfileEditor() {
     fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
 }
 
+describe('regular setup steps', () => {
+    it('requires the items step before starting and preserves selections when returning to sets', () => {
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 8, coins: 70 });
+        renderSetup(<App levels={[makeLevel()]} />);
+        expect(screen.queryByRole('region', { name: 'Run supplies' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Obsidian Order' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Next: items' }));
+        expect(window.location.hash).toBe('#/regular-items');
+        expect(screen.getByRole('heading', { name: 'Choose your items' })).toHaveFocus();
+        expect(screen.queryByRole('button', { name: 'Default' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
+        expect(loadUserProgression().coins).toBe(70);
+        fireEvent.click(screen.getByRole('button', { name: 'Back to sets' }));
+        expect(screen.getByRole('button', { name: 'Obsidian Order' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('heading', { name: 'Regular run' })).toHaveFocus();
+        fireEvent.click(screen.getByRole('button', { name: 'Gilded Court' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Next: items' }));
+        expect(screen.getByRole('region', { name: 'Run supplies' })).toHaveTextContent('Total 30');
+        fireEvent.click(screen.getByRole('button', { name: 'Start run' }));
+        expect(screen.getByTestId('board')).toHaveAttribute('data-piece-set', 'gilded');
+        expect(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' })).toBeInTheDocument();
+        expect(loadUserProgression().coins).toBe(40);
+    });
+
+    it('restores each setup step and its scroll position through browser navigation', () => {
+        saveUserProgression({ ...initialUserProgression(), coins: 20 });
+        renderSetup(<App levels={[makeLevel()]} />);
+        const content = screen.getByRole('region', { name: 'Regular run' }).querySelector<HTMLElement>('[data-page-scroll="regular-setup"]')!;
+        content.scrollTop = 210;
+        fireEvent.click(screen.getByRole('button', { name: 'Next: items' }));
+        expect(content.scrollTop).toBe(0);
+        fireEvent.click(screen.getByRole('button', { name: 'Bring Healing Potion for 20 coins' }));
+        content.scrollTop = 90;
+        act(() => {
+            window.history.replaceState(null, '', '#/regular');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+        });
+        expect(screen.getByRole('heading', { name: 'Regular run' })).toHaveFocus();
+        expect(content.scrollTop).toBe(210);
+        act(() => {
+            window.history.replaceState(null, '', '#/regular-items');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+        });
+        expect(screen.getByRole('heading', { name: 'Choose your items' })).toHaveFocus();
+        expect(content.scrollTop).toBe(90);
+        expect(screen.getByRole('region', { name: 'Run supplies' })).toHaveTextContent('Total 20');
+        expect(loadUserProgression().coins).toBe(20);
+    });
+});
+
 describe('run supplies', () => {
     it('selects items in setup, charges once at entry, and brings only selected items', () => {
         saveUserProgression({ ...initialUserProgression(), coins: 70 });
         renderSetup(<App levels={[makeLevel('supplies', 10, 3)]} />);
         expect(screen.queryByRole('link', { name: 'Shop' })).not.toBeInTheDocument();
+        openRegularItems();
         fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
         fireEvent.click(screen.getByRole('button', { name: 'Bring King’s Guard for 20 coins' }));
         expect(loadUserProgression().coins).toBe(70);
@@ -124,12 +185,14 @@ describe('run supplies', () => {
     it('enforces three slots and loses unused items without refunds when replacing a run', () => {
         saveUserProgression({ ...initialUserProgression(), coins: 100 });
         renderSetup(<App levels={[makeLevel()]} />);
+        openRegularItems();
         for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole('button', { name: 'Bring Healing Potion for 20 coins' }));
         expect(screen.getByRole('button', { name: 'Bring King’s Guard for 20 coins' })).toBeDisabled();
         startRegular();
         expect(loadUserProgression().coins).toBe(40);
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
         fireEvent.click(screen.getByRole('button', { name: 'New run' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Next: items' }));
         fireEvent.click(screen.getByRole('button', { name: 'Start new run' }));
         expect(loadUserProgression().coins).toBe(40);
         expect(screen.queryByRole('button', { name: 'Healing Potion, 3 remaining' })).not.toBeInTheDocument();
@@ -139,6 +202,7 @@ describe('run supplies', () => {
         const level = makeLevel('boost-ui', 10, 3);
         saveUserProgression({ ...initialUserProgression(), coins: 30 });
         renderSetup(<App levels={[level]} />);
+        openRegularItems();
         fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
         startRegular();
         const choice = decision(level).choices[0]!;
@@ -160,6 +224,7 @@ describe('run supplies', () => {
         const level = makeLevel('shield-ui', 10, 3);
         saveUserProgression({ ...initialUserProgression(), coins: 20 });
         renderSetup(<App levels={[level]} rules={{ ...DEFAULT_RULES, startingHealth: 1 }} />);
+        openRegularItems();
         fireEvent.click(screen.getByRole('button', { name: 'Bring King’s Guard for 20 coins' }));
         startRegular();
         fireEvent.click(screen.getByRole('button', { name: 'King’s Guard, 1 remaining' }));
@@ -193,6 +258,7 @@ describe('run supplies', () => {
         const level = makeLevel('confirmation', 10, 3);
         saveUserProgression({ ...initialUserProgression(), coins: 20 });
         renderSetup(<App levels={[level]} />);
+        openRegularItems();
         fireEvent.click(screen.getByRole('button', { name: 'Bring Healing Potion for 20 coins' }));
         startRegular();
         const item = screen.getByRole('button', { name: 'Healing Potion, 1 remaining' });
@@ -219,6 +285,93 @@ describe('run supplies', () => {
     });
 });
 
+describe('daily dungeon console reset', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-04T12:00:00Z'));
+    });
+
+    it('clears an active attempt immediately, preserves the draw and other days, and starts fresh', () => {
+        const level = makeLevel('reset-active', 10, 3);
+        const yesterday = createDailyDungeon([level], Date.parse('2026-10-03T12:00:00Z'));
+        saveDailyArchive(storeDailyDungeon(initialDailyArchive(), yesterday));
+        render(<StrictMode><App levels={[level]} /></StrictMode>);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm use of Triple Crown' }));
+        selectQuality(level, 'good');
+        const before = loadDailyArchive([level]);
+        expect(before.days['2026-10-04']!.attempt!.checkpoint.moves).toHaveLength(1);
+        act(() => { expect(window.knightfall!.resetDailyDungeon()).toBe('2026-10-04'); });
+        expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeEnabled();
+        expect(screen.queryByTestId('board')).not.toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(3000); });
+        const reset = loadDailyArchive([level]);
+        expect(reset.days['2026-10-04']).toEqual({ ...before.days['2026-10-04'], attempt: null });
+        expect(reset.days['2026-10-03']).toEqual(before.days['2026-10-03']);
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        expect(loadDailyArchive([level]).days['2026-10-04']!.attempt!.id).not.toBe(before.days['2026-10-04']!.attempt!.id);
+        expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Triple Crown, 1 remaining' })).toBeInTheDocument();
+    });
+
+    it('resets a finished attempt persistently without erasing rewards or awarding them again', () => {
+        const level = makeLevel('reset-finished');
+        const props = { levels: [level], rules: { ...DEFAULT_RULES, startingHealth: 1 } };
+        const view = render(<App {...props} />);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        selectQuality(level, 'bad');
+        finishPayout();
+        const profile = loadUserProgression();
+        const history = loadRunHistory();
+        expect(loadDailyArchive([level]).days['2026-10-04']!.attempt!.status).toBe('finished');
+        act(() => { window.knightfall!.resetDailyDungeon(); });
+        expect(loadUserProgression()).toEqual(profile);
+        expect(loadRunHistory()).toEqual(history);
+        view.unmount();
+        expect(window.knightfall).toBeUndefined();
+        render(<App {...props} />);
+        expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeEnabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        selectQuality(level, 'bad');
+        finishPayout();
+        expect(loadUserProgression()).toEqual(profile);
+    });
+
+    it('preserves a paused regular run while clearing the active daily run', () => {
+        const level = makeLevel('reset-regular', 10, 3);
+        renderGame(<App levels={[level]} />);
+        const choice = selectQuality(level, 'good');
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        act(() => { window.knightfall!.resetDailyDungeon(); });
+        fireEvent.click(screen.getByRole('link', { name: 'Home' }));
+        expect(screen.getByRole('button', { name: 'Continue' })).toHaveAccessibleDescription('Regular run · Floor 1');
+        fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
+        expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
+        openDaily();
+        expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeEnabled();
+    });
+
+    it('keeps the current attempt intact if the reset cannot be saved', () => {
+        const level = makeLevel('reset-storage');
+        render(<App levels={[level]} />);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        const before = loadDailyArchive([level]);
+        const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Unavailable'); });
+        try {
+            act(() => { expect(() => window.knightfall!.resetDailyDungeon()).toThrow('Could not save the daily dungeon reset'); });
+            expect(screen.getByRole('region', { name: 'Daily game' })).toBeInTheDocument();
+            expect(loadDailyArchive([level])).toEqual(before);
+        } finally { write.mockRestore(); }
+    });
+});
+
 describe('main navigation', () => {
     it('offers four destinations, leaves regular setup unhighlighted, and hides navigation during gameplay', () => {
         render(<App levels={[makeLevel()]} />);
@@ -227,6 +380,7 @@ describe('main navigation', () => {
         expect(within(navigation).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
         fireEvent.click(screen.getByRole('button', { name: 'New run' }));
         expect(navigation.querySelector('[aria-current="page"]')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Next: items' }));
         fireEvent.click(screen.getByRole('button', { name: 'Start run' }));
         expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
         expect(screen.getByRole('link', { name: 'Knightfall home' })).toBeInTheDocument();
@@ -1098,6 +1252,8 @@ describe('gameplay interface', () => {
         fireEvent.click(screen.getByRole('button', { name: PIECE_SETS[set].name }));
         expect(screen.getByRole('button', { name: PIECE_SETS[set].name })).toHaveAttribute('aria-pressed', 'true');
         expect(screen.queryByTestId('board')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Next: items' }));
+        expect(screen.queryByTestId('board')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Start run' }));
         expect(screen.getByLabelText(`Health: ${PIECE_SETS[set].startingHealth}`)).toBeInTheDocument();
         expect(screen.getByTestId('board')).toHaveAttribute('data-piece-set', set);
@@ -1644,7 +1800,7 @@ describe('gameplay interface', () => {
         expect(within(result).getByRole('heading', { name: 'Run over' })).toHaveFocus();
         const wallet = loadUserProgression();
         fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
-        expect(screen.getByRole('heading', { name: 'Regular run' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Choose your items' })).toBeInTheDocument();
         expect(screen.getByRole('region', { name: 'Run supplies' })).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Start run' }));
         expect(screen.getByTestId('board')).toHaveAttribute('data-piece-set', 'obsidian');

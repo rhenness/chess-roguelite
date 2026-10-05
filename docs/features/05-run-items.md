@@ -1,20 +1,24 @@
 # Consumables for runs
 
-Item selection belongs to regular-run setup. There is no separate shop page or
-navigation tab. Home, Dungeon, Leaderboards, and Profile remain the destinations.
+Regular-run setup has two pages: choose a set, then choose items. Next: items
+opens the second step before Start run is available. Back to sets preserves both
+selections. Home, Dungeon, Leaderboards, and Profile remain the destinations.
 
 ## Purchase and presentation
 
 Show three item rows: an icon, name, adjacent coin price, compact effect summary,
 and matching minus/quantity/plus controls. Display one total below the list. Keep
-the main wallet in the header; omit an item-selection heading and slot counter.
+the main wallet in the header; omit an extra heading inside the list and slot counter.
 The only persistent purchase explanation is “Unused items expire after the run.”
 
 Players may select up to three consumables in any combination. Disable adding
 when the next copy would exceed the slot limit or available coins. Charge the
 entire selection on Start run, save the wallet debit, and copy supplies into the
 new run. The selection resets after entry. Selecting and removing items before
-entry never charges coins. Replay returns to setup with the same set selected.
+entry never charges coins. Replay opens the item step with the same set selected;
+Change loadout opens the set step. Each step has its own route, scroll position,
+and heading focus, including browser back/forward navigation. Setup actions stay
+in a fixed footer above the bottom navigation while the set/item content scrolls.
 
 ## Starter items
 
