@@ -30,6 +30,9 @@ export function PieceSetPicker({
     showHeading = true,
     compact = false,
     defaultStartingHealth = PIECE_SETS.default.startingHealth,
+    healthOverride,
+    showMultipliers = true,
+    showUpgrades = true,
 }: {
     onSelect: (set: PieceSetId) => void;
     onUpgrade: (set: PieceSetId, button: HTMLButtonElement) => void;
@@ -41,6 +44,9 @@ export function PieceSetPicker({
     showHeading?: boolean;
     compact?: boolean;
     defaultStartingHealth?: number;
+    healthOverride?: number;
+    showMultipliers?: boolean;
+    showUpgrades?: boolean;
 }) {
     return (
         <>
@@ -53,10 +59,10 @@ export function PieceSetPicker({
                     const set = PIECE_SETS[id];
                     const locked = !isPieceSetUnlocked(id, progression);
                     const lockId = `piece-set-${id}-lock`;
-                    const health =
+                    const health = healthOverride ?? (
                         id === 'default'
                             ? defaultStartingHealth
-                            : set.startingHealth;
+                            : set.startingHealth);
                     const benefitsId = `piece-set-${id}-benefits`;
                     const bonus = set.initialBonusSquares
                         ? `Limited ${formatMultiplier(set.initialMultiplier)} multis`
@@ -98,12 +104,12 @@ export function PieceSetPicker({
                                     className="piece-set-benefits">
                                     {compact ? <>
                                         <span className="piece-set-health" aria-label={`${health} starting hearts`}><Heart size={13} fill="currentColor" aria-hidden="true" />{health}</span>
-                                        <span className="piece-set-multiplier" aria-label={`Starting square bonus: ${formatMultiplier(set.initialMultiplier)}${set.initialBonusSquares ? ` on ${set.initialBonusSquares.length} squares` : ''}`}><Grid2X2 size={13} aria-hidden="true" />{formatMultiplier(set.initialMultiplier)}{set.initialBonusSquares && <small>{set.initialBonusSquares.length} squares</small>}</span>
-                                    </> : <>{health} hearts · {bonus}</>}
+                                        {showMultipliers && <span className="piece-set-multiplier" aria-label={`Starting square bonus: ${formatMultiplier(set.initialMultiplier)}${set.initialBonusSquares ? ` on ${set.initialBonusSquares.length} squares` : ''}`}><Grid2X2 size={13} aria-hidden="true" />{formatMultiplier(set.initialMultiplier)}{set.initialBonusSquares && <small>{set.initialBonusSquares.length} squares</small>}</span>}
+                                    </> : <>{health} {health === 1 ? 'heart' : 'hearts'}{showMultipliers && <> · {bonus}</>}</>}
                                 </span>
                             </span>
                         </button>
-                        {!locked && <button className="piece-set-upgrade" aria-label={`Upgrade ${set.name}`} title="Upgrade"
+                        {showUpgrades && !locked && <button className="piece-set-upgrade" aria-label={`Upgrade ${set.name}`} title="Upgrade"
                             onClick={event => onUpgrade(id, event.currentTarget)}><Sparkles size={18} aria-hidden="true" /></button>}
                         </div>
                     );

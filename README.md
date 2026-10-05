@@ -41,15 +41,16 @@ Artwork generation details and the original prompt are in
 
 ### Main menu
 
-The main menu at `#/play` shows your wallet, profile and help shortcuts, **New run**,
-and **Daily dungeon**. **Continue** resumes the most recently played unfinished
-run, with its mode and level shown beneath the action. Other active runs remain
-accessible from their mode's setup page. Daily checkpoints also offer Continue
-after refresh. New run opens regular set selection without replacing an active run.
+The main menu at `#/play` shows your wallet, profile and help shortcuts, **Regular run**,
+**Daily dungeon**, and **Endless**. Each mode shows **In progress** beneath its title
+when it has an active run, with the current floor or move number. Cards open their
+mode pages, where you can resume or start a new attempt. Regular run opens set
+selection without replacing an active run. Daily checkpoints remain resumable
+after refresh.
 The daily card shows the countdown and coin bonus, or your final score and rank
 after finishing. The header **Home** link or logo returns here while pausing gameplay.
-The menu fits a phone screen and adapts to landscape. When there is no active
-run, New run sits directly below the logo and title without an empty Continue slot.
+The menu fits a phone screen and adapts to landscape. The three mode cards stay
+in the same order as runs are started, paused, and finished.
 The home page uses a torchlit chess-hall background, with a portrait companion
 for phones, ivory lettering, and green controls. Artwork and generation prompts
 are documented in [`docs/main-menu-artwork.md`](docs/main-menu-artwork.md).
@@ -60,7 +61,7 @@ Navigation has four destinations: **Home**, **Dungeon**, **Leaderboards**, and
 **Profile**. Phones and tablets use a bottom bar with safe-area padding; desktop
 uses the same links in the header. Regular set selection remains under Home.
 The bar hides during gameplay and payout, then returns on result pages. The
-header Home link returns without resetting the run, and Continue resumes it.
+header Home link returns without resetting the run; resume from its mode page.
 Browser Back/Forward and direct links to `#/profile` and `#/leaderboards` work.
 Switching destinations preserves page scroll, dungeon selection, and active moves.
 
@@ -75,6 +76,9 @@ and between 30 days and All time. Daily history shows each dungeon day's attempt
 regular history shows the best finished run on each local calendar date. Hover,
 tap, or focus a chart point for its score, floors cleared, and outcome. Days without
 a recorded run have no score point.
+
+The lifetime stats also show best Endless Standard points and Hardcore streak,
+with longest streaks and completed-game counts.
 
 Choose **Edit profile** from the overview to change your appearance.
 Choose a display name (up to 24 characters), one of eight transparent SVG avatars,
@@ -137,7 +141,7 @@ See [development phases and rules](docs/features/04-daily-dungeon-profile.md).
 npm start
 ```
 
-Open the local URL printed by Vite, choose **New run**, select **Default**,
+Open the local URL printed by Vite, choose **Regular run**, select **Default**,
 **Obsidian Order**, or **Gilded Court**, and press **Start run**. Set cards show
 both colors, the name, starting hearts, and the initial square bonus. Selecting a
 card changes your selection without starting or replacing a run. **Menu** opens
@@ -179,6 +183,40 @@ coins; existing free-upgrade boards remain intact. Paid increments are added to
 those boards for display and payouts. A finished run snapshots its board before
 shopping, so purchases cannot change an already-earned payout. The free random
 upgrade for completing all 10 levels still applies.
+
+### Endless
+
+Choose **Endless** from Home, then **Standard** or **Hardcore**. Every attempt starts
+from the normal chess position and you choose moves for both White and Black.
+Best and Good moves extend your accuracy streak. Checkmate or any draw briefly
+shows the result, then automatically starts another game with the streak intact.
+
+Standard uses the selected set's starting hearts and the existing item loadout.
+Inaccuracy/Bad moves reset the accuracy streak and deal normal damage; shields
+can block damage but do not preserve a broken streak. Points use normal move
+values, including item boosts. Four consecutive Best moves restore one heart.
+Remaining hearts, items, and effect charges carry into the next board.
+
+Hardcore uses one life and no items, with set choices affecting appearance only.
+One Inaccuracy or Bad move ends the attempt. Its score is the number of successful
+Best/Good moves before the failure; Standard scores remain separate.
+
+Both variants award coins when the attempt ends: one coin per 25 unboosted move
+points, with Hardcore counting only successful moves. A receipt in the shared
+wallet prevents repeat awards after refresh. Endless does not award permanent
+square upgrades or dungeon completion credit. Replacing an unfinished attempt
+does not pay coins.
+
+Sessions, exact offered choices, and mode-specific records save separately under
+`knightfall.endless.v1`. Leaving the page or opening help pauses play and cancels
+pending analysis; reopening resumes the attempt. The compact Stockfish worker
+evaluates positions locally and offers up to four legal moves. Opening choices
+match Fourced Move: c4, d4, e4, and Nf3, all Good. Later qualities use the same
+0.5/1.5-pawn thresholds and mate handling. Engine errors offer Retry analysis.
+
+Feature code lives in `src/features/endless/`; browser engine assets and their
+license live in `public/endless/`. Shared move buttons, item controls, effects,
+piece renderers, profile, wallet, and navigation serve all modes.
 
 ### Run items
 

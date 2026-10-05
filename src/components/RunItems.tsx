@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Coins, Crown, HeartPlus, Minus, Plus, Shield, X } from 'lucide-react';
-import { canActivateItem, ITEMS, ITEM_IDS, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemId, type ItemInventory } from '../game/items';
-import type { RunState } from '../game/run';
+import { ITEMS, ITEM_IDS, itemCount, loadoutCost, LOADOUT_LIMIT, type ActiveEffect, type ItemId, type ItemInventory } from '../game/items';
 import './Items.css';
 
 export function ItemIcon({ id }: { id: ItemId }) {
@@ -38,16 +37,17 @@ export function ItemLoadout({ selected, coins, onChange, onBring }: {
     </section>;
 }
 
-export function RunItems({ run, enabled, onUse }: {
-    run: RunState; enabled: boolean; onUse: (id: ItemId) => void;
+export function RunItems({ items, activeEffects, enabled, canUse, onUse }: {
+    items: ItemInventory; activeEffects: readonly ActiveEffect[]; enabled: boolean;
+    canUse: (id: ItemId) => boolean; onUse: (id: ItemId) => void;
 }) {
     const [selected, setSelected] = useState<ItemId | null>(null);
     const selectedSlot = useRef<HTMLDivElement | null>(null);
-    const availableItems = ITEM_IDS.filter(id => (run.items[id] ?? 0) > 0);
-    const count = (id: ItemId) => run.items[id] ?? 0;
+    const availableItems = ITEM_IDS.filter(id => (items[id] ?? 0) > 0);
+    const count = (id: ItemId) => items[id] ?? 0;
     useEffect(() => {
-        if (!enabled || (selected && !canActivateItem(run, selected))) setSelected(null);
-    }, [enabled, run, selected]);
+        if (!enabled || (selected && !canUse(selected))) setSelected(null);
+    }, [enabled, canUse, selected]);
     useEffect(() => {
         if (!selected) return;
         const dismissOutside = (event: Event) => {
@@ -63,11 +63,11 @@ export function RunItems({ run, enabled, onUse }: {
             document.removeEventListener('keydown', escape);
         };
     }, [selected]);
-    if (!availableItems.length && !run.activeEffects.length) return null;
+    if (!availableItems.length && !activeEffects.length) return null;
     return <section className="run-items" aria-label="Run items">
         {availableItems.length > 0 && <div className="item-bar">{availableItems.map(id =>
             <div className="item-slot" key={id} ref={selected === id ? selectedSlot : undefined}>
-                <button className={`item-button${selected === id ? ' selected' : ''}`} disabled={!enabled || !canActivateItem(run, id)}
+                <button className={`item-button${selected === id ? ' selected' : ''}`} disabled={!enabled || !canUse(id)}
                     aria-label={`${ITEMS[id].name}, ${count(id)} remaining`} aria-expanded={selected === id} aria-controls={selected === id ? 'item-confirmation' : undefined}
                     title={ITEMS[id].description} onClick={() => setSelected(selected === id ? null : id)}>
                     <ItemIcon id={id} /><span>{ITEMS[id].name}</span><strong>×{count(id)}</strong></button>
@@ -77,7 +77,7 @@ export function RunItems({ run, enabled, onUse }: {
                 </div>}
             </div>)}
         </div>}
-        {run.activeEffects.length > 0 && <div className="active-effects" aria-label="Active item effects" aria-live="polite">{run.activeEffects.map(active => {
+        {activeEffects.length > 0 && <div className="active-effects" aria-label="Active item effects" aria-live="polite">{activeEffects.map(active => {
             const label = active.effect.kind === 'scoreMultiplier' ? `×${active.effect.multiplier}` : 'Shield';
             const description = `${ITEMS[active.sourceItemId].name}: ${active.remainingMoves} ${active.remainingMoves === 1 ? 'move' : 'moves'} remaining. ${ITEMS[active.sourceItemId].description}`;
             return <span key={active.sourceItemId} className="effect-badge" title={description} aria-label={description} tabIndex={0}>

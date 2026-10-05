@@ -1,0 +1,25 @@
+.endless-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 6px 24px; }
+.endless-modes button { display: grid; justify-items: start; gap: 8px; min-height: 120px; padding: 16px; border: 1px solid #d1d5cb; border-radius: 8px; color: #234b40; background: #fffdf8; text-align: left; }
+.endless-modes button[aria-pressed="true"] { border-color: #234b40; box-shadow: inset 0 0 0 2px #234b40; background: #e7ece3; }
+.endless-modes button span { color: #58645d; font-size: 12px; }
+.endless-setup .piece-set-info { padding-right: 0; }
+.endless-game-controls { display: flex; align-items: center; justify-content: flex-end; height: 36px; }
+.endless-game-controls .text-button { flex-shrink: 0; width: 36px; height: 36px; padding: 0; justify-content: center; }
+.endless-game-controls .text-button svg { display: block; }
+.endless-game .run-stats { height: 48px; }
+.endless-thinking, .endless-engine-error { display: grid; justify-items: center; gap: 14px; padding: 16px; text-align: center; color: #58645d; font-size: 13px; }
+.endless-engine-error { color: #a95843; }
+.endless-error, .endless-storage-message { padding: 12px; color: #8b591c; font-size: 12px; }
+.endless-final-move { margin-top: 18px; color: #58645d; }
+@media (min-width: 901px) {
+    .endless-game .board-column { width: min(100%, 660px, calc(100dvh - 262px)); }
+    .has-run-items .endless-game .board-column { width: min(100%, 660px, calc(100dvh - 346px)); }
+}
+@media (max-width: 900px) {
+    .endless-game .board-column { --daily-banner-height: 36px; --board-footer-height: 48px; }
+    .has-run-items .endless-game .board-column { --board-footer-height: 132px; }
+}
+@media (max-width: 560px) {
+    .endless-modes { gap: 8px; }
+    .endless-modes button { padding: 12px; }
+}

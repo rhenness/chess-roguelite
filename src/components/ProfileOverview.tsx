@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 import { Pencil, TrendingUp } from 'lucide-react';
 import { profileAsset, type PlayerProfile } from '../game/playerProfile';
 import { formatRunDate, profileStats, runDay, scoreHistoryPoints, type RunHistory, type RunMode, type RunRecord } from '../game/runHistory';
@@ -75,8 +75,8 @@ function ScoreHistory({ history, now }: { history: RunHistory; now: number }) {
     </section>;
 }
 
-export function ProfileOverview({ profile, history, onEdit, now, asPage = false }: {
-    profile: PlayerProfile; history: RunHistory; onEdit: () => void; now: number; asPage?: boolean;
+export function ProfileOverview({ profile, history, onEdit, now, asPage = false, children }: {
+    profile: PlayerProfile; history: RunHistory; onEdit: () => void; now: number; asPage?: boolean; children?: ReactNode;
 }) {
     const stats = useMemo(() => profileStats(history), [history]);
     return <div className="profile-overview">
@@ -93,6 +93,7 @@ export function ProfileOverview({ profile, history, onEdit, now, asPage = false 
                 {([['Best regular score', stats.bestRegular], ['Best daily score', stats.bestDaily]] as const).map(([label, best]) =>
                     <div key={label}><dt>{label}</dt><dd>{best ? best.score.toLocaleString() : 'No runs yet'}</dd>
                         {best && <span>{formatRunDate(best)}</span>}</div>)}
+                {children}
                 <div><dt>Runs completed</dt><dd>{stats.runsCompleted.toLocaleString()}</dd><span>Every floor cleared</span></div>
                 <div><dt>Total checkmates</dt><dd>{stats.checkmates.toLocaleString()}</dd><span>Across finished runs</span></div>
             </dl>

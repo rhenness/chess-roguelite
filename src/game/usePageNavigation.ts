@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-export type Page = 'play' | 'regular' | 'regular-items' | 'daily' | 'profile' | 'leaderboards' | 'game';
+export type Page = 'play' | 'regular' | 'regular-items' | 'daily' | 'profile' | 'leaderboards' | 'game' | 'endless' | 'endless-items' | 'endless-game';
 export interface PageLocation { page: Page; day?: string }
 
 function readLocation(): PageLocation {
-    const match = /^#\/(play|regular|regular-items|daily|profile|leaderboards|game)(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(window.location.hash);
+    const match = /^#\/(play|regular|regular-items|daily|profile|leaderboards|game|endless|endless-items|endless-game)(?:\/(\d{4}-\d{2}-\d{2}))?$/.exec(window.location.hash);
     return match ? { page: match[1] as Page, day: match[1] === 'daily' ? match[2] : undefined } : { page: 'play' };
 }
 

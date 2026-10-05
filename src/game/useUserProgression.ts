@@ -34,6 +34,18 @@ export function useUserProgression(run: RunState | null) {
 
     const advanceUnlock = useCallback(() => setPendingUnlocks(current => current.slice(1)), []);
     const dismissUnlocks = useCallback(() => setPendingUnlocks([]), []);
+    const claimCoins = useCallback((id: string, coins: number) => {
+        if (!id.trim() || !Number.isSafeInteger(coins) || coins < 0) return false;
+        const before = latestProfile.current;
+        const stored = loadUserProgression();
+        if (before.rewardReceipts?.includes(id) || stored.rewardReceipts?.includes(id)) return false;
+        const next = { ...before, coins: Math.min(Number.MAX_SAFE_INTEGER, before.coins + coins),
+            rewardReceipts: [...new Set([...(before.rewardReceipts ?? []), ...(stored.rewardReceipts ?? []), id])] };
+        latestProfile.current = next;
+        saveUserProgression(next);
+        setProfile(next);
+        return true;
+    }, []);
     const buyLoadout = useCallback((items: ItemInventory) => {
         const next = purchaseLoadout(latestProfile.current, items);
         if (!next) return false;
@@ -51,5 +63,5 @@ export function useUserProgression(run: RunState | null) {
         setProfile(purchase.profile);
         return purchase.upgrade;
     }, []);
-    return { profile, pendingUnlocks, advanceUnlock, dismissUnlocks, buyUpgrade, buyLoadout, recordRun };
+    return { profile, pendingUnlocks, advanceUnlock, dismissUnlocks, buyUpgrade, buyLoadout, recordRun, claimCoins };
 }

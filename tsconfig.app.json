@@ -17,5 +17,5 @@
     "jsx": "react-jsx",
     "types": ["vite/client", "vitest/globals"]
   },
-  "include": ["src/main.tsx", "src/App.tsx", "src/App.test.tsx", "src/game", "src/test", "src/types"]
+  "include": ["src/main.tsx", "src/App.tsx", "src/App.test.tsx", "src/game", "src/features", "src/components", "src/test", "src/types"]
 }

@@ -47,7 +47,7 @@ beforeEach(() => {
 function renderSetup(element: ReactElement) {
     const view = render(element);
     if (screen.queryByRole('heading', { name: 'Knightfall', level: 1 })) {
-        const regular = screen.getByRole('button', { name: 'New run' });
+        const regular = screen.getByRole('button', { name: 'Regular run' });
         if (!regular.hasAttribute('disabled')) fireEvent.click(regular);
     }
     return view;
@@ -60,14 +60,14 @@ function openRegular() {
     if (!screen.queryByRole('heading', { name: 'Regular run', level: 1 })) {
         const modes = screen.queryByRole('link', { name: 'Knightfall home' });
         if (modes) fireEvent.click(modes);
-        fireEvent.click(screen.getByRole('button', { name: /^(Regular run|New run)$/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
     }
 }
 
 function startRegular(name = 'Default') {
     openRegular();
     fireEvent.click(screen.getByRole('button', { name }));
-    fireEvent.click(screen.getByRole('button', { name: 'Next: items' }));
+    fireEvent.click(screen.getByRole('button', { name: /^(Next: items|Start new run)$/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Start (new )?run(?: · \d+ coins)?$/ }));
 }
 
@@ -103,9 +103,14 @@ function finishPayout() {
     expect(screen.queryByText('Total score') ?? screen.queryByText('Final score')).toBeInTheDocument();
 }
 
+function resumeRegularFromHome() {
+    openRegular();
+    fireEvent.click(screen.getByRole('button', { name: 'Resume regular run' }));
+}
+
 function openRegularItems() {
     openRegular();
-    fireEvent.click(screen.getByRole('button', { name: 'Next: items' }));
+    fireEvent.click(screen.getByRole('button', { name: /^(Next: items|Start new run)$/ }));
 }
 
 function openProfileEditor() {
@@ -191,8 +196,8 @@ describe('run supplies', () => {
         startRegular();
         expect(loadUserProgression().coins).toBe(40);
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
-        fireEvent.click(screen.getByRole('button', { name: 'New run' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Next: items' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Start new run' }));
         fireEvent.click(screen.getByRole('button', { name: 'Start new run' }));
         expect(loadUserProgression().coins).toBe(40);
         expect(screen.queryByRole('button', { name: 'Healing Potion, 3 remaining' })).not.toBeInTheDocument();
@@ -351,8 +356,8 @@ describe('daily dungeon console reset', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
         act(() => { window.knightfall!.resetDailyDungeon(); });
         fireEvent.click(screen.getByRole('link', { name: 'Home' }));
-        expect(screen.getByRole('button', { name: 'Continue' })).toHaveAccessibleDescription('Regular run · Floor 1');
-        fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+        expect(screen.getByRole('button', { name: 'Regular run' })).toHaveAccessibleDescription('In progress · Floor 1');
+        resumeRegularFromHome();
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
         expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
         openDaily();
@@ -380,7 +385,7 @@ describe('main navigation', () => {
         const navigation = screen.getByRole('navigation', { name: 'Main navigation' });
         expect(within(navigation).getAllByRole('link').map(link => link.textContent)).toEqual(['Home', 'Dungeon', 'Leaderboards', 'Profile']);
         expect(within(navigation).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
-        fireEvent.click(screen.getByRole('button', { name: 'New run' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
         expect(navigation.querySelector('[aria-current="page"]')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Next: items' }));
         fireEvent.click(screen.getByRole('button', { name: 'Start run' }));
@@ -388,7 +393,7 @@ describe('main navigation', () => {
         expect(screen.getByRole('link', { name: 'Knightfall home' })).toBeInTheDocument();
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
         expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Regular run' })).toBeInTheDocument();
     });
 
     it('pauses a regular move while visiting destinations and resumes the same playback from Home', () => {
@@ -406,7 +411,7 @@ describe('main navigation', () => {
         }
         expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeInTheDocument();
         fireEvent.click(screen.getByRole('link', { name: 'Home' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+        resumeRegularFromHome();
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', position);
         expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
         expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
@@ -648,7 +653,7 @@ describe('page navigation', () => {
         expect(screen.queryByRole('button', { name: 'Default' })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
         expect(screen.getByLabelText('Coins: 0')).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'New run' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
         expect(window.location.hash).toBe('#/regular');
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
         expect(window.location.hash).toBe('#/play');
@@ -661,7 +666,7 @@ describe('page navigation', () => {
         renderGame(<App levels={[level]} />);
         const choice = selectQuality(level, 'good');
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
-        expect(screen.getByRole('button', { name: 'Continue' })).toHaveAccessibleDescription('Regular run · Floor 1');
+        expect(screen.getByRole('button', { name: 'Regular run' })).toHaveAccessibleDescription('In progress · Floor 1');
         openDaily();
         fireEvent.click(screen.getByRole('button', { name: 'Obsidian Order' }));
         expect(screen.getByRole('button', { name: 'Obsidian Order' })).toHaveAttribute('aria-pressed', 'true');
@@ -671,8 +676,10 @@ describe('page navigation', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
         expect(screen.getByLabelText('Health: 2')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
-        expect(screen.getByRole('button', { name: 'Continue' })).toHaveAccessibleDescription('Daily dungeon · Floor 1');
-        fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+        expect(screen.getByRole('button', { name: 'Daily dungeon' })).toHaveAccessibleDescription(/In progress · Floor 1/);
+        expect(screen.getByRole('button', { name: 'Regular run' })).toHaveAccessibleDescription('In progress · Floor 1');
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' }));
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
         openRegular();
@@ -680,7 +687,7 @@ describe('page navigation', () => {
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
         expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
-        expect(screen.getByRole('button', { name: 'Continue' })).toHaveAccessibleDescription('Regular run · Floor 1');
+        expect(screen.getByRole('button', { name: 'Regular run' })).toHaveAccessibleDescription('In progress · Floor 1');
         openDaily();
         fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' }));
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
@@ -701,8 +708,8 @@ describe('page navigation', () => {
         act(() => { window.history.replaceState(null, '', '#/game'); window.dispatchEvent(new PopStateEvent('popstate')); });
         expect(screen.getByRole('button', { name: pending! })).toHaveAttribute('aria-pressed', 'true');
         act(() => { window.history.replaceState(null, '', '#/play'); window.dispatchEvent(new PopStateEvent('popstate')); });
-        expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+        expect(screen.getByRole('button', { name: 'Regular run' })).toBeInTheDocument();
+        resumeRegularFromHome();
         expect(screen.getByRole('button', { name: pending! })).toHaveAttribute('aria-pressed', 'true');
     });
 
@@ -719,8 +726,9 @@ describe('page navigation', () => {
         view.unmount();
         render(<App levels={levels} />);
         expect(screen.queryByTestId('board')).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Continue' })).toHaveAccessibleDescription('Daily dungeon · Floor 2');
-        fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+        expect(screen.getByRole('button', { name: 'Daily dungeon' })).toHaveAccessibleDescription(/In progress · Floor 2/);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' }));
         expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuenow', '2');
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', levels[1]!.root.fen);
         expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
@@ -744,8 +752,8 @@ describe('page navigation', () => {
         expect(loadUserProgression().coins).toBe(0);
         expect(JSON.parse(window.localStorage.getItem(DAILY_STORAGE_KEY)!).days['2026-10-04'].attempt.status).toBe('expired');
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
-        expect(screen.getByRole('button', { name: 'Continue' })).toHaveAccessibleDescription('Regular run · Floor 1');
-        fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+        expect(screen.getByRole('button', { name: 'Regular run' })).toHaveAccessibleDescription('In progress · Floor 1');
+        resumeRegularFromHome();
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', position);
     });
 });
@@ -1751,7 +1759,7 @@ describe('gameplay interface', () => {
     it('handles an empty catalog and provides actionable loading warnings', () => {
         renderGame(<App levels={[makeLevel('unscored', -1)]} levelWarnings={['broken.json: invalid floor data.']} />);
         expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'New run' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Regular run' })).toBeDisabled();
         expect(screen.getByRole('status')).toHaveTextContent('No scored, playable floors');
         fireEvent.click(screen.getByText('1 floor file(s) could not be loaded'));
         expect(screen.getByText('broken.json: invalid floor data.')).toBeVisible();

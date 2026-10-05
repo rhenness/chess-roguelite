@@ -11,6 +11,7 @@ export interface UserProgression {
     coins: number;
     paidUpgrades: PaidUpgradeCounts;
     lastDailyRewardDay?: string;
+    rewardReceipts?: string[];
 }
 
 export const initialUserProgression = (): UserProgression => ({
@@ -33,6 +34,8 @@ export function loadUserProgression(): UserProgression {
                     coins: validWallet ? profile.coins : 0, paidUpgrades: validWallet ? profile.paidUpgrades : {},
                     ...(typeof profile.lastDailyRewardDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(profile.lastDailyRewardDay)
                         ? { lastDailyRewardDay: profile.lastDailyRewardDay } : {}),
+                    ...(Array.isArray(profile.rewardReceipts) && profile.rewardReceipts.every(id => typeof id === 'string' && !!id.trim())
+                        ? { rewardReceipts: [...new Set(profile.rewardReceipts)] } : {}),
                 };
             }
         }

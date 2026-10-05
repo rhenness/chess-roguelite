@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { Chess, type Square } from 'chess.js';
 import { Chessboard, type ChessboardOptions } from 'react-chessboard';
-import { ArrowUp, Check, Clock3, Coins, DoorOpen, Flame, Heart, Shield, Sparkles, Trophy, Unlock, X } from 'lucide-react';
+import { ArrowUp, Clock3, Coins, DoorOpen, Flame, Heart, Shield, Sparkles, Trophy, Unlock, X } from 'lucide-react';
 import type { GeneratedLevel, PlayerChoice } from './types/level';
 import { selectLevels } from './game/levels';
 import { BoardNotification, type BoardNotice } from './components/BoardNotification';
@@ -11,7 +11,12 @@ import { DailyDungeonPage } from './components/DailyDungeonPage';
 import { LeaderboardsPage } from './components/LeaderboardsPage';
 import { PrimaryNavigation } from './components/PrimaryNavigation';
 import { ItemIcon, ItemLoadout, RunItems } from './components/RunItems';
-import { activateItem, ITEMS, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemId, type ItemInventory } from './game/items';
+import { activateItem, canActivateItem, ITEMS, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemId, type ItemInventory } from './game/items';
+import { MoveOptions, OPTION_COLORS, CONFIRM_COLOR } from './components/MoveOptions';
+import { BOARD_APPEARANCE } from './components/boardAppearance';
+import { EndlessPage } from './features/endless/EndlessPage';
+import { EndlessRecords } from './features/endless/EndlessRecords';
+import { useEndlessSession } from './features/endless/useEndlessSession';
 import { usePageNavigation } from './game/usePageNavigation';
 import { MultiplierUpgrades } from './components/MultiplierUpgrades';
 import { PlayerAvatar } from './components/PlayerAvatar';
@@ -45,8 +50,6 @@ interface AppProps {
 }
 
 // Colors identify shuffled options, never move quality.
-const OPTION_COLORS = ['#c28b26', '#477c9e', '#a95843', '#785b96'];
-const CONFIRM_COLOR = '#2f8a5c';
 const EMPTY_BOARD_POSITION = {};
 const PIECES: Record<string, string> = { p: 'Pawn', n: 'Knight', b: 'Bishop', r: 'Rook', q: 'Queen', k: 'King' };
 
@@ -261,6 +264,9 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const displayScore = payout.result?.finalScore ?? run?.score ?? 0;
     const visibleNotice = expirationActive ? boardNotice : paused ? null : payout.notice ?? boardNotice
         ?? (run?.phase === 'finished' && payout.result && !payout.sequence && !showRules ? unlockNotice : null);
+    const endlessActive = page === 'endless-game' && !showRules && !showProfile && !showLeaderboard && !upgradeSet;
+    const endless = useEndlessSession(endlessActive, progression.claimCoins);
+    const endlessPage = page === 'endless' || page === 'endless-items' || page === 'endless-game';
 
     const resetDailyDungeon = useCallback(() => {
         const day = daily.reset();
@@ -669,11 +675,9 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         squareStyles[boardSelection.from] = { boxShadow: `inset 0 0 0 5px ${CONFIRM_COLOR}` };
     }
     const boardOptions: ChessboardOptions = {
+        ...BOARD_APPEARANCE,
         id: 'knightfall-board', position: showBonusBoard ? EMPTY_BOARD_POSITION : fen, boardOrientation: orientation,
         showAnimations: !showBonusBoard,
-        allowDragging: false, allowDrawingArrows: false, showNotation: true, animationDurationInMs: 220,
-        darkSquareStyle: { backgroundColor: '#41665b' }, lightSquareStyle: { backgroundColor: '#e9e3d4' },
-        boardStyle: { borderRadius: '6px', boxShadow: '0 22px 55px rgba(4, 12, 10, .28)' },
         squareStyles,
         squareStyle: playing ? { cursor: 'pointer' } : undefined,
         onSquareClick: ({ square }) => selectSquare(square),
@@ -699,11 +703,10 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
 
     const resumableRegular = run && !run.daily && (run.phase !== 'finished' || !payout.result) ? { run, set: pieceSet } : regularRun.current;
     const resumableDaily = daily.today && daily.now < daily.today.expiresAt ? savedDailyRun : null;
-    const continueDaily = !!resumableDaily && (!!run?.daily || !resumableRegular);
-    const continueRun = continueDaily ? resumableDaily : resumableRegular?.run;
-    const showNavigation = page !== 'game' || showingResult;
+    const showNavigation = (page !== 'game' || showingResult) && (page !== 'endless-game' || endless.session?.phase === 'finished' || !endless.session);
     const activeDestination = page === 'game' ? 'play' : page;
-    const hasRunItems = !!run && (itemCount(run.items) > 0 || run.activeEffects.length > 0);
+    const hasRunItems = page === 'endless-game' ? !!endless.session && (itemCount(endless.session.items) > 0 || endless.session.activeEffects.length > 0)
+        : !!run && (itemCount(run.items) > 0 || run.activeEffects.length > 0);
     return <main className={`app-shell${page === 'play' ? ' main-menu-shell' : ''}${showNavigation ? ' has-navigation' : ''}${hasRunItems ? ' has-run-items' : ''}`}
         onPointerDownCapture={() => { keyboardOption.current = null; }}>
         <header className={`topbar${page === 'play' ? ' main-menu-topbar' : ''}`}>
@@ -734,24 +737,36 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         </Modal>}
         {showProfile && <Modal className={`profile-modal${editingProfile ? '' : ' profile-overview-modal'}`} titleId="profile-title" onClose={closeProfile} returnFocus={profileReturnFocus}>
             {editingProfile ? <ProfileEditor profile={playerProfile} onSave={updateProfile} onCancel={() => setEditingProfile(false)} />
-                : <ProfileOverview profile={playerProfile} history={runHistory.history} now={daily.now} onEdit={() => setEditingProfile(true)} />}
+                : <ProfileOverview profile={playerProfile} history={runHistory.history} now={daily.now} onEdit={() => setEditingProfile(true)}>
+                    <EndlessRecords records={endless.records} /></ProfileOverview>}
         </Modal>}
         {showRules && !payout.sequence && !showProfile && <Modal className="rules-panel" titleId="game-rules" onClose={() => setShowRules(false)} returnFocus={helpButton}>
             <h2 id="game-rules">How to play</h2>
             <p>Tap a piece, then an offered destination. Or tap a colored option twice.</p>
+            {endlessPage ? <>
+                <p>Play both sides. Best and Good moves extend your streak. Checkmate and draws automatically start a new board.</p>
+                <p>Standard uses lives and items. Inaccuracy and Bad moves break your streak and deal damage. Four Best moves in a row restore one heart.</p>
+                <p>Hardcore has no items. One Inaccuracy or Bad move ends the attempt.</p>
+                <p>Coins are awarded when the attempt ends. Score boosts do not increase coin earnings.</p>
+            </> : <>
             <p>Use arrow keys to switch colored options. Press Enter or Space once to select, then again to confirm.</p>
             <p>Start with {activeRules.startingHealth} health. Health and score carry across floors.</p>
             <p>{BEST_MOVE_STREAK_LENGTH} Best in a row: +1 HP.</p>
             <p>Every run ends with a square multiplier. Complete all 10 floors to permanently upgrade one square.</p>
             <p>Buy up to 3 items when starting a run. Unused items are lost when it ends. Activate them before confirming a move. Only player moves spend charges; effects carry across floors. Shields still allow mistakes to break your streak. Boosts exclude checkmate bonus points and coin earnings.</p>
             <ul>{QUALITY_ORDER.map(quality => <li key={quality}><strong>{QUALITY_LABELS[quality]}</strong><span>+{activeRules.points[quality]} points / {activeRules.damage[quality]} health lost</span></li>)}</ul>
+            </>}
             <button className="primary-small" data-modal-focus autoFocus onClick={() => setShowRules(false)}>Got it</button>
         </Modal>}
-        <div className={`page-content${page === 'game' && !showingResult ? ' game-content' : page === 'daily' || page === 'leaderboards' ? ' daily-content' : page === 'regular' || page === 'regular-items' ? ' regular-content' : page === 'profile' ? ' profile-content' : ''}`} ref={content}>
+        <div className={`page-content${(page === 'game' && !showingResult) || (page === 'endless-game' && endless.session?.phase !== 'finished') ? ' game-content' : page === 'daily' || page === 'leaderboards' ? ' daily-content' : page === 'regular' || page === 'regular-items' || page === 'endless' || page === 'endless-items' ? ' regular-content' : page === 'profile' ? ' profile-content' : ''}`} ref={content}>
         {page === 'play' && <PlayMenu daily={daily.today} now={daily.now} available={!!pool.length}
             onRegular={() => navigate({ page: 'regular' })} onDaily={() => navigate({ page: 'daily' })}
+            onEndless={() => navigate({ page: 'endless' })} endlessMove={endless.session && endless.session.phase !== 'finished' ? endless.session.moves + 1 : undefined}
             dailyRank={standings.find(entry => entry.id === 'you')?.rank}
-            continuation={continueRun ? { mode: continueDaily ? 'daily' : 'regular', level: Math.min(continueRun.levelIndex + 1, continueRun.levels.length), onContinue: continueDaily ? resumeDaily : resumeRegular } : undefined} />}
+            regularFloor={resumableRegular ? Math.min(resumableRegular.run.levelIndex + 1, resumableRegular.run.levels.length) : undefined}
+            dailyFloor={resumableDaily ? Math.min(resumableDaily.levelIndex + 1, resumableDaily.levels.length) : undefined} />}
+        {endlessPage && <EndlessPage page={page} controller={endless} active={endlessActive}
+            profile={progression.profile} buyLoadout={progression.buyLoadout} navigate={navigate} />}
         {(page === 'regular' || page === 'regular-items') && <section className="regular-page" aria-labelledby="regular-page-title">
             <div className="regular-setup-body" data-page-scroll="regular-setup">
                 <header className="page-heading regular-setup-heading">
@@ -763,10 +778,11 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                         onChange={setSelectedItems} onBring={bringItem} />}
             </div>
             <footer className="regular-setup-footer">
-                <div className="setup-actions">
+                <div className={`setup-actions${page === 'regular' && resumableRegular ? ' setup-actions-resumable' : ''}`}>
                     {page === 'regular' ? <>
-                        {resumableRegular && <button className="text-button" onClick={resumeRegular}>Resume regular run</button>}
-                        <button className="primary-small" disabled={!pool.length} onClick={() => navigate({ page: 'regular-items' })}>Next: items</button>
+                        {resumableRegular && <button className="primary-small" onClick={resumeRegular}>Resume regular run</button>}
+                        <button className={resumableRegular ? 'text-button' : 'primary-small'} disabled={!pool.length} onClick={() => navigate({ page: 'regular-items' })}>
+                            {resumableRegular ? 'Start new run' : 'Next: items'}</button>
                     </> : <>
                         <button className="text-button" onClick={() => navigate({ page: 'regular' })}>Back to sets</button>
                         <button className="primary-small" disabled={!pool.length || !isPieceSetUnlocked(regularSelectedSet, progression.profile) || loadoutCost(selectedItems) > progression.profile.coins} onClick={() => beginRun(regularSelectedSet)}>
@@ -784,7 +800,8 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         {page === 'leaderboards' && <LeaderboardsPage dungeon={daily.today} now={daily.now} entries={standings} profile={playerProfile} />}
         {page === 'profile' && <section className="profile-page" aria-labelledby="profile-page-title">
             {editingProfile ? <ProfileEditor asPage profile={playerProfile} onSave={updateProfile} onCancel={() => setEditingProfile(false)} />
-                : <ProfileOverview asPage profile={playerProfile} history={runHistory.history} now={daily.now} onEdit={() => setEditingProfile(true)} />}
+                : <ProfileOverview asPage profile={playerProfile} history={runHistory.history} now={daily.now} onEdit={() => setEditingProfile(true)}>
+                    <EndlessRecords records={endless.records} /></ProfileOverview>}
         </section>}
         {page === 'game' && (!showingResult || run?.daily) && <section id="game" className="game-layout" aria-label={run?.daily ? 'Daily game' : 'Regular game'} tabIndex={-1} data-page-focus>
             <div className={`board-column${run?.daily ? ' daily-board-column' : ''}`}>
@@ -808,13 +825,16 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                     </div>
                     <span className="move-count" aria-label={`Score: ${displayScore}`}><span>Score</span><strong>{displayScore.toLocaleString()}</strong></span>
                 </div>
-                {run && hasRunItems && !showBonusBoard && <RunItems key={run.id} run={run} enabled={playing} onUse={useRunItem} />}
+                {run && hasRunItems && !showBonusBoard && <RunItems key={run.id} items={run.items} activeEffects={run.activeEffects}
+                    canUse={id => canActivateItem(run, id)} enabled={playing} onUse={useRunItem} />}
             </div>
             <aside className="play-panel">
                 <div className="options-area">
                     {!pool.length && <div className="empty-state" role="status">No scored, playable floors.</div>}
-                    {playing && <div className="move-picker"><div ref={moveOptions} className="move-options" role="group" aria-label="Available moves">
-                        {choices.map((choice, index) => {
+                    {playing && <MoveOptions groupRef={moveOptions} pending={pendingChoice} onPreview={setPreview}
+                        onSelect={uci => !!uci[4] && boardSelection?.from === uci.slice(0, 2) && boardSelection?.to === uci.slice(2, 4)
+                            ? commitMove(uci) : selectMove(uci)}
+                        options={choices.map((choice, index) => {
                             const pending = pendingChoice === choice.playerMove.uci;
                             const promotion = choice.playerMove.uci[4];
                             const choosingPromotion = !!promotion && boardSelection?.from === choice.playerMove.uci.slice(0, 2)
@@ -822,19 +842,10 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                             const PromotionPiece = choosingPromotion
                                 ? PIECE_RENDERERS[pieceSet][`${level?.playerColor === 'black' ? 'b' : 'w'}${promotion!.toUpperCase()}`]
                                 : undefined;
-                            return <button className={`move-option${pending ? ' pending' : ''}`} key={choice.playerMove.uci}
-                                onClick={() => choosingPromotion ? commitMove(choice.playerMove.uci) : selectMove(choice.playerMove.uci)}
-                                onMouseEnter={() => setPreview(choice.playerMove.uci)} onMouseLeave={() => setPreview(null)}
-                                onFocus={() => setPreview(choice.playerMove.uci)} onBlur={() => setPreview(null)}
-                                aria-pressed={pending}
-                                aria-label={choosingPromotion ? `Promote to ${PIECES[promotion!]!.toLowerCase()}: ${choice.playerMove.san}.`
-                                    : pending ? `Confirm ${choice.playerMove.san}. Tap again to play this move.` : `Option ${index + 1}: ${choice.playerMove.san}, ${moveDescription(choice, run!.node.fen)}. Tap twice to play.`}
-                                style={{ '--option-color': OPTION_COLORS[index] } as CSSProperties}>
-                                {PromotionPiece && <PromotionPiece />}
-                                {pending && <Check className="selection-check" aria-hidden="true" strokeWidth={3} />}
-                            </button>;
-                        })}
-                    </div></div>}
+                            return { uci: choice.playerMove.uci, content: PromotionPiece && <PromotionPiece />,
+                                label: choosingPromotion ? `Promote to ${PIECES[promotion!]!.toLowerCase()}: ${choice.playerMove.san}.`
+                                    : pending ? `Confirm ${choice.playerMove.san}. Tap again to play this move.` : `Option ${index + 1}: ${choice.playerMove.san}, ${moveDescription(choice, run!.node.fen)}. Tap twice to play.` };
+                        })} />}
                     {payout.sequence && <div className="payout-card" role="status" aria-label="Score payout">
                         <Sparkles size={20} aria-hidden="true" />
                         <span>Score bonus</span>

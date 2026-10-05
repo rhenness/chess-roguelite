@@ -13,6 +13,7 @@
 .profile-stat-grid dt { color: #58645d; font-size: 12px; }
 .profile-stat-grid dd { margin: 7px 0 4px; color: #234b40; font-size: 23px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .profile-stat-grid dd:not(:has(+ span)) { font-size: 17px; }
+.profile-stat-grid small { font-size: 12px; font-weight: 400; }
 .profile-stat-grid span { display: block; color: #69716b; font-size: 11px; }
 .profile-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .profile-history h3 { margin: 0; font: 600 21px/1.2 Georgia, serif; }
