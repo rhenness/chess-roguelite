@@ -1,6 +1,6 @@
 import { Coins, Sparkles } from 'lucide-react';
 import { DAILY_COIN_MULTIPLIER } from '../game/daily';
-import { COIN_SCORE_STEP, normalRunCoinReward, RUN_COMPLETION_COINS, runCoinReward } from '../game/economy';
+import { normalRunCoinReward, RUN_COMPLETION_COINS, runCoinReward } from '../game/economy';
 import type { PayoutResult } from '../game/multipliers';
 import type { RunState } from '../game/run';
 
@@ -32,9 +32,5 @@ export function DailyRewards() {
                 <Sparkles size={22} aria-hidden="true" /><strong>+0.1×</strong><span>Random square</span>
             </div>
         </div>
-        <div className="daily-reward-notes">
-            <span>{DAILY_COIN_MULTIPLIER} coins / {COIN_SCORE_STEP} base points</span><span>Bonuses on clear</span>
-        </div>
-        <p className="daily-reward-policy">Keep coins on defeat · No rewards on expiry</p>
     </section>;
 }

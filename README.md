@@ -56,17 +56,32 @@ are documented in [`docs/main-menu-artwork.md`](docs/main-menu-artwork.md).
 
 ### Player profile
 
-Open the avatar button in the header to edit your profile.
+Open the avatar button in the header to view your profile. The overview shows
+your best regular and daily final scores with dates, fully cleared runs, and
+checkmates across finished runs. Score history switches between Daily and Regular
+and between 30 days and All time. Daily history shows each dungeon day's attempt;
+regular history shows the best finished run on each local calendar date. Hover,
+tap, or focus a chart point for its score, floors cleared, and outcome. Days without
+a recorded run have no score point.
+
+Choose **Edit profile** from the overview to change your appearance.
 Choose a display name (up to 24 characters), one of eight transparent SVG avatars,
 an independent avatar-circle background color, and one of six SVG banners.
 Background colors use preset swatches. The leaderboard-row
 preview updates as you edit, using sample rank and score values. The same avatar,
 circle color, name, and banner appear in daily standings. Save changes updates the header avatar and writes
-`knightfall.player-profile.v1` to localStorage. Cancel, closing, and Escape discard
-the draft. Profile appearance saves separately from unlocks, coins, and multipliers.
+`knightfall.player-profile.v1` to localStorage and returns to the overview.
+Cancel, closing, and Escape in the editor discard the draft and return to the
+overview. Closing the overview returns to the previous screen.
+Profile appearance saves separately from unlocks, coins, multipliers, and history.
 If browser storage is unavailable, changes remain available for the current session.
-The editor uses a desktop dialog and a full-screen panel on phones, and pauses
-move playback while open.
+The profile uses a desktop dialog and a full-screen panel on phones, and pauses
+move playback and automatic floor advancement while open.
+
+Finished runs, including defeats, save their final payout scores to
+`knightfall.run-history.v1`. Regular history begins with newly finished runs;
+existing saved daily results are imported where available. Reopening the profile
+or refreshing does not duplicate results. History remains local to this browser.
 
 ### Daily dungeon
 
@@ -187,8 +202,9 @@ Checkmating the opponent before the floor's configured decision limit awards
 Best-move points for every unplayed decision: a win on move two of a
 four-decision floor adds 200 bonus points. These points do not increase move
 counts, the Best streak, or health. Draws and losses award no such bonus.
-Player checkmates show a "Checkmate" board notification before advancing to
-the next floor or starting the final payout.
+Player checkmates show a "Checkmate" board notification, followed by the next
+floor notification before advancing. On the final floor, payout starts after
+the Checkmate notification finishes.
 
 Preview overlays from the browser console using `window.knightfall`. These
 commands only show notifications; they do not change gameplay health or score:

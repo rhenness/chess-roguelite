@@ -7,8 +7,6 @@
 .daily-reward-tile > svg { color: #e5c782; }
 .daily-reward-tile > strong { color: #f2d693; font-size: 26px; font-weight: 750; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .daily-reward-tile > span { font-size: 11px; line-height: 1.4; }
-.daily-reward-notes { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; margin-top: 12px; padding-top: 9px; border-top: 1px solid rgba(233, 227, 212, .18); color: #e1e8dc; font-size: 10px; line-height: 1.4; }
-.daily-reward-policy { margin-top: 6px; color: #e1e8dc; font-size: 10px; line-height: 1.4; }
 .daily-set-heading { margin: 18px 4px 8px; color: #405d4e; font-size: 13px; font-weight: 650; }
 .daily-page .piece-set-options-compact { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 4px; }
 .daily-page .piece-set-options-compact .piece-set-card { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 84px; padding: 10px 12px; border-radius: 12px; text-align: left; }
@@ -61,7 +59,7 @@
 @media (min-width: 561px) {
     .daily-reward-tile { gap: 6px; padding-block: 8px; }
     .daily-reward-tile > strong { font-size: 30px; }
-    .daily-reward-tile > span, .daily-reward-notes, .daily-reward-policy { font-size: 12px; }
+    .daily-reward-tile > span { font-size: 12px; }
     .daily-page .piece-set-options-compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .daily-page .piece-set-options-compact .piece-set-card { display: flex; flex-direction: column; align-items: stretch; min-height: 180px; padding: 14px; }
     .daily-page .piece-set-options-compact .piece-set-preview { align-self: center; width: 96px; }

@@ -12,6 +12,7 @@ import { usePageNavigation } from './game/usePageNavigation';
 import { MultiplierUpgrades } from './components/MultiplierUpgrades';
 import { PlayerAvatar } from './components/PlayerAvatar';
 import { ProfileEditor } from './components/ProfileEditor';
+import { ProfileOverview } from './components/ProfileOverview';
 import { DailyLeaderboard } from './components/DailyLeaderboard';
 import { dailyLeaderboard } from './game/leaderboard';
 import { loadPlayerProfile, savePlayerProfile, type PlayerProfile } from './game/playerProfile';
@@ -21,6 +22,7 @@ import { createDeathNotice, createHealthNotice, installNotificationConsole } fro
 import { BOARD_SQUARES, formatMultiplier, type PayoutResult } from './game/multipliers';
 import { useBoardPayout } from './game/useBoardPayout';
 import { useUserProgression } from './game/useUserProgression';
+import { useRunHistory } from './game/useRunHistory';
 import { isPieceSetUnlocked } from './game/progression';
 import { runCoinReward } from './game/economy';
 import { applyPaidUpgrades } from './game/economy';
@@ -43,6 +45,15 @@ const OPTION_COLORS = ['#c28b26', '#477c9e', '#a95843', '#785b96'];
 const CONFIRM_COLOR = '#2f8a5c';
 const EMPTY_BOARD_POSITION = {};
 const PIECES: Record<string, string> = { p: 'Pawn', n: 'Knight', b: 'Bishop', r: 'Rook', q: 'Queen', k: 'King' };
+
+function createNextFloorNotice(run: RunState): BoardNotice {
+    const label = `Floor ${run.levelIndex + 2}`;
+    return {
+        id: `level-${run.id}-${run.levelIndex + 2}`, visual: <ArrowUp strokeWidth={1.5} />,
+        label, announcement: label, tone: 'reward',
+    };
+}
+
 let openModalCount = 0;
 let modalOverflow = '';
 
@@ -167,8 +178,10 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const regularRun = useRef<{ run: RunState; set: PieceSetId } | null>(null);
     const [playerProfile, setPlayerProfile] = useState(loadPlayerProfile);
     const [showProfile, setShowProfile] = useState(false);
+    const [editingProfile, setEditingProfile] = useState(false);
     const [profileSaveMessage, setProfileSaveMessage] = useState<string | null>(null);
     const progression = useUserProgression(run);
+    const runHistory = useRunHistory();
     const [pieceSet, setPieceSet] = useState<PieceSetId>('default');
     const [upgradeSet, setUpgradeSet] = useState<PieceSetId | null>(null);
     const [preview, setPreview] = useState<string | null>(null);
@@ -177,6 +190,12 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const [showRules, setShowRules] = useState(false);
     const [boardNotice, setBoardNotice] = useState<BoardNotice | null>(null);
     const dismissBoardNotice = useCallback(() => setBoardNotice(null), []);
+    const waitingForCheckmate = run?.phase === 'level-ended'
+        && boardNotice?.id === `checkmate-${run.id}-${run.levelIndex}`;
+    const checkmatedFloor = waitingForCheckmate ? run : null;
+    const completeBoardNotice = useCallback(() => {
+        setBoardNotice(checkmatedFloor ? createNextFloorNotice(checkmatedFloor) : null);
+    }, [checkmatedFloor]);
     const activeDaily = run?.daily ? daily.archive.days[run.daily.day]?.attempt : undefined;
     const paused = page !== 'game' || showProfile || showLeaderboard || !!upgradeSet || showRules;
     const payout = useBoardPayout(run, boardNotice !== null, pieceSet, paused,
@@ -239,8 +258,15 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             if (!completed) continue;
             progression.recordRun(completed);
             payout.claimDailyUpgrade(dungeon.attempt.setId, dungeon.attempt.payout, dungeon.day);
+            runHistory.recordRun(completed, dungeon.attempt.payout, dungeon.attempt.finishedAt ?? Date.now());
         }
-    }, [daily.archive, progression.recordRun, payout.claimDailyUpgrade]);
+    }, [daily.archive, progression.recordRun, payout.claimDailyUpgrade, runHistory.recordRun]);
+
+    // The final score is known as soon as the actual payout starts, even if its animation is interrupted.
+    const finishedPayout = payout.result ?? (payout.sequence?.preview ? null : payout.sequence?.outcome);
+    useEffect(() => {
+        if (run?.phase === 'finished' && !run.daily && finishedPayout) runHistory.recordRun(run, finishedPayout);
+    }, [run, finishedPayout, runHistory.recordRun]);
 
     useEffect(() => {
         if (!profileSaveMessage) return;
@@ -248,17 +274,23 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         return () => window.clearTimeout(timer);
     }, [profileSaveMessage]);
 
-    function editProfile(button?: HTMLButtonElement) {
+    function openProfile(button?: HTMLButtonElement) {
         profileReturnFocus.current = button ?? profileButton.current;
         setShowRules(false);
         setProfileSaveMessage(null);
+        setEditingProfile(false);
         setShowProfile(true);
+    }
+
+    function closeProfile() {
+        if (editingProfile) setEditingProfile(false);
+        else setShowProfile(false);
     }
 
     function updateProfile(profile: PlayerProfile) {
         savePlayerProfile(profile);
         setPlayerProfile(profile);
-        setShowProfile(false);
+        setEditingProfile(false);
     }
 
     useEffect(() => {
@@ -307,16 +339,12 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             });
         } else if (next.phase === 'level-ended' && run?.phase !== 'level-ended'
             && next.outcomes.at(-1)?.status === 'completed') {
-            const label = `Floor ${next.levelIndex + 2}`;
-            setBoardNotice({
-                id: `level-${next.id}-${next.levelIndex + 2}`, visual: <ArrowUp strokeWidth={1.5} />,
-                label, announcement: label, tone: 'reward',
-            });
+            setBoardNotice(createNextFloorNotice(next));
         }
     }
 
     useEffect(() => {
-        if (paused || expirationActive || payout.sequence?.preview || (run?.phase !== 'reveal' && run?.phase !== 'reply' && run?.phase !== 'level-ended')) return;
+        if (paused || expirationActive || waitingForCheckmate || payout.sequence?.preview || (run?.phase !== 'reveal' && run?.phase !== 'reply' && run?.phase !== 'level-ended')) return;
         const timer = window.setTimeout(() => {
             if (run.phase === 'level-ended') {
                 setPreview(null);
@@ -328,7 +356,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
             }
         }, run.phase === 'level-ended' ? 1500 : run.phase === 'reveal' ? 1400 : 1000);
         return () => window.clearTimeout(timer);
-    }, [run, payout.sequence?.preview, paused, expirationActive]);
+    }, [run, payout.sequence?.preview, paused, expirationActive, waitingForCheckmate]);
 
     function beginRun(set: PieceSetId) {
         if (!pool.length || !isPieceSetUnlocked(set, progression.profile)) return;
@@ -537,7 +565,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                     <strong className="coin-amount-compact" aria-hidden="true">{progression.profile.coins.toLocaleString(undefined,
                         progression.profile.coins >= 10_000 ? { notation: 'compact', maximumFractionDigits: 1 } : undefined)}</strong>
                 </span>
-                <button ref={profileButton} className="profile-button" disabled={expirationActive} aria-label="Edit profile" title="Edit profile" onClick={() => editProfile()}>
+                <button ref={profileButton} className="profile-button" disabled={expirationActive} aria-label="View profile" title="Your profile" onClick={() => openProfile()}>
                     <PlayerAvatar profile={playerProfile} />
                 </button>
             </div>
@@ -548,8 +576,9 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         {showLeaderboard && leaderboardDungeon && <Modal className="leaderboard-modal" titleId="daily-leaderboard-title" onClose={() => setShowLeaderboard(false)} returnFocus={leaderboardButton}>
             <DailyLeaderboard dungeon={leaderboardDungeon} now={daily.now} entries={standings} profile={playerProfile} />
         </Modal>}
-        {showProfile && <Modal className="profile-modal" titleId="profile-title" onClose={() => setShowProfile(false)} returnFocus={profileReturnFocus}>
-            <ProfileEditor profile={playerProfile} onSave={updateProfile} onCancel={() => setShowProfile(false)} />
+        {showProfile && <Modal className={`profile-modal${editingProfile ? '' : ' profile-overview-modal'}`} titleId="profile-title" onClose={closeProfile} returnFocus={profileReturnFocus}>
+            {editingProfile ? <ProfileEditor profile={playerProfile} onSave={updateProfile} onCancel={() => setEditingProfile(false)} />
+                : <ProfileOverview profile={playerProfile} history={runHistory.history} now={daily.now} onEdit={() => setEditingProfile(true)} />}
         </Modal>}
         {showRules && !payout.sequence && !showProfile && <Modal className="rules-panel" titleId="game-rules" onClose={() => setShowRules(false)} returnFocus={helpButton}>
             <h2 id="game-rules">How to play</h2>
@@ -582,11 +611,11 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
         {page === 'game' && (!showingResult || run?.daily) && <section id="game" className="game-layout" aria-label={run?.daily ? 'Daily game' : 'Regular game'} tabIndex={-1} data-page-focus>
             <div className={`board-column${run?.daily ? ' daily-board-column' : ''}`}>
                 {run?.daily && <div className="daily-run-label"><span className="daily-run-banner"><DoorOpen size={14} aria-hidden="true" />DAILY DUNGEON</span>
-                    <time aria-label="Time until dungeon expires">{formatCountdown(run.daily.expiresAt, daily.now)}</time></div>}
+                    <time aria-label="Time until dungeon expires"><Clock3 size={14} aria-hidden="true" />{formatCountdown(run.daily.expiresAt, daily.now)}</time></div>}
                 <div className="board-wrap">
                     {fen && level ? <Chessboard options={boardOptions} /> : <div className="empty-board">No playable floors</div>}
                     {visibleNotice && <BoardNotification key={visibleNotice.id} notice={visibleNotice}
-                        onComplete={expirationActive ? completeExpiration : payout.notice ? payout.advanceNotice : boardNotice ? dismissBoardNotice : progression.advanceUnlock} />}
+                        onComplete={expirationActive ? completeExpiration : payout.notice ? payout.advanceNotice : boardNotice ? completeBoardNotice : progression.advanceUnlock} />}
                 </div>
                 <div className="level-progress" role={run ? 'progressbar' : undefined} aria-label={run ? 'Run progress' : undefined}
                     aria-valuemin={run ? 1 : undefined} aria-valuemax={run?.levels.length} aria-valuenow={run ? run.levelIndex + 1 : undefined}

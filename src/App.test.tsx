@@ -12,6 +12,7 @@ import { initialUserProgression, loadUserProgression, PROGRESSION_STORAGE_KEY, s
 import { PIECE_RENDERERS } from './components/pieces/pieceRenderers';
 import App from './App';
 import { initialPlayerProfile, loadPlayerProfile, PLAYER_PROFILE_STORAGE_KEY } from './game/playerProfile';
+import { loadRunHistory, RUN_HISTORY_STORAGE_KEY, saveRunHistory, type RunRecord } from './game/runHistory';
 import { createDailyDungeon, DAILY_STORAGE_KEY, enterDailyDungeon, initialDailyArchive, recordDailyRun, saveDailyArchive, storeDailyDungeon } from './game/daily';
 
 // Assert the FEN/orientation sent to the board without depending on drag animations.
@@ -37,6 +38,7 @@ beforeEach(() => {
     window.history.replaceState(null, '', '#/play');
     window.localStorage.removeItem(DAILY_STORAGE_KEY);
     window.localStorage.removeItem(PLAYER_PROFILE_STORAGE_KEY);
+    window.localStorage.removeItem(RUN_HISTORY_STORAGE_KEY);
     PIECE_SET_IDS.forEach(id => window.localStorage.removeItem(PIECE_SETS[id].storageKey));
     // Existing gameplay scenarios exercise all sets after they have been unlocked.
     saveUserProgression({ ...initialUserProgression(), finishedRuns: 8 });
@@ -97,13 +99,109 @@ function finishPayout() {
     expect(screen.queryByText('Total score') ?? screen.queryByText('Final score')).toBeInTheDocument();
 }
 
+function openProfileEditor() {
+    if (!screen.queryByRole('dialog', { name: 'Your profile' })) fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+}
+
 describe('player profile interface', () => {
+    it('opens the overview from the main menu and returns focus to the avatar when closed', () => {
+        render(<App levels={[makeLevel()]} />);
+        const avatar = screen.getByRole('button', { name: 'View profile' });
+        fireEvent.click(avatar);
+        const profile = screen.getByRole('dialog', { name: 'Your profile' });
+        expect(within(profile).getByText('Massive Pawn')).toBeInTheDocument();
+        expect(within(profile).getAllByText('No runs yet')).toHaveLength(2);
+        expect(within(profile).getByText('Finish a regular run to start your score history.')).toBeInTheDocument();
+        expect(screen.queryByRole('textbox', { name: 'Display name' })).not.toBeInTheDocument();
+        fireEvent.click(within(profile).getByRole('button', { name: 'Close dialog' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(avatar).toHaveFocus();
+        expect(window.location.hash).toBe('#/play');
+    });
+
+    it('shows personal bests, lifetime stats and selectable score history with mode and period controls', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-04T12:00:00Z'));
+        const sample = (id: string, date: string, score: number, mode: 'regular' | 'daily' = 'regular'): RunRecord => ({
+            id, mode, finishedAt: Date.parse(`${date}T12:00:00Z`), ...(mode === 'daily' ? { dailyDay: date } : {}),
+            score, floorsCompleted: 10, floorsTotal: 10, checkmates: 1, result: 'complete',
+        });
+        saveRunHistory({ version: 1, runs: [sample('old', '2026-09-01', 1000), sample('low', '2026-10-01', 100),
+            sample('high', '2026-10-01', 400), sample('new', '2026-10-04', 300),
+            { ...sample('daily', '2026-10-03', 800, 'daily'), floorsCompleted: 7, result: 'defeat' }] });
+        render(<App levels={[makeLevel()]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
+        const profile = screen.getByRole('dialog', { name: 'Your profile' });
+        expect(within(profile).getByText('Best regular score').nextElementSibling).toHaveTextContent('1,000');
+        expect(within(profile).getByText('Best daily score').nextElementSibling).toHaveTextContent('800');
+        expect(within(profile).getByText('Runs completed').nextElementSibling).toHaveTextContent('4');
+        expect(within(profile).getByText('Total checkmates').nextElementSibling).toHaveTextContent('5');
+        const chart = within(profile).getByRole('group', { name: 'Regular score history chart' });
+        expect(within(chart).getAllByRole('button')).toHaveLength(2);
+        fireEvent.focus(within(chart).getByRole('button', { name: /400 points$/ }));
+        expect(within(profile).getByRole('status', { name: 'Selected run' })).toHaveTextContent('400 points');
+        fireEvent.click(within(profile).getByRole('button', { name: 'All time' }));
+        expect(within(chart).getAllByRole('button')).toHaveLength(3);
+        fireEvent.click(within(chart).getByRole('button', { name: /1,000 points$/ }));
+        expect(within(profile).getByRole('status', { name: 'Selected run' })).toHaveTextContent('1,000 points');
+        fireEvent.click(within(profile).getByRole('button', { name: 'Daily' }));
+        const dailyChart = within(profile).getByRole('group', { name: 'Daily score history chart' });
+        expect(within(dailyChart).getAllByRole('button')).toHaveLength(1);
+        expect(dailyChart.querySelector('polyline')).toBeNull();
+        expect(within(profile).getByRole('status', { name: 'Selected run' })).toHaveTextContent('800 points');
+        expect(within(profile).getByRole('status', { name: 'Selected run' })).toHaveTextContent('7 / 10 floors');
+        expect(within(profile).getByRole('status', { name: 'Selected run' })).toHaveTextContent('Defeat');
+    });
+
+    it('records a regular payout once and keeps its final score after reopening and refreshing the profile', () => {
+        vi.useFakeTimers();
+        const level = makeLevel();
+        const view = renderGame(<StrictMode><App levels={[level]} /></StrictMode>);
+        selectQuality(level, 'best');
+        act(() => { vi.advanceTimersByTime(1400); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        finishPayout();
+        const score = screen.getByText('Total score').nextElementSibling!.textContent;
+        const history = loadRunHistory();
+        expect(history.runs).toHaveLength(1);
+        expect(history.runs[0]?.score.toLocaleString()).toBe(score);
+        fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
+        expect(screen.getByText('Best regular score').nextElementSibling).toHaveTextContent(score!);
+        fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+        fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
+        expect(loadRunHistory().runs).toHaveLength(1);
+        view.unmount();
+        render(<App levels={[level]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
+        expect(screen.getByText('Best regular score').nextElementSibling).toHaveTextContent(score!);
+        expect(loadRunHistory().runs).toHaveLength(1);
+    });
+
+    it('recovers a saved daily final score into history without duplicating it on refresh', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-04T12:00:00Z'));
+        const level = makeLevel();
+        const entered = enterDailyDungeon(createDailyDungeon([level]), 'default', DEFAULT_RULES, initialMultiplierProfile().board);
+        const run = chooseMove(entered.run, decision(level).choices[0]!.playerMove.uci);
+        const saved = recordDailyRun(entered.dungeon, run, Date.now(), () => 0);
+        saveDailyArchive(storeDailyDungeon(initialDailyArchive(), saved));
+        const view = render(<App levels={[level]} />);
+        expect(loadRunHistory().runs).toHaveLength(1);
+        expect(loadRunHistory().runs[0]).toMatchObject({ mode: 'daily', score: saved.attempt!.payout!.finalScore, dailyDay: saved.day });
+        view.unmount();
+        render(<App levels={[level]} />);
+        expect(loadRunHistory().runs).toHaveLength(1);
+        fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
+        expect(screen.getByText('Best daily score').nextElementSibling).toHaveTextContent(saved.attempt!.payout!.finalScore.toLocaleString());
+    });
+
     it('opens from the header, previews independent choices, and persists only on save', () => {
         const view = renderGame(<App levels={[makeLevel()]} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+        openProfileEditor();
         const editor = screen.getByRole('dialog', { name: 'Edit profile' });
         expect(screen.getAllByRole('dialog')).toHaveLength(1);
-        expect(screen.getByRole('textbox', { name: 'Display name' })).not.toHaveFocus();
+        expect(screen.getByRole('textbox', { name: 'Display name' })).toHaveFocus();
         fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Castle Keeper' } });
         fireEvent.click(screen.getByRole('button', { name: 'Rook avatar' }));
         fireEvent.click(screen.getByRole('button', { name: 'Sapphire avatar background' }));
@@ -117,12 +215,12 @@ describe('player profile interface', () => {
         fireEvent.click(within(editor).getByRole('button', { name: 'Save changes' }));
         expect(loadPlayerProfile()).toMatchObject({ displayName: 'Castle Keeper', avatarId: 'rook',
             avatarBackgroundColor: '#345d85', bannerId: 'crimson' });
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: 'Your profile' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Edit profile' })).toHaveFocus();
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
         view.unmount();
         renderGame(<App levels={[makeLevel()]} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+        openProfileEditor();
         expect(screen.getByRole('textbox', { name: 'Display name' })).toHaveValue('Castle Keeper');
         expect(screen.getByRole('button', { name: 'Rook avatar' })).toHaveAttribute('aria-pressed', 'true');
         expect(screen.getByRole('button', { name: 'Crimson court banner' })).toHaveAttribute('aria-pressed', 'true');
@@ -135,7 +233,7 @@ describe('player profile interface', () => {
         selectQuality(level, 'good');
         const score = screen.getByLabelText('Score: 75');
         const position = screen.getByTestId('board').getAttribute('data-position');
-        fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+        openProfileEditor();
         fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Unsaved' } });
         act(() => { vi.advanceTimersByTime(10000); });
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', position);
@@ -147,13 +245,15 @@ describe('player profile interface', () => {
         expect(screen.getByRole('textbox', { name: 'Display name' })).toHaveValue('Massive Pawn');
         fireEvent.click(screen.getByRole('button', { name: 'Queen avatar' }));
         fireEvent(screen.getByRole('dialog'), new Event('cancel', { bubbles: true, cancelable: true }));
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: 'Your profile' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+        expect(screen.getByRole('button', { name: 'View profile' })).toHaveFocus();
         expect(loadPlayerProfile()).toEqual(initialPlayerProfile());
     });
 
     it('validates empty names, offers preset colors, and includes inputs in keyboard navigation', () => {
         renderGame(<App levels={[makeLevel()]} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+        openProfileEditor();
         const input = screen.getByRole('textbox', { name: 'Display name' });
         fireEvent.change(input, { target: { value: '   ' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -177,7 +277,7 @@ describe('player profile interface', () => {
         renderGame(<App levels={[makeLevel()]} />);
         const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Unavailable'); });
         try {
-            fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+            openProfileEditor();
             fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Keeper' } });
             fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
             expect(screen.queryByRole('status')).not.toBeInTheDocument();
@@ -338,10 +438,11 @@ describe('daily leaderboard interface', () => {
         fireEvent.click(screen.getByRole('tab', { name: 'Leaderboard' }));
         expect(screen.getByRole('list', { name: 'Daily standings' }).scrollTop).toBe(300);
         expect(screen.queryByRole('button', { name: 'Edit your profile' })).not.toBeInTheDocument();
-        const edit = screen.getByRole('button', { name: 'Edit profile' });
-        fireEvent.click(edit);
+        const edit = screen.getByRole('button', { name: 'View profile' });
+        openProfileEditor();
         fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Royal Player' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
         expect(edit).toHaveFocus();
         expect(screen.getByRole('list', { name: 'Daily standings' }).scrollTop).toBe(300);
         expect(within(screen.getByLabelText('Your standing')).getByText('Royal Player')).toBeInTheDocument();
@@ -377,10 +478,11 @@ describe('daily leaderboard interface', () => {
         expect(within(modal).queryByRole('button', { name: 'Show all' })).not.toBeInTheDocument();
         fireEvent.click(within(modal).getByRole('button', { name: 'Close dialog' }));
         expect(document.documentElement.style.overflow).toBe('');
-        const edit = screen.getByRole('button', { name: 'Edit profile' });
-        fireEvent.click(edit);
+        const edit = screen.getByRole('button', { name: 'View profile' });
+        openProfileEditor();
         expect(screen.getByRole('dialog', { name: 'Edit profile' })).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
         expect(edit).toHaveFocus();
     });
 });
@@ -394,7 +496,9 @@ describe('daily rewards interface', () => {
             render(<App levels={[level]} />);
             openDaily();
             expect(screen.getByText('One attempt')).toBeInTheDocument();
-            expect(screen.getByText('5 coins / 25 base points')).toBeVisible();
+            expect(screen.queryByText('5 coins / 25 base points')).not.toBeInTheDocument();
+            expect(screen.queryByText('Bonuses on clear')).not.toBeInTheDocument();
+            expect(screen.queryByText('Keep coins on defeat · No rewards on expiry')).not.toBeInTheDocument();
             expect(screen.getByLabelText('100 bonus coins for clearing every floor')).toBeVisible();
             expect(screen.getByRole('tabpanel', { name: 'Dungeon' }).querySelector('details')).toBeNull();
             fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
@@ -1072,9 +1176,19 @@ describe('gameplay interface', () => {
         expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
         expect(screen.getByLabelText('Best streak: 1')).toBeInTheDocument();
         act(() => { vi.advanceTimersByTime(1500); });
+        expect(screen.queryByRole('status', { name: 'Checkmate' })).not.toBeInTheDocument();
+        const floorNotice = screen.getByRole('status', { name: 'Floor 2' });
+        expect(floorNotice.parentElement).toContainElement(screen.getByTestId('board'));
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
+        expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuenow', '1');
+        act(() => { vi.advanceTimersByTime(1499); });
+        expect(screen.getByRole('status', { name: 'Floor 2' })).toBeInTheDocument();
+        expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuenow', '1');
+        act(() => { vi.advanceTimersByTime(1); });
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', next.root.fen);
         expect(screen.getByLabelText('Score: 400')).toBeInTheDocument();
         expect(screen.queryByRole('status', { name: 'Checkmate' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('status', { name: 'Floor 2' })).not.toBeInTheDocument();
     });
 
     it('keeps the final mating position visible for the Checkmate notice before starting payout', () => {
@@ -1089,6 +1203,7 @@ describe('gameplay interface', () => {
         act(() => { vi.advanceTimersByTime(1400); });
         expect(screen.getByRole('status', { name: 'Checkmate' })).toBeInTheDocument();
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
+        expect(screen.queryByRole('status', { name: 'Floor 2' })).not.toBeInTheDocument();
         expect(screen.queryByRole('status', { name: 'Score payout' })).not.toBeInTheDocument();
         act(() => { vi.advanceTimersByTime(1499); });
         expect(screen.getByRole('status', { name: 'Checkmate' })).toBeInTheDocument();
@@ -1121,10 +1236,11 @@ describe('gameplay interface', () => {
         selectQuality(level, 'best');
         act(() => { vi.advanceTimersByTime(1400); });
         act(() => { vi.advanceTimersByTime(1000); });
-        fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+        openProfileEditor();
         act(() => { vi.advanceTimersByTime(5000); });
         expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuenow', '1');
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
         act(() => { vi.advanceTimersByTime(1500); });
         expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuenow', '2');
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', next.root.fen);
