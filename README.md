@@ -258,16 +258,24 @@ the same timed effect cannot be activated twice at once. Activation clears any
 pending move confirmation. Notifications announce activation, healing, and
 prevented damage; move feedback displays the actual boosted points.
 
-Unused supplies and effects are discarded when the run finishes. Replacing or
-refreshing an unfinished regular run also loses its purchased supplies without
-a refund. Items do not enter permanent progression storage. Boost points count
-toward the final square payout but are excluded from coin rewards and early
+Unused supplies and effects are discarded when the run finishes. Replacing an
+unfinished regular run loses its supplies without a refund. Refreshing preserves
+the saved run and its inventory. Items do not enter permanent progression
+storage. Boost points count toward the final square payout but are excluded from coin rewards and early
 checkmate bonuses for unplayed decisions.
 
 New daily attempts receive one free copy of each item. Saved daily checkpoints
 replay item activations at their original decisions without charging coins or
 replaying notifications. Existing attempts without item rules remain item-free.
 Definitions, prices, and effect handlers live in [`src/game/items.ts`](src/game/items.ts).
+
+New regular and daily runs pause after rounds **3 and 6** for a free item choice.
+Two distinct random item cards hover over the cleared board; tapping one adds
+it to inventory and starts the next round. Checkpoint rewards can exceed the
+three-item entry limit. Small dots between floors mark the checkpoints, and a
+flag announces each stop. Health, streak, and effect durations carry through.
+Daily offers are date-seeded and shared by all players. Both run types preserve
+offers and claimed rewards on refresh; older saves retain their original rules.
 
 The game loads the
 precomputed JSON files in `src/levels`, skips unscored files (`difficulty: -1`),

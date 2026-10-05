@@ -93,6 +93,7 @@ export function PageHelp({ page, rules, result, dailyRun, dailyStatus, dailyClos
             `Start with ${rules.startingHealth} health. Health and score carry across floors. Mistakes cost health; ${BEST_MOVE_STREAK_LENGTH} Best moves in a row restore one heart.`,
             dailyRun ? 'Finish before the dungeon timer expires. Activate supplies before confirming a move.'
                 : `Reach the end of ${RUN_LEVEL_COUNT} floors. Activate any items before confirming a move.`,
+            'After rounds 3 and 6, choose one of two free items. Your choice goes into your inventory for later use.',
         ];
         gameDetails = !result;
     } else if (page === 'daily') {

@@ -40,6 +40,8 @@ h2, p { margin: 0; }
 .level-progress .past { background: #648276; }
 .level-progress .current { background: #c28b26; }
 .level-progress .future { background: #d9ddd3; }
+.level-progress .checkpoint-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; }
+.level-progress .checkpoint-dot.current { box-shadow: 0 0 0 2px #c28b262e; }
 .run-stats { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; height: 32px; }
 .health-stats { display: flex; align-items: center; gap: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .health-count { display: flex; align-items: center; gap: 6px; color: #a95843; font-size: 13px; }

@@ -1,5 +1,14 @@
 import { Chess } from 'chess.js';
 import type { DecisionNode, GeneratedLevel, TreeNode } from '../types/level';
+import { chooseCheckpointItem, nextLevel, type RunState } from '../game/run';
+
+/** Advance existing full-run scenarios through a reward choice without activating it. */
+export function continueToNextRound(run: RunState): RunState {
+    const next = nextLevel(run);
+    if (next.phase !== 'checkpoint') return next;
+    const reward = next.checkpointRewards.find(entry => entry.afterRound === next.levelIndex + 1)!;
+    return chooseCheckpointItem(next, reward.offers[0]);
+}
 
 const qualities = ['best', 'good', 'inaccuracy', 'bad'] as const;
 const evaluation = { depth: 1, score: { type: 'cp' as const, value: 0 }, pv: [] };

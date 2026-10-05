@@ -4,8 +4,9 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChessboardOptions } from 'react-chessboard';
 import type { GeneratedLevel, MoveQuality } from './types/level';
-import { decision, makeLevel } from './test/levels';
-import { advancePlayback, chooseMove, DEFAULT_RULES, nextLevel } from './game/run';
+import { continueToNextRound, decision, makeLevel } from './test/levels';
+import { advancePlayback, chooseMove, DEFAULT_RULES } from './game/run';
+import { ITEMS } from './game/items';
 import { BOARD_SQUARES, formatMultiplier, initialMultiplierProfile, loadMultiplierProfile, MULTIPLIER_STORAGE_KEY } from './game/multipliers';
 import { PIECE_SET_IDS, PIECE_SETS } from './game/pieceSets';
 import { initialUserProgression, loadUserProgression, PROGRESSION_STORAGE_KEY, saveUserProgression } from './game/progression';
@@ -107,6 +108,12 @@ function finishPayout() {
         act(() => { vi.runOnlyPendingTimers(); });
     }
     expect(screen.queryByText('Total score') ?? screen.queryByText('Final score')).toBeInTheDocument();
+}
+
+function claimCheckpointReward() {
+    const offers = screen.queryByRole('group', { name: 'Checkpoint items' });
+    if (!offers) return;
+    fireEvent.click(within(offers).getAllByRole('button')[0]!);
 }
 
 function resumeRegularFromHome() {
@@ -223,6 +230,92 @@ describe('regular run persistence', () => {
         expect(screen.queryByRole('button', { name: 'Resume regular run' })).not.toBeInTheDocument();
         expect(loadUserProgression().coins).toBe(coins);
         expect(loadRunHistory()).toEqual(history);
+    });
+});
+
+describe('run reward checkpoints', () => {
+    it.each(['regular', 'daily'] as const)('shows %s rewards over a cleared board after rounds 3 and 6 and takes an item with one tap', mode => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
+        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`checkpoint-${index}`, index));
+        renderSetup(<App levels={levels} />);
+        if (mode === 'regular') startRegular();
+        else {
+            openDaily();
+            fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        }
+        const coins = loadUserProgression().coins;
+        const checkpointDots = [screen.getByTitle('Checkpoint after floor 3'), screen.getByTitle('Checkpoint after floor 6')];
+        expect(checkpointDots[0]).toHaveClass('checkpoint-dot', 'future');
+        expect(checkpointDots[1]).toHaveClass('checkpoint-dot', 'future');
+        expect(screen.getByRole('progressbar', { name: 'Run progress' }).children).toHaveLength(12);
+        for (let round = 1; round <= 9; round++) {
+            selectQuality(levels[round - 1]!, 'best');
+            act(() => { vi.advanceTimersByTime(1400); });
+            act(() => { vi.advanceTimersByTime(1000); });
+            act(() => { vi.advanceTimersByTime(1500); });
+            if (round !== 3 && round !== 6) {
+                expect(screen.queryByRole('group', { name: 'Checkpoint items' })).not.toBeInTheDocument();
+                continue;
+            }
+            const heading = screen.getByRole('heading', { name: 'Choose your reward' });
+            expect(heading).toHaveFocus();
+            expect(heading.closest('.board-wrap')).toContainElement(screen.getByTestId('board'));
+            expect(screen.getByText(`Round ${round} cleared`)).toBeInTheDocument();
+            expect(screen.getByTitle(`Checkpoint after floor ${round}`)).toHaveClass('current');
+            expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuetext', `Checkpoint after floor ${round} of 10`);
+            expect(screen.getByTestId('board')).toHaveAttribute('data-position', '{}');
+            expect(screen.getByTestId('board')).toHaveAttribute('data-arrows', '[]');
+            expect(screen.getByTestId('board')).toHaveAttribute('data-square-styles', '{}');
+            expect(screen.queryByLabelText('Available moves')).not.toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'Take item & continue' })).not.toBeInTheDocument();
+            expect(screen.queryByText(/In your inventory:/)).not.toBeInTheDocument();
+            const offers = within(screen.getByRole('group', { name: 'Checkpoint items' })).getAllByRole('button');
+            expect(offers).toHaveLength(2);
+            const health = screen.getByLabelText(/^Health:/).textContent;
+            act(() => { vi.advanceTimersByTime(10000); });
+            expect(screen.getByTestId('board')).toHaveAttribute('data-position', '{}');
+            fireEvent.click(offers[0]!);
+            expect(screen.getByTitle(`Checkpoint after floor ${round}`)).toHaveClass('past');
+            expect(screen.queryByRole('heading', { name: 'Choose your reward' })).not.toBeInTheDocument();
+            expect(screen.getByTestId('board')).toHaveAttribute('data-position', levels[round]!.root.fen);
+            expect(screen.getByLabelText(/^Health:/)).toHaveTextContent(health!);
+            expect(loadUserProgression().coins).toBe(coins);
+        }
+    });
+
+    it.each(['regular', 'daily'] as const)('preserves %s offers on refresh and grants the chosen item once', mode => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
+        const levels = Array.from({ length: 7 }, (_, index) => makeLevel(`resume-checkpoint-${index}`, index));
+        let view = renderSetup(<App levels={levels} />);
+        if (mode === 'regular') startRegular();
+        else { openDaily(); fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' })); }
+        for (let index = 0; index < 3; index++) {
+            selectQuality(levels[index]!, 'best');
+            act(() => { vi.advanceTimersByTime(1400); });
+            act(() => { vi.advanceTimersByTime(1000); });
+            act(() => { vi.advanceTimersByTime(1500); });
+        }
+        const offerText = screen.getByRole('group', { name: 'Checkpoint items' }).textContent;
+        view.unmount();
+        view = render(<App levels={levels} />);
+        if (mode === 'regular') resumeRegularFromHome();
+        else { openDaily(); fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' })); }
+        expect(screen.getByRole('group', { name: 'Checkpoint items' })).toHaveTextContent(offerText!);
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', '{}');
+        const saved = mode === 'regular' ? JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).checkpoint
+            : loadDailyArchive(levels).days['2026-10-05']!.attempt!.checkpoint;
+        const id = saved.checkpointRewards[0].offers[0] as keyof typeof ITEMS;
+        claimCheckpointReward();
+        expect(screen.getByRole('button', { name: `${ITEMS[id].name}, ${mode === 'regular' ? 1 : 2} remaining` })).toBeInTheDocument();
+        view.unmount();
+        render(<App levels={levels} />);
+        if (mode === 'regular') resumeRegularFromHome();
+        else { openDaily(); fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' })); }
+        expect(screen.queryByRole('group', { name: 'Checkpoint items' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: `${ITEMS[id].name}, ${mode === 'regular' ? 1 : 2} remaining` })).toBeInTheDocument();
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', levels[3]!.root.fen);
     });
 });
 
@@ -1167,7 +1260,7 @@ describe('daily rewards interface', () => {
         for (let index = 0; index < 10; index++) {
             if (run.node.kind !== 'decision') throw new Error('Expected decision.');
             run = advancePlayback(advancePlayback(chooseMove(run, run.node.choices[0]!.playerMove.uci)));
-            if (index < 9) run = nextLevel(run);
+            if (index < 9) run = continueToNextRound(run);
         }
         const finished = recordDailyRun(entered.dungeon, run, Date.now(), () => 0);
         saveDailyArchive(storeDailyDungeon(initialDailyArchive(), finished));
@@ -2047,6 +2140,7 @@ describe('gameplay interface', () => {
             act(() => { vi.advanceTimersByTime(1400); });
             act(() => { vi.advanceTimersByTime(1000); });
             if (index < 3) act(() => { vi.advanceTimersByTime(1500); });
+            claimCheckpointReward();
         });
         finishPayout();
         fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
@@ -2131,6 +2225,7 @@ describe('gameplay interface', () => {
             act(() => { vi.advanceTimersByTime(1400); });
             act(() => { vi.advanceTimersByTime(1000); });
             if (index < 9) act(() => { vi.advanceTimersByTime(1500); });
+            claimCheckpointReward();
         }
         finishPayout();
         const saved = loadMultiplierProfile();
@@ -2155,6 +2250,7 @@ describe('gameplay interface', () => {
             act(() => { vi.advanceTimersByTime(1400); });
             act(() => { vi.advanceTimersByTime(1000); });
             if (index < 9) act(() => { vi.advanceTimersByTime(1500); });
+            claimCheckpointReward();
         }
         finishPayout();
         const saved = loadMultiplierProfile('obsidian');

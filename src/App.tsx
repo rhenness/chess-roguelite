@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { Chess, type Square } from 'chess.js';
 import { Chessboard, type ChessboardOptions } from 'react-chessboard';
-import { ArrowUp, Clock3, Coins, DoorOpen, Flame, Heart, Shield, Sparkles, Trophy, Unlock, X } from 'lucide-react';
+import { ArrowUp, Clock3, Coins, DoorOpen, Flag, Flame, Heart, Shield, Sparkles, Trophy, Unlock, X } from 'lucide-react';
 import type { GeneratedLevel, PlayerChoice } from './types/level';
 import { selectLevels } from './game/levels';
 import { BoardNotification, type BoardNotice } from './components/BoardNotification';
@@ -13,6 +13,7 @@ import { PrimaryNavigation } from './components/PrimaryNavigation';
 import { PageHelp } from './components/PageHelp';
 import { HelpWelcome } from './components/HelpWelcome';
 import { ItemIcon, ItemLoadout, RunItems } from './components/RunItems';
+import { RunCheckpointReward } from './components/RunCheckpointReward';
 import { activateItem, canActivateItem, ITEMS, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemId, type ItemInventory } from './game/items';
 import { MoveOptions, OPTION_COLORS, CONFIRM_COLOR } from './components/MoveOptions';
 import { BOARD_APPEARANCE } from './components/boardAppearance';
@@ -43,7 +44,7 @@ import { useDailyDungeon } from './game/useDailyDungeon';
 import { restoreDailyRun } from './game/daily';
 import { clearRegularRun, loadRegularRun, saveRegularRun } from './game/regular';
 import {
-    advancePlayback, boardFen, chooseMove, DEFAULT_RULES, nextLevel,
+    advancePlayback, boardFen, chooseCheckpointItem, chooseMove, DEFAULT_RULES, nextLevel,
     QUALITY_LABELS, QUALITY_ORDER, RUN_LEVEL_COUNT, shuffleChoices, startRun,
     type RunRules, type RunState,
 } from './game/run';
@@ -59,9 +60,10 @@ const EMPTY_BOARD_POSITION = {};
 const PIECES: Record<string, string> = { p: 'Pawn', n: 'Knight', b: 'Bishop', r: 'Rook', q: 'Queen', k: 'King' };
 
 function createNextFloorNotice(run: RunState): BoardNotice {
-    const label = `Floor ${run.levelIndex + 2}`;
+    const atCheckpoint = run.checkpointRewards.some(reward => reward.afterRound === run.levelIndex + 1 && reward.selected === null);
+    const label = atCheckpoint ? 'Checkpoint' : `Floor ${run.levelIndex + 2}`;
     return {
-        id: `level-${run.id}-${run.levelIndex + 2}`, visual: <ArrowUp strokeWidth={1.5} />,
+        id: `level-${run.id}-${run.levelIndex + 2}`, visual: atCheckpoint ? <Flag strokeWidth={1.5} /> : <ArrowUp strokeWidth={1.5} />,
         label, announcement: label, tone: 'reward',
     };
 }
@@ -264,6 +266,8 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     const choices = useMemo(() => node?.kind === 'decision' ? shuffleChoices(node.choices) : [], [node]);
     const fen = run ? boardFen(run) : level?.root.fen;
     const playing = run?.phase === 'decision' && !payout.sequence && !paused && !expirationActive;
+    const checkpointReward = run?.phase === 'checkpoint'
+        ? run.checkpointRewards.find(reward => reward.afterRound === run.levelIndex + 1) : undefined;
     const activeRules = run?.rules ?? rules;
     const orientation = level?.playerColor ?? 'white';
     const rows = historyRows(run, level);
@@ -435,7 +439,8 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                 label: 'Checkmate', announcement: 'Checkmate', tone: 'reward',
             });
         } else if (next.phase === 'level-ended' && run?.phase !== 'level-ended'
-            && next.outcomes.at(-1)?.status === 'completed') {
+            && (next.outcomes.at(-1)?.status === 'completed'
+                || next.checkpointRewards.some(reward => reward.afterRound === next.levelIndex + 1 && reward.selected === null))) {
             enqueueNotice(createNextFloorNotice(next));
         }
         return true;
@@ -692,7 +697,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                 boxShadow: `inset 0 0 0 4px ${upgrading ? '#2f8a5c' : '#fff0ae'}`,
             };
         }
-    } else if (highlighted) {
+    } else if (highlighted && !checkpointReward) {
         squareStyles[highlighted.slice(0, 2)] = { boxShadow: `inset 0 0 0 5px ${highlightColor}` };
         squareStyles[highlighted.slice(2, 4)] = { boxShadow: `inset 0 0 0 5px ${highlightColor}` };
     }
@@ -707,8 +712,8 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
     }
     const boardOptions: ChessboardOptions = {
         ...BOARD_APPEARANCE,
-        id: 'knightfall-board', position: showBonusBoard ? EMPTY_BOARD_POSITION : fen, boardOrientation: orientation,
-        showAnimations: !showBonusBoard,
+        id: 'knightfall-board', position: showBonusBoard || checkpointReward ? EMPTY_BOARD_POSITION : fen, boardOrientation: orientation,
+        showAnimations: !showBonusBoard && !checkpointReward,
         squareStyles,
         squareStyle: playing ? { cursor: 'pointer' } : undefined,
         onSquareClick: ({ square }) => selectSquare(square),
@@ -835,14 +840,26 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                     <time aria-label="Time until dungeon expires"><Clock3 size={14} aria-hidden="true" />{formatCountdown(run.daily.expiresAt, daily.now)}</time></div>}
                 <div className="board-wrap">
                     {fen && level ? <Chessboard options={boardOptions} /> : <div className="empty-board">No playable floors</div>}
+                    {checkpointReward && run && <RunCheckpointReward key={`${run.id}-${checkpointReward.afterRound}`}
+                        reward={checkpointReward} enabled={!paused && !expirationActive}
+                        onChoose={id => { const current = latestRun.current;
+                            if (current && !paused && !expirationActive) changeRun(chooseCheckpointItem(current, id)); }} />}
                     {visibleNotice && <BoardNotification key={visibleNotice.id} notice={visibleNotice}
                         onComplete={expirationActive ? completeExpiration : payout.notice ? payout.advanceNotice : boardNotice ? completeBoardNotice : progression.advanceUnlock} />}
                 </div>
                 <div className="level-progress" role={run ? 'progressbar' : undefined} aria-label={run ? 'Run progress' : undefined}
                     aria-valuemin={run ? 1 : undefined} aria-valuemax={run?.levels.length} aria-valuenow={run ? run.levelIndex + 1 : undefined}
-                    aria-valuetext={run ? `Floor ${run.levelIndex + 1} of ${run.levels.length}` : undefined}>
-                    {(run?.levels ?? pool.slice(0, RUN_LEVEL_COUNT)).map((item, index) => <span key={item.id} aria-hidden="true"
-                        className={run ? index < run.levelIndex ? 'past' : index === run.levelIndex ? 'current' : 'future' : 'future'} />)}
+                    aria-valuetext={run ? checkpointReward ? `Checkpoint after floor ${run.levelIndex + 1} of ${run.levels.length}`
+                        : `Floor ${run.levelIndex + 1} of ${run.levels.length}` : undefined}>
+                    {(run?.levels ?? pool.slice(0, RUN_LEVEL_COUNT)).flatMap((item, index) => {
+                        const reward = run?.checkpointRewards.find(entry => entry.afterRound === index + 1);
+                        const floor = <span key={item.id} aria-hidden="true"
+                            className={run ? index < run.levelIndex || (index === run.levelIndex && checkpointReward) ? 'past'
+                                : index === run.levelIndex ? 'current' : 'future' : 'future'} />;
+                        return reward ? [floor, <span key={`checkpoint-${item.id}`} aria-hidden="true"
+                            title={`Checkpoint after floor ${reward.afterRound}`}
+                            className={`checkpoint-dot ${reward.selected !== null ? 'past' : checkpointReward?.afterRound === reward.afterRound ? 'current' : 'future'}`} />] : [floor];
+                    })}
                 </div>
                 <div className="run-stats" aria-label="Run statistics">
                     <div className="health-stats">
@@ -854,7 +871,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                 {run && hasRunItems && !showBonusBoard && <RunItems key={run.id} items={run.items} activeEffects={run.activeEffects}
                     canUse={id => canActivateItem(run, id)} enabled={playing} onUse={useRunItem} />}
             </div>
-            <aside className="play-panel">
+            {!checkpointReward && <aside className="play-panel">
                 <div className="options-area">
                     {!pool.length && <div className="empty-state" role="status">No scored, playable floors.</div>}
                     {playing && <MoveOptions groupRef={moveOptions} pending={pendingChoice} onPreview={setPreview}
@@ -886,7 +903,7 @@ export default function App({ levels, levelWarnings = [], rules = DEFAULT_RULES 
                         {rows.map(row => <div className="history-row" key={row.number}><span>{row.number}.</span><strong>{row.white}</strong><strong>{row.black}</strong></div>)}
                     </div>
                 </section>
-            </aside>
+            </aside>}
         </section>}
         {showingResult && !run!.daily && <RunSummary run={run!} payout={payout.result!} restart={() => navigate({ page: 'regular' })}
             onShare={openRunShare} finishedAt={runHistory.history.runs.find(record => record.id === run!.id)?.finishedAt} />}

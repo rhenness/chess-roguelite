@@ -1,6 +1,7 @@
 import type { ChessMove, GeneratedLevel, MoveQuality, PlayerChoice, TreeNode } from '../types/level';
 import { sampleRunLevels } from './levels';
-import { isItemInventory, itemCount, LOADOUT_LIMIT, resolveItemEffects, type ActiveEffect, type ItemInventory, type ItemUse, type MoveResolution } from './items';
+import { createCheckpointRewards, validCheckpointRewards, type CheckpointReward } from './checkpointRewards';
+import { isItemInventory, itemCount, LOADOUT_LIMIT, resolveItemEffects, type ActiveEffect, type ItemId, type ItemInventory, type ItemUse, type MoveResolution } from './items';
 
 export const QUALITY_LABELS: Record<MoveQuality, string> = {
     best: 'Best', good: 'Good', inaccuracy: 'Inaccuracy', bad: 'Bad',
@@ -34,7 +35,7 @@ export interface RunState {
     rules: RunRules;
     levelIndex: number;
     node: TreeNode;
-    phase: 'decision' | 'reveal' | 'reply' | 'level-ended' | 'finished';
+    phase: 'decision' | 'reveal' | 'reply' | 'level-ended' | 'checkpoint' | 'finished';
     result: 'defeat' | 'complete' | null;
     health: number;
     score: number;
@@ -42,6 +43,7 @@ export interface RunState {
     items: ItemInventory;
     activeEffects: ActiveEffect[];
     itemUses: ItemUse[];
+    checkpointRewards: CheckpointReward[];
     lastMoveResolution: MoveResolution | null;
     decisionsMade: number;
     bestMoveStreak: number;
@@ -92,17 +94,23 @@ function settleNode(state: RunState): RunState {
 
 let nextRunId = 0;
 
-export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFAULT_RULES, random = Math.random, items: ItemInventory = {}): RunState {
+export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFAULT_RULES, random = Math.random,
+    items: ItemInventory = {}, rewards?: CheckpointReward[]): RunState {
     validateRules(rules);
     if (!isItemInventory(items) || itemCount(items) > LOADOUT_LIMIT) throw new Error('Invalid item loadout.');
     const levels = sampleRunLevels(pool, RUN_LEVEL_COUNT, random);
     const first = levels[0];
     if (!first) throw new Error('No scored floors are available.');
+    const checkpointRewards = rewards ?? createCheckpointRewards(levels.length, random);
+    if (!validCheckpointRewards(checkpointRewards, levels.length) || checkpointRewards.some(reward => reward.selected !== null)) {
+        throw new Error('Invalid checkpoint rewards.');
+    }
     return settleNode({
         id: globalThis.crypto?.randomUUID?.() ?? `run-${Date.now()}-${++nextRunId}`,
         levels, rules: structuredClone(rules), levelIndex: 0, node: first.root, phase: 'decision', result: null,
         health: rules.startingHealth, score: 0, decisionsMade: 0, bestMoveStreak: 0, lastHealthBonus: 0,
         items: { ...items }, activeEffects: [], itemUses: [], itemBonusPoints: 0, lastMoveResolution: null,
+        checkpointRewards: structuredClone(checkpointRewards),
         moveCounts: { best: 0, good: 0, inaccuracy: 0, bad: 0 }, levelsCompleted: 0,
         highestDifficultyReached: first.difficulty, highestDifficultyCompleted: null, outcomes: [], lastChoice: null, history: [],
     });
@@ -142,11 +150,25 @@ export function advancePlayback(state: RunState): RunState {
 
 export function nextLevel(state: RunState): RunState {
     if (state.phase !== 'level-ended') return state;
+    const reward = state.checkpointRewards.find(entry => entry.afterRound === state.levelIndex + 1);
+    if (reward && reward.selected === null) return { ...state, phase: 'checkpoint' };
     const levelIndex = state.levelIndex + 1;
     const level = state.levels[levelIndex]!;
     return settleNode({
         ...state, levelIndex, node: level.root, lastChoice: null, lastHealthBonus: 0, lastMoveResolution: null,
         highestDifficultyReached: level.difficulty,
+    });
+}
+
+/** Claim exactly one offered item, then begin the next round without using it. */
+export function chooseCheckpointItem(state: RunState, itemId: ItemId): RunState {
+    if (state.phase !== 'checkpoint') return state;
+    const reward = state.checkpointRewards.find(entry => entry.afterRound === state.levelIndex + 1);
+    if (!reward || reward.selected !== null || !reward.offers.includes(itemId)) return state;
+    return nextLevel({
+        ...state, phase: 'level-ended',
+        items: { ...state.items, [itemId]: (state.items[itemId] ?? 0) + 1 },
+        checkpointRewards: state.checkpointRewards.map(entry => entry === reward ? { ...entry, selected: itemId } : entry),
     });
 }
 

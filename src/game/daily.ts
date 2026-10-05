@@ -4,6 +4,7 @@ import { BOARD_SQUARES, createPayout, type MultiplierBoard, type PayoutResult } 
 import { PIECE_SET_IDS, type PieceSetId } from './pieceSets';
 import { advancePlayback, DEFAULT_RULES, RUN_LEVEL_COUNT, startRun, type RunRules, type RunState } from './run';
 import { DAILY_ITEMS } from './items';
+import { createCheckpointRewards } from './checkpointRewards';
 import { checkpointRun, restoreRunCheckpoint, type RunCheckpoint } from './runCheckpoint';
 
 export const DAILY_STORAGE_KEY = 'knightfall.daily.v1';
@@ -77,7 +78,8 @@ export function enterDailyDungeon(dungeon: DailyDungeon, setId: PieceSetId, rule
     multipliers: MultiplierBoard, now = Date.now()): { dungeon: DailyDungeon; run: RunState } {
     if (now >= dungeon.expiresAt) throw new Error('This dungeon has expired.');
     if (dungeon.attempt) throw new Error('The daily attempt has already been used.');
-    const run = { ...startRun(dungeon.levels, rules, Math.random, DAILY_ITEMS), daily: { day: dungeon.day, expiresAt: dungeon.expiresAt } };
+    const rewards = createCheckpointRewards(dungeon.levels.length, dailyRandom(`${dungeon.day}:checkpoint-rewards-v1`));
+    const run = { ...startRun(dungeon.levels, rules, Math.random, DAILY_ITEMS, rewards), daily: { day: dungeon.day, expiresAt: dungeon.expiresAt } };
     return { run, dungeon: { ...dungeon, attempt: {
         id: run.id, setId, rules: structuredClone(rules), multipliers: { ...multipliers },
         checkpoint: checkpointRun(run), status: 'active', payout: null, finishedAt: null, itemRulesVersion: 1,
@@ -110,6 +112,13 @@ export function restoreDailyRun(dungeon: DailyDungeon): RunState | null {
     const attempt = dungeon.attempt;
     if (!attempt || attempt.status === 'expired') return null;
     if (attempt.itemRulesVersion !== undefined && attempt.itemRulesVersion !== 1) throw new Error('Invalid daily item rules.');
+    const rewards = attempt.checkpoint.checkpointRewards;
+    if (rewards?.length) {
+        const expected = createCheckpointRewards(dungeon.levels.length, dailyRandom(`${dungeon.day}:checkpoint-rewards-v1`));
+        if (JSON.stringify(rewards.map(reward => ({ ...reward, selected: null }))) !== JSON.stringify(expected)) {
+            throw new Error('Invalid daily reward offers.');
+        }
+    }
     const run = restoreRunCheckpoint(dungeon.levels, attempt.rules,
         attempt.itemRulesVersion === 1 ? DAILY_ITEMS : {}, attempt.checkpoint);
     if ((attempt.status === 'finished') !== (run.phase === 'finished')) throw new Error('Invalid daily result.');

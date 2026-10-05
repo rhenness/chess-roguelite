@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MoveQuality } from '../types/level';
-import { decision, makeLevel } from '../test/levels';
+import { continueToNextRound, decision, makeLevel } from '../test/levels';
 import { advancePlayback, boardFen, chooseMove, DEFAULT_RULES, nextLevel, shuffleChoices, startRun, type RunState } from './run';
 
 function chooseQuality(state: RunState, quality: MoveQuality): RunState {
@@ -31,7 +31,7 @@ describe('run state', () => {
         let state = startRun(pool, DEFAULT_RULES, () => 0);
         for (let index = 0; index < 10; index++) {
             state = finishDecision(state);
-            if (index < 9) state = nextLevel(state);
+            if (index < 9) state = continueToNextRound(state);
         }
         expect(state).toMatchObject({ phase: 'finished', result: 'complete', levelsCompleted: 10, levelIndex: 9 });
     });
@@ -47,7 +47,7 @@ describe('run state', () => {
             expect(chooseQuality(selected, 'best')).toBe(selected);
             state = advancePlayback(advancePlayback(selected));
             expect(state.health).toBe(selected.health);
-            if (index < pool.length - 1) state = nextLevel(state);
+            if (index < pool.length - 1) state = continueToNextRound(state);
         }
         expect(state.health).toBe(5);
         expect(startRun(pool)).toMatchObject({ health: 3, bestMoveStreak: 0, lastHealthBonus: 0 });
@@ -56,15 +56,15 @@ describe('run state', () => {
     it.each(['good', 'inaccuracy', 'bad'] as const)('%s breaks the Best streak and starts a fresh four-move bonus', quality => {
         const pool = Array.from({ length: 8 }, (_, index) => makeLevel(`streak-${index}`, index));
         let state = startRun(pool);
-        for (let index = 0; index < 3; index++) state = nextLevel(finishDecision(state));
+        for (let index = 0; index < 3; index++) state = continueToNextRound(finishDecision(state));
         expect(state.bestMoveStreak).toBe(3);
-        state = nextLevel(finishDecision(state, quality));
+        state = continueToNextRound(finishDecision(state, quality));
         expect(state.bestMoveStreak).toBe(0);
         const healthAfterBreak = state.health;
         for (let index = 0; index < 4; index++) {
             state = finishDecision(state);
             expect(state.health).toBe(healthAfterBreak + (index === 3 ? 1 : 0));
-            if (index < 3) state = nextLevel(state);
+            if (index < 3) state = continueToNextRound(state);
         }
         expect(state.bestMoveStreak).toBe(4);
         expect(state.lastHealthBonus).toBe(1);

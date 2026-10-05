@@ -34,9 +34,33 @@ playback do not count. The same timed effect cannot stack, but a crown and shiel
 may overlap. A shield does not change move quality, statistics, or streak resets.
 Boosts do not apply to early checkmate bonuses for unplayed decisions.
 
-All supplies belong to the current run. Completion, defeat, replacement, and
-regular-run refresh lose unused items without refunds. Finished runs clear
-supplies and active effects; item ownership never enters permanent progression.
+All supplies belong to the current run. Completion, defeat, and replacement
+lose unused items without refunds. Regular-run refresh preserves saved supplies.
+Finished runs clear supplies and active effects; item ownership never enters
+permanent progression.
+
+## Reward checkpoints
+
+New regular and daily dungeon runs pause after rounds 3 and 6 when another round
+remains. Each checkpoint offers two distinct random consumables. A single tap
+takes one free copy and starts the next round; it does not activate the item.
+Duplicates add inventory charges, and checkpoint rewards can exceed the
+three-item starting-loadout limit. Health, score, streak, and active-effect
+durations carry through without automatic healing or duration consumption.
+
+The checkpoint shows "Round 3 cleared" (or 6) and "Choose your reward", with two
+compact item cards hovering over the cleared chessboard. Inventory stays visible
+below the board. There is no separate confirmation action or inventory count on
+the cards. Small dots between floors 3/4 and 6/7 mark the checkpoints, highlight
+the current stop, and adopt the completed color after a reward is taken.
+Checkpoint notifications use a flag; ordinary floor transitions retain an arrow.
+
+Offers are drawn once at entry. Daily offers use a separate date-seeded draw, so
+everyone receives the same pair at each checkpoint regardless of their set or
+play. Both run types persist the offers and claimed choices and reconstruct the
+reward grants alongside moves and item uses. A refresh preserves a pending
+checkpoint and never duplicates a claimed item. Saved runs without a reward plan
+retain their original uninterrupted floor transitions.
 
 ## Activation and feedback
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { decision, makeLevel } from '../test/levels';
+import { continueToNextRound, decision, makeLevel } from '../test/levels';
 import { initialMultiplierProfile } from './multipliers';
 import { advancePlayback, chooseMove, DEFAULT_RULES, nextLevel, type RunState } from './run';
 import {
@@ -107,7 +107,7 @@ describe('daily dungeon', () => {
         let run = entered.run;
         for (let index = 0; index < 10; index++) {
             run = advancePlayback(advancePlayback(best(run)));
-            if (index < 9) run = nextLevel(run);
+            if (index < 9) run = continueToNextRound(run);
         }
         const finished = recordDailyRun(entered.dungeon, run, now, () => 0);
         expect(finished.attempt?.payout).toMatchObject({ square: 'a1', multiplier: 50, baseScore: 1000, finalScore: 5000 });

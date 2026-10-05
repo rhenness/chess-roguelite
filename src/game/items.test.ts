@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { decision, makeLevel } from '../test/levels';
+import { continueToNextRound, decision, makeLevel } from '../test/levels';
 import { activateItem, DAILY_ITEMS, isItemInventory, type ItemInventory } from './items';
-import { advancePlayback, chooseMove, DEFAULT_RULES, nextLevel, startRun, type RunState } from './run';
+import { advancePlayback, chooseMove, DEFAULT_RULES, startRun, type RunState } from './run';
 import { purchaseLoadout, runCoinReward } from './economy';
 import { initialUserProgression, loadUserProgression, saveUserProgression } from './progression';
 import { createDailyDungeon, enterDailyDungeon, initialDailyArchive, loadDailyArchive, recordDailyRun, restoreDailyRun, saveDailyArchive, storeDailyDungeon } from './daily';
@@ -39,7 +39,7 @@ describe('run consumables', () => {
             expect(chooseMove(selected, 'invalid')).toBe(selected);
             run = settle(selected);
             expect(run.activeEffects).toEqual(selected.activeEffects);
-            if (i < 3) run = nextLevel(run);
+            if (i < 3) run = continueToNextRound(run);
         }
         expect(run.score).toBe(1000);
         expect(run.itemBonusPoints).toBe(600);
