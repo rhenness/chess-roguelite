@@ -1,13 +1,21 @@
+import type { SkillTier } from '../config/difficulty.js';
+
 /** JSON contract for a generated file in /src/levels. */
 export interface GeneratedLevel {
     /** Stable unique identifier, independent of the filename or difficulty order. */
     id: string;
-    schemaVersion: 1;
+    schemaVersion: 2;
+    /** Present on tier-generated levels; older levels use the standard rules. */
+    skillTier?: SkillTier;
     /** ISO 8601 UTC timestamp. */
     generatedAt: string;
     /** Fixed for the entire tree; inferred from the starting FEN's active color. */
     playerColor: Color;
     generation: {
+        /** Version of the tier settings used to generate this tree. */
+        configVersion?: number;
+        /** Generated as a replacement; pending retries must finish old-file cleanup. */
+        regenerated?: boolean;
         /** Number of player decisions to generate, defaulting to 4. */
         decisionDepth: number;
         engine: {
@@ -21,8 +29,8 @@ export interface GeneratedLevel {
     };
     /** root.fen is the starting FEN; the root may already be terminal. */
     root: TreeNode;
-    /** Number representing the difficulty of the level. Higher values indicate more challenging levels. -1 indicates non-scored levels. */
-    difficulty: number;
+    /** Numeric puzzle rating from 0–100, independent of skill tier. -1 means unscored. */
+    difficultyScore: number;
 }
 
 export type Color = 'white' | 'black';

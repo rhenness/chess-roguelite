@@ -1,8 +1,13 @@
 # Chess roguelite
 
-The tree generator prepares JSON levels, and a separate offline script scores
-their difficulty. Both use the existing [`GeneratedLevel` contract](src/types/level.ts).
-Generation leaves `difficulty` at `-1`. All move evaluations, including mate
+A single offline pipeline generates JSON levels and scores their difficulty
+for each skill tier. Its reusable generation and scoring modules use the existing [`GeneratedLevel` contract](src/types/level.ts).
+Generation leaves `difficultyScore` at `-1`. Level schema version 2 names the
+numeric puzzle rating `difficultyScore`; version 1 files using `difficulty`
+are normalized when loaded. Scoring a version 1 file preserves its original
+schema and formatting. Beginner, intermediate, and expert are skill tiers,
+defined by `SkillTier` and `SKILL_TIER_CONFIG` in
+[`difficulty.ts`](src/config/difficulty.ts). All move evaluations, including mate
 distances, use the player's perspective. Difficulty scoring runs after generation.
 
 Requires Node.js 22 or newer. Install dependencies with `npm install` (or
@@ -290,9 +295,11 @@ Daily offers are date-seeded and shared by all players. Both run types preserve
 offers and claimed rewards on refresh; older saves retain their original rules.
 
 The game loads the
-precomputed JSON files in `src/levels`, skips unscored files (`difficulty: -1`),
-and selects 10 distinct scored levels spread across difficulty. The available
-minimum-to-maximum score range is divided into ten equal-width bands, with one
+precomputed JSON files recursively in `src/levels`, excludes `.staging`, and
+skips unscored files (`difficultyScore: -1`). It currently uses intermediate-tier
+levels plus existing untagged levels, and selects 10 distinct scored levels
+spread across difficulty. A skill-tier chooser is not yet wired into gameplay.
+The available minimum-to-maximum score range is divided into ten equal-width bands, with one
 random level per populated band before any band receives a second level. Empty
 or exhausted bands redistribute slots evenly among bands with levels remaining.
 Selected levels play in ascending difficulty order. If fewer than 10 playable levels are
@@ -422,198 +429,114 @@ by gameplay. Run `npm run build` for a production build and `npm run preview` to
 serve it. `npm test` runs gameplay/React tests and the existing offline script tests;
 `npm run typecheck` checks both applications.
 
-## Generate a level
+## Generate and score levels
 
-Generate a level from a starting FEN:
-
-```powershell
-npm run generate:tree -- --fen "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" --name opening
-```
-
-This writes `src/levels/opening.json`. Each file contains one
-level with a stable UUID `id`, metadata and a nested `root` tree. The side to move in the FEN is the
-player's color. Each choice records the player's UCI/SAN move, its parent-position
-evaluation/PV, the FEN after the move, the opponent's sampled response, and `next`.
-The scoring script can load this file and traverse `root.choices[*].next`.
-Terminal and depth-limit nodes have no choices.
-
-Use `npm run generate:tree -- --help` for all options. Defaults:
-
-| Option           | Default           | Meaning                                                                |
-| ---------------- | ----------------- | ---------------------------------------------------------------------- |
-| `--depth`        | `4`               | Player decisions, each followed by a sampled opponent reply            |
-| `--search-depth` | `10`              | Stockfish search depth for every analysis                              |
-| `--multi-pv`     | `256`             | Analyze all legal moves for both sides, capped by the legal move count |
-| `--timeout-ms`   | `120000`          | Maximum time per engine operation                                      |
-| `--name`         | Unique timestamp  | Output filename, without `.json`                                       |
-| `--engine`       | Bundled Stockfish | Native executable or JavaScript engine wrapper                         |
-
-The full, single-threaded [Stockfish.js engine](https://github.com/nmrugg/stockfish.js)
-is included as a dependency. To use a native Stockfish executable, pass
-`--engine "C:\tools\stockfish.exe"` or set `STOCKFISH_PATH`. Generation uses one
-engine process, one search thread, and 64 MB of hash memory. Files are validated
-before publication, become visible as complete JSON, and never overwrite existing
-levels. Omit `--name` to generate multiple levels without filename collisions.
-
-Four decisions can produce 85 analyzed player nodes, 340 choices/opponent replies,
-and 256 leaves. MultiPV analysis of all legal moves at depth 10 can take several
-minutes depending on the position and hardware. For a quick trial:
-
-```powershell
-npm run generate:tree -- --fen "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" --depth 1 --search-depth 4 --name quick-trial
-```
-
-Move selection follows Stockfish's rank order. The best candidate is always
-included; good and inaccuracy candidates target losses of 50 and 150 centipawns
-relative to best, while reserving distinct, worse moves for subsequent labels.
-Bad is the worst analyzed candidate. Mate scores remain mate scores in JSON;
-selection ranks forced wins above centipawn scores and forced losses below them,
-preferring faster wins and slower losses. When the position lacks meaningful
-evaluation gaps, these labels represent relative alternatives rather than strict
-chess annotation thresholds. Fewer than four legal moves produce fewer choices.
-Reducing `--multi-pv` limits the selection to Stockfish's top candidates and may
-make the bad move less severe.
-
-For each computer reply, the generator analyzes candidate moves and samples one:
-40% Best, 40% Good, 18% Inaccuracy, and 2% Blunder (the existing `bad` category).
-Reply candidates use the same selection rules, with losses measured from the
-computer's perspective. When fewer than four candidates exist, the available
-quality weights are renormalized. One reply is stored per player choice, including
-the final decision; no reply is needed when the player move ends the game.
-Generation uses `Math.random` by default, so repeated runs can produce different
-trees. Programmatic callers can supply `GeneratorOptions.random` for reproducible
-reply selection. MultiPV searches for replies can increase generation time.
-
-Checkmate, stalemate, insufficient material, the fifty-move rule, and threefold
-repetition end a branch before the depth limit. Both chess.js and Stockfish receive
-the branch history. A starting FEN establishes no repetition history before
-generation. Mate winners are actual colors; draws have `result: "draw"`.
-
-Scored levels have a three-digit difficulty prefix, such as
-[`043-7677a9a4-d23c-4d20-9aa8-868ae3ecc074.json`](src/levels/043-7677a9a4-d23c-4d20-9aa8-868ae3ecc074.json). Filenames sort from easiest to
-hardest, and each level's stable GUID is the only suffix. Adding levels never
-requires renumbering existing files. IDs stay stable when files are renamed or
-rescored. This example illustrates four decisions at search depth 10.
-
-For programmatic use, import `generateTree` from
-`src/scripts/tree-generator/index.ts`; it returns `Promise<GeneratedLevel>`.
-It validates its result and closes its engine even if generation fails. An
-optional `AnalysisEngine` argument lets a caller own and reuse the process.
-
-```powershell
-npm run typecheck
-npm test
-```
-
-Tests cover tree depth/branching, final opponent replies, draws and branch history,
-mate and promotion handling, fewer legal moves, color perspective, invalid input,
-JSON contract replay, UCI parsing, and real Stockfish integration.
-
-## Generate and score a FEN text file
-
-Create `fens.txt` with one complete FEN per line:
+Put one complete FEN per line in the project-root `fens.txt`:
 
 ```text
 rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1
 ```
 
-Run both generators for every position:
+The single command generates a tree and scores it for missing beginner,
+intermediate, and expert FEN/tier combinations:
 
 ```powershell
 npm run generate:levels
+npm run generate:levels -- --tier expert --concurrency 4
+npm run generate:levels -- other-fens.txt --concurrency 2
+npm run generate:levels -- --regenerate
+npm run generate:levels -- --tier expert --regenerate
 ```
 
-Each FEN job generates a tree, saves it, then scores its difficulty. By default,
-one job runs at a time. To generate and score up to four FENs concurrently:
+Completed levels go into `src/levels/1-beginner`, `src/levels/2-intermediate`,
+or `src/levels/3-expert`, named `<three-digit-score>-<guid>.json`.
+Each level records its `skillTier`, `generation.configVersion`, stable UUID
+`id`, generation settings, nested `root` tree, and numeric `difficultyScore`.
+Blank lines and lines starting with `#` are skipped; Windows line endings and
+a UTF-8 BOM are supported. Duplicate normalized FENs are skipped after the first
+occurrence in the input file. Matching uses the normalized root FEN and skill tier,
+independently of the filename or configuration version. Existing untagged levels
+in the output root count as intermediate. For example, if beginner and intermediate
+already exist for a FEN, a normal run generates only expert.
+
+Use `--regenerate` to build fresh trees and scores for the selected FENs and tiers.
+After each replacement is published, all older matching level files are deleted,
+including duplicate generations and matching untagged intermediate files. Other
+FENs and unselected tiers are preserved. The replacement receives a fresh UUID.
+Generation and scoring failures leave the old files available. Regeneration is
+also how changes to tier settings are applied to existing levels.
+
+Tier settings live in [`difficulty.ts`](src/config/difficulty.ts). They define
+player choices, loss targets, opponent reply weights, and four player decisions
+per floor. Bump `SKILL_TIER_CONFIG_VERSION` when changing generation rules so
+pending jobs from an older configuration are kept separate.
+
+| Tier | Player choices | Opponent weights: best / good / inaccuracy / blunder |
+| --- | --- | --- |
+| Beginner | Best and worst analyzed move | 0 / 40 / 40 / 20% |
+| Intermediate | Best, good (50 cp loss), inaccuracy (150 cp loss), worst | 40 / 40 / 18 / 2% |
+| Expert | Best, good (25 cp loss), two distinct inaccuracies (50 / 100 cp loss) | 60 / 40 / 0 / 0% |
+
+Losses are targets relative to the best evaluation. Selection follows Stockfish's
+rank order and reserves distinct, worse moves for subsequent options. Actual
+evaluation gaps depend on the position; these labels are relative alternatives
+and do not guarantee chess annotation thresholds or a particular difficulty score.
+When fewer legal moves are available than configured options, fewer choices are
+offered. Opponent weights are renormalized across available qualities; a sole
+legal reply is played even if its configured weight is zero. Reducing MultiPV
+limits selection to the analyzed candidates and may make the worst move less severe.
+
+Each choice records the player's UCI/SAN move, its parent-position evaluation/PV,
+the FEN after the move, the sampled opponent response, and `next`. The side to
+move in the starting FEN is the player's color. Evaluations always use that
+player's perspective. An opponent reply is stored even on the final decision,
+unless the player's move already ends the game. Checkmate, stalemate, insufficient
+material, the fifty-move rule, and threefold repetition end branches before the
+depth limit. Both chess.js and Stockfish receive branch history; a starting FEN
+establishes no earlier repetition history. Terminal and depth-limit nodes have
+no choices.
+
+Generation samples opponent replies using `Math.random`, so repeated runs can
+produce different trees. Programmatic callers can supply `BatchOptions.random`
+for reproducible reply selection. Scoring clears engine state before each search
+and replays the branch history, making ratings reproducible for the same tree,
+scoring configuration, and engine build.
+
+Use `npm run generate:levels -- --help` for all options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--tier` | All three | Generate only beginner, intermediate, or expert |
+| `--concurrency` | `1` | Global limit of 1–32 simultaneous FEN/tier jobs |
+| `--output-dir` | `src/levels` | Output root containing tier subfolders and staging |
+| `--resume` | Off | Score matching pending trees without regenerating them |
+| `--regenerate` | Off | Rebuild and rescore selected FENs/tiers, then delete matching old files |
+| `--depth` | Tier config: `4` | Override player decisions, each followed by a reply |
+| `--search-depth` | `10` | Generation search depth |
+| `--multi-pv` | `256` | Generation candidates, capped by the legal move count |
+| `--timeout-ms` | `120000` | Generation timeout per engine operation |
+| `--config` | Scorer defaults | JSON file of partial difficulty-scoring overrides |
+| `--engine` | Bundled Stockfish | Native executable or JavaScript wrapper |
+
+Every active job uses one independent, single-threaded Stockfish process with
+64 MB of hash memory, reusing it sequentially for generation and scoring. The
+concurrency limit covers all tiers together. Higher concurrency increases CPU
+and memory use. Four-way branching at depth four can produce 85 player decision
+nodes, 340 choices, and 256 leaves; analyzing all legal moves can take several
+minutes per tree. For a quick trial in a separate output folder:
 
 ```powershell
-npm run generate:levels -- --concurrency 4
+npm run generate:levels -- --tier beginner --depth 1 --search-depth 4 --output-dir scratch-levels
 ```
 
-Output goes to `src/levels` as `<three-digit-difficulty>-<level-guid>.json`.
-Before scoring, filenames use a unique batch prefix and original line number,
-such as `batch-<timestamp>-<id>-0001.json`. Blank lines and
-lines starting with `#` are skipped; Windows line endings and a UTF-8 BOM are
-supported. Duplicate FENs are processed separately.
-
-Choose a filename prefix, output directory, or generation settings:
-
-```powershell
-npm run generate:levels -- --prefix puzzles --output-dir src/levels --depth 1 --search-depth 4
-npm run generate:levels -- --config difficulty-config.json
-npm run generate:levels -- --help
-```
-
-`--depth`, `--search-depth`, `--multi-pv`, and `--timeout-ms` control tree
-generation. Difficulty settings, including analysis depths and timeout, come
-from the scorer's defaults or `--config`. `--engine` (or `STOCKFISH_PATH`) applies
-to both stages. `--concurrency` accepts 1–32 simultaneous jobs. Each active job
-uses an independent single-threaded Stockfish process with 64 MB of hash memory,
-plus engine overhead. Higher concurrency increases CPU and memory use; each FEN
-can still take several minutes at the default depths. Progress is tracked per
-source line and results are logged as they finish.
-
-Programmatic callers can pass `BatchOptions.concurrency` to `generateLevelBatch`;
-the returned results retain input order. A caller-supplied engine supports only
-concurrency 1, since a Stockfish engine cannot analyze two positions simultaneously.
-
-Existing files are never overwritten. Invalid FENs and engine/file failures are
-reported with their source line number, and remaining lines continue. Any
-failure sets exit code 1. If scoring fails after generation, the tree stays on
-disk with `difficulty: -1`; retry it with `npm run score:levels -- <file.json>`.
-Scoring replaces the temporary batch name with the difficulty and GUID. A new
-run generates new GUIDs, so completed batches never need to be renamed manually.
-
-## Score level difficulty
-
-Preview estimated scores without changing any files, then write the scores:
-
-```powershell
-npm run score:levels -- --dry-run
-npm run score:levels
-```
-
-By default, the scorer processes JSON files directly inside `src/levels` with
-`difficulty: -1`. It replaces only the top-level difficulty number with an integer
-from 0 to 100, preserving every other byte, including formatting and unknown fields.
-Each successful update is written to a temporary file and published with a
-three-digit difficulty prefix followed by the level's existing GUID, as
-`043-7677a9a4-d23c-4d20-9aa8-868ae3ecc074.json`. Rescoring updates
-the score prefix while preserving the GUID. Equal scores retain
-distinct filenames, and adding levels requires no manual renaming. Already-scored
-files are skipped unless `--rescore` is supplied. Dry runs keep filenames unchanged.
-Existing destination files are never overwritten;
-failed levels stay unchanged and the batch continues. A failure produces exit code 1.
-The scorer also refuses to overwrite a level whose contents changed during analysis.
-
-Select specific files, another directory, or already-scored levels:
-
-```powershell
-npm run score:levels -- src/levels/my-level.json
-npm run score:levels -- --directory "C:\levels" --rescore
-npm run score:levels -- --rescore --concurrency 4
-npm run score:levels -- --help
-```
-
-Use `--engine` or `STOCKFISH_PATH` for an alternative Stockfish executable.
-`--concurrency` accepts 1–32 simultaneous scoring jobs and defaults to 1. It also
-works with `--dry-run`. Each active file uses a separate Stockfish process with
-one thread and 64 MB of hash memory, plus engine overhead. Each search clears engine state
-and replays the full branch history so results are reproducible for the same input,
-configuration and engine build, independently of previously scored positions.
-
-Programmatic callers can pass `FileScoringOptions.concurrency` to `scoreLevelFiles`.
-Returned results retain input order; `onResult` reports jobs as they finish.
-`onFileProgress` identifies the source file for each progress update. Supplying
-an existing engine requires concurrency 1 because searches on one engine must
-run sequentially.
-
-Configuration defaults and validation live in
-[`config.ts`](src/scripts/difficulty-scorer/config.ts). Use `--print-config` to
-inspect the defaults and `--config <path>` to supply a JSON file of partial
-overrides. Nested overrides preserve defaults for omitted values; unknown keys,
-invalid thresholds and weights that do not sum to 1 are rejected. For example:
+The full, single-threaded [Stockfish.js engine](https://github.com/nmrugg/stockfish.js)
+is included as a dependency. Use `--engine` or `STOCKFISH_PATH` for another engine.
+Generation and difficulty-scoring analysis depths are configured separately;
+`--search-depth` changes generation only. Scorer defaults and validation live in
+[`config.ts`](src/scripts/difficulty-scorer/config.ts). Nested `--config` overrides
+preserve omitted defaults; unknown keys, invalid thresholds, and weights that
+do not sum to 1 are rejected. For example:
 
 ```json
 {
@@ -624,9 +547,40 @@ invalid thresholds and weights that do not sum to 1 are rejected. For example:
 }
 ```
 
+Progress and summaries identify both the original source line and tier.
+Invalid FENs and generation, scoring, or publication failures are reported while
+other jobs continue. Any failure produces exit code 1. Scored outputs become
+visible as complete JSON files; regeneration cleans up older matching levels
+only after the replacement is saved. Files edited during analysis are preserved
+and reported as a publication failure.
+
+Completed trees are first saved with `difficultyScore: -1` in
+`src/levels/.staging/<tierFolder>`. If scoring or publication fails, retry with:
+
 ```powershell
-npm run score:levels -- --config difficulty-config.json --rescore
+npm run generate:levels -- --resume
+npm run generate:levels -- --tier expert --concurrency 4 --resume
 ```
+
+Use the same input file, FEN line positions, output root, and config version to
+find pending work. Resume retains the saved tree, depth, and UUID; it skips jobs
+without a pending tree and performs no tree generation. Scoring replaces only
+the top-level score, publishes the final tier file, then removes the pending
+file. Pending replacements record `generation.regenerated: true`, so `--resume`
+also finishes old-file cleanup after a failed regeneration. Staging is excluded
+from the game's level catalog. A normal run skips existing levels and refuses
+to replace a pending tree. `--regenerate` rebuilds even a pending tree; `--resume`
+retains it. Generation failures can be retried with the original command.
+
+For programmatic use, [`generateLevelBatch`](src/scripts/level-batch/index.ts)
+returns results in FEN/tier order and reports results as they finish through
+`onResult`. A caller-supplied `AnalysisEngine` supports concurrency 1.
+[`generateTree`](src/scripts/tree-generator/index.ts) and
+[`scoreLevel`](src/scripts/difficulty-scorer/index.ts) remain reusable modules.
+The standalone tree-generation and scoring CLIs have been replaced by
+`generate:levels`.
+
+## Difficulty scoring
 
 The initial heuristic follows
 [`02-level-difficulty`](docs/features/02-level-difficulty.md):
@@ -660,14 +614,15 @@ Terminal and depth-limit nodes contribute no decisions; a level with no decision
 scores zero without starting Stockfish.
 
 Reach probabilities start at 1 and use best/good/inaccuracy/bad probabilities of
-40%/35%/20%/5%. When fewer than four choices exist, the available probabilities are
-renormalized. Both the mean and percentile use
+40%/35%/20%/5%. Available quality probabilities are renormalized, and a
+quality's probability is split equally among its choices. Expert's two inaccuracy
+choices therefore share the inaccuracy probability. Both the mean and percentile use
 `reachProbability * depthDiscount ** decisionsTaken` as the node weight. The default
 `depthDiscount` is 0.5, so successive decision depths receive multipliers of
 1, 0.5, 0.25 and 0.125. In a full depth-four tree, the opening contributes about
 53.3% of the weighted mean. The discount must be greater than 0 and at most 1;
 set it to 1 to restore weighting by reach probability alone. Existing ratings
-need `--rescore` to reflect the discount.
+can be updated with the reusable `scoreLevelFiles` API using `rescore: true`.
 
 Overall difficulty is 80% of the weighted mean plus 20% of the
 weighted 90th percentile, rounded and clamped to 0–100. The percentile uses

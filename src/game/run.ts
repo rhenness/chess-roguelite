@@ -24,7 +24,7 @@ export const DEFAULT_RULES: RunRules = {
 
 export interface LevelOutcome {
     id: string;
-    difficulty: number;
+    difficultyScore: number;
     status: 'completed' | 'failed';
 }
 
@@ -50,8 +50,8 @@ export interface RunState {
     lastHealthBonus: number;
     moveCounts: Record<MoveQuality, number>;
     levelsCompleted: number;
-    highestDifficultyReached: number;
-    highestDifficultyCompleted: number | null;
+    highestDifficultyScoreReached: number;
+    highestDifficultyScoreCompleted: number | null;
     outcomes: LevelOutcome[];
     lastChoice: PlayerChoice | null;
     history: { levelId: string; playerMove: ChessMove; opponentReply: ChessMove | null }[];
@@ -87,8 +87,8 @@ function settleNode(state: RunState): RunState {
         phase: lastLevel ? 'finished' : 'level-ended',
         result: lastLevel ? 'complete' : null,
         levelsCompleted: state.levelsCompleted + Number(completed),
-        highestDifficultyCompleted: completed ? level.difficulty : state.highestDifficultyCompleted,
-        outcomes: [...state.outcomes, { id: level.id, difficulty: level.difficulty, status: completed ? 'completed' : 'failed' }],
+        highestDifficultyScoreCompleted: completed ? level.difficultyScore : state.highestDifficultyScoreCompleted,
+        outcomes: [...state.outcomes, { id: level.id, difficultyScore: level.difficultyScore, status: completed ? 'completed' : 'failed' }],
     };
 }
 
@@ -112,7 +112,7 @@ export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFA
         items: { ...items }, activeEffects: [], itemUses: [], itemBonusPoints: 0, lastMoveResolution: null,
         checkpointRewards: structuredClone(checkpointRewards),
         moveCounts: { best: 0, good: 0, inaccuracy: 0, bad: 0 }, levelsCompleted: 0,
-        highestDifficultyReached: first.difficulty, highestDifficultyCompleted: null, outcomes: [], lastChoice: null, history: [],
+        highestDifficultyScoreReached: first.difficultyScore, highestDifficultyScoreCompleted: null, outcomes: [], lastChoice: null, history: [],
     });
 }
 
@@ -156,7 +156,7 @@ export function nextLevel(state: RunState): RunState {
     const level = state.levels[levelIndex]!;
     return settleNode({
         ...state, levelIndex, node: level.root, lastChoice: null, lastHealthBonus: 0, lastMoveResolution: null,
-        highestDifficultyReached: level.difficulty,
+        highestDifficultyScoreReached: level.difficultyScore,
     });
 }
 

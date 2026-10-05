@@ -2,6 +2,7 @@ import { link, open, readFile, rename, rm, stat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import type { GeneratedLevel } from '../../types/level.js';
+import { normalizeLevel } from '../../types/level-schema.js';
 import type { AnalysisEngine } from '../tree-generator/stockfish.js';
 import { integerOption } from '../tree-generator/index.js';
 import { scoreLevel, validateScorableLevel, type NodeDifficulty, type ScoringOptions, type ScoringResult } from './index.js';
@@ -9,9 +10,13 @@ import { resolveScoringConfig } from './config.js';
 import { scoredLevelPath } from '../level-files.js';
 
 /** Replace only the top-level numeric token; preserve whitespace and all other bytes. */
-export function replaceDifficulty(source: string, difficulty: number): string {
-    if (!Number.isInteger(difficulty) || difficulty < 0 || difficulty > 100) throw new Error('Difficulty must be an integer from 0 to 100.');
-    JSON.parse(source);
+export function replaceDifficultyScore(source: string, difficultyScore: number): string {
+    if (!Number.isInteger(difficultyScore) || difficultyScore < 0 || difficultyScore > 100) throw new Error('Difficulty must be an integer from 0 to 100.');
+    const level = JSON.parse(source);
+    if (level && Object.hasOwn(level, 'difficulty') && Object.hasOwn(level, 'difficultyScore')) {
+        throw new Error('Expected exactly one top-level difficultyScore property, or difficulty for a version 1 level.');
+    }
+    const propertyName = level?.schemaVersion === 1 ? 'difficulty' : 'difficultyScore';
     let depth = 0;
     const locations: { start: number; end: number }[] = [];
     for (let i = 0; i < source.length; i++) {
@@ -24,7 +29,7 @@ export function replaceDifficulty(source: string, difficulty: number): string {
                 if (source[i] === '\\') i++;
                 else if (source[i] === '"') break;
             }
-            if (depth !== 1 || JSON.parse(source.slice(start, i + 1)) !== 'difficulty') continue;
+            if (depth !== 1 || JSON.parse(source.slice(start, i + 1)) !== propertyName) continue;
             let valueStart = i + 1;
             while (/\s/.test(source[valueStart] ?? '') && valueStart < source.length) valueStart++;
             if (source[valueStart] !== ':') continue;
@@ -33,13 +38,13 @@ export function replaceDifficulty(source: string, difficulty: number): string {
             const number = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
             number.lastIndex = valueStart;
             const match = number.exec(source);
-            if (!match) throw new Error('Top-level difficulty must be numeric.');
+            if (!match) throw new Error(`Top-level ${propertyName} must be numeric.`);
             locations.push({ start: valueStart, end: number.lastIndex });
         }
     }
-    if (locations.length !== 1) throw new Error('Expected exactly one top-level difficulty property.');
+    if (locations.length !== 1) throw new Error(`Expected exactly one top-level ${propertyName} property.`);
     const location = locations[0]!;
-    return source.slice(0, location.start) + difficulty + source.slice(location.end);
+    return source.slice(0, location.start) + difficultyScore + source.slice(location.end);
 }
 
 export interface FileScoringOptions extends ScoringOptions {
@@ -53,10 +58,10 @@ export interface FileScoringOptions extends ScoringOptions {
 
 export type FileScoringResult =
     | { file: string; status: 'scored'; result: ScoringResult }
-    | { file: string; status: 'skipped'; difficulty: number }
+    | { file: string; status: 'skipped'; difficultyScore: number }
     | { file: string; status: 'failed'; error: string };
 
-async function writeDifficulty(file: string, destination: string, source: string, updated: string): Promise<void> {
+async function writeDifficultyScore(file: string, destination: string, source: string, updated: string): Promise<void> {
     const temporary = `${file}.${randomUUID()}.tmp`;
     try {
         const metadata = await stat(file);
@@ -89,18 +94,18 @@ export async function scoreLevelFiles(files: string[], options: FileScoringOptio
         let outcome: FileScoringResult;
         try {
             const source = await readFile(file, 'utf8');
-            const level = JSON.parse(source) as GeneratedLevel;
+            const level = normalizeLevel(JSON.parse(source)) as GeneratedLevel;
             validateScorableLevel(level);
             // Validate a unique editable property even on dry runs and already-scored files.
-            replaceDifficulty(source, 0);
-            if (level.difficulty !== -1 && !options.rescore) outcome = { file, status: 'skipped', difficulty: level.difficulty };
+            replaceDifficultyScore(source, 0);
+            if (level.difficultyScore !== -1 && !options.rescore) outcome = { file, status: 'skipped', difficultyScore: level.difficultyScore };
             else {
                 const result = await scoreLevel(level, { ...options, config, onProgress: (node, count) => {
                     options.onProgress?.(node, count);
                     options.onFileProgress?.(file, node, count);
                 } }, engine);
-                const destination = options.dryRun ? file : scoredLevelPath(file, result.difficulty, level.id);
-                if (!options.dryRun) await writeDifficulty(file, destination, source, replaceDifficulty(source, result.difficulty));
+                const destination = options.dryRun ? file : scoredLevelPath(file, result.difficultyScore, level.id);
+                if (!options.dryRun) await writeDifficultyScore(file, destination, source, replaceDifficultyScore(source, result.difficultyScore));
                 outcome = { file: destination, status: 'scored', result };
             }
         } catch (error) {

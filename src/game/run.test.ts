@@ -20,10 +20,10 @@ describe('run state', () => {
         const state = startRun(pool, DEFAULT_RULES, () => 0.999);
         expect(state.levels).toHaveLength(10);
         expect(new Set(state.levels.map(level => level.id)).size).toBe(10);
-        expect(state.levels.map(level => level.difficulty)).toEqual([1, 3, 5, 7, 9, 11, 13, 15, 17, 19]);
+        expect(state.levels.map(level => level.difficultyScore)).toEqual([1, 3, 5, 7, 9, 11, 13, 15, 17, 19]);
         expect(pool).toEqual(original);
         const restarted = startRun(pool, DEFAULT_RULES, () => 0);
-        expect(restarted.levels.map(level => level.difficulty)).toEqual([0, 2, 4, 6, 8, 10, 12, 14, 16, 18]);
+        expect(restarted.levels.map(level => level.difficultyScore)).toEqual([0, 2, 4, 6, 8, 10, 12, 14, 16, 18]);
     });
 
     it('ends after the ten selected levels rather than continuing through the catalog', () => {
@@ -72,7 +72,7 @@ describe('run state', () => {
 
     it('starts at the easiest scored level with fresh run statistics', () => {
         const state = startRun([makeLevel('hard', 80), makeLevel('excluded', -1), makeLevel('easy', 10)]);
-        expect(state).toMatchObject({ levelIndex: 0, health: 3, score: 0, decisionsMade: 0, highestDifficultyReached: 10, highestDifficultyCompleted: null, phase: 'decision' });
+        expect(state).toMatchObject({ levelIndex: 0, health: 3, score: 0, decisionsMade: 0, highestDifficultyScoreReached: 10, highestDifficultyScoreCompleted: null, phase: 'decision' });
         expect(state.levels.map(level => level.id)).toEqual(['easy', 'hard']);
         expect(state.moveCounts).toEqual({ best: 0, good: 0, inaccuracy: 0, bad: 0 });
     });
@@ -118,11 +118,11 @@ describe('run state', () => {
 
     it('persists health, score, counts and difficulty across nonrepeating levels', () => {
         const first = finishDecision(startRun([makeLevel('hard', 70), makeLevel('easy', 10)]), 'inaccuracy');
-        expect(first).toMatchObject({ phase: 'level-ended', health: 2, score: 25, levelsCompleted: 1, highestDifficultyCompleted: 10 });
+        expect(first).toMatchObject({ phase: 'level-ended', health: 2, score: 25, levelsCompleted: 1, highestDifficultyScoreCompleted: 10 });
         const second = nextLevel(first);
-        expect(second).toMatchObject({ phase: 'decision', health: 2, score: 25, levelIndex: 1, highestDifficultyReached: 70, lastChoice: null });
+        expect(second).toMatchObject({ phase: 'decision', health: 2, score: 25, levelIndex: 1, highestDifficultyScoreReached: 70, lastChoice: null });
         const finished = finishDecision(second, 'good');
-        expect(finished).toMatchObject({ phase: 'finished', result: 'complete', health: 2, score: 100, decisionsMade: 2, levelsCompleted: 2, highestDifficultyCompleted: 70 });
+        expect(finished).toMatchObject({ phase: 'finished', result: 'complete', health: 2, score: 100, decisionsMade: 2, levelsCompleted: 2, highestDifficultyScoreCompleted: 70 });
         expect(finished.moveCounts).toEqual({ best: 0, good: 1, inaccuracy: 1, bad: 0 });
         expect(finished.outcomes.map(outcome => outcome.id)).toEqual(['easy', 'hard']);
         expect(nextLevel(finished)).toBe(finished);
@@ -132,7 +132,7 @@ describe('run state', () => {
         const state = finishDecision(startRun([makeLevel('easy', 10), makeLevel('hard', 50)]), 'bad');
         const next = nextLevel(state);
         const finished = chooseQuality(next, 'bad');
-        expect(finished).toMatchObject({ phase: 'finished', result: 'defeat', health: 0, decisionsMade: 2, levelsCompleted: 1, highestDifficultyReached: 50, highestDifficultyCompleted: 10 });
+        expect(finished).toMatchObject({ phase: 'finished', result: 'defeat', health: 0, decisionsMade: 2, levelsCompleted: 1, highestDifficultyScoreReached: 50, highestDifficultyScoreCompleted: 10 });
         expect(boardFen(finished)).toBe(finished.lastChoice!.fenAfterPlayerMove);
         expect(finished.history.at(-1)?.opponentReply).toBeNull();
         expect(advancePlayback(finished)).toBe(finished);

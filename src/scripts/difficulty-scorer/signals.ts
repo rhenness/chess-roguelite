@@ -63,20 +63,20 @@ export function moveUniqueness(lines: EngineEvaluation[], config: ScoringConfig)
     return clamp(100 / close);
 }
 
-export interface WeightedDifficulty { difficulty: number; reachProbability: number; decisionsTaken: number }
+export interface WeightedDifficulty { difficultyScore: number; reachProbability: number; decisionsTaken: number }
 
 export function aggregateDifficulty(nodes: WeightedDifficulty[], config: ScoringConfig): number {
     if (!nodes.length) return 0;
-    const weighted = nodes.map(node => ({ difficulty: node.difficulty,
+    const weighted = nodes.map(node => ({ difficultyScore: node.difficultyScore,
         weight: node.reachProbability * config.depthDiscount ** node.decisionsTaken }));
     const totalWeight = weighted.reduce((sum, node) => sum + node.weight, 0);
-    const mean = weighted.reduce((sum, node) => sum + node.difficulty * node.weight, 0) / totalWeight;
-    const ordered = weighted.sort((a, b) => a.difficulty - b.difficulty);
+    const mean = weighted.reduce((sum, node) => sum + node.difficultyScore * node.weight, 0) / totalWeight;
+    const ordered = weighted.sort((a, b) => a.difficultyScore - b.difficultyScore);
     let cumulative = 0;
-    let peak = ordered.at(-1)!.difficulty;
+    let peak = ordered.at(-1)!.difficultyScore;
     for (const node of ordered) {
         cumulative += node.weight;
-        if (cumulative >= config.peakPercentile * totalWeight) { peak = node.difficulty; break; }
+        if (cumulative >= config.peakPercentile * totalWeight) { peak = node.difficultyScore; break; }
     }
     return Math.round(clamp(config.levelWeights.mean * mean + config.levelWeights.peak * peak));
 }

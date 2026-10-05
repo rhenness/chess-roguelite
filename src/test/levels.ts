@@ -34,11 +34,11 @@ function makeNode(fen: string, depth: number, limit: number): TreeNode {
     };
 }
 
-export function makeLevel(id = 'easy', difficulty = 10, decisionDepth = 1, playerColor: 'white' | 'black' = 'white'): GeneratedLevel {
+export function makeLevel(id = 'easy', difficultyScore = 10, decisionDepth = 1, playerColor: 'white' | 'black' = 'white'): GeneratedLevel {
     const board = new Chess();
     if (playerColor === 'black') board.move('e4');
     return {
-        id, schemaVersion: 1, generatedAt: '2026-10-03T12:00:00.000Z', difficulty, playerColor,
+        id, schemaVersion: 2, generatedAt: '2026-10-03T12:00:00.000Z', difficultyScore, playerColor,
         generation: { decisionDepth, engine: { name: 'Stockfish', version: 'fixture', searchDepth: 1, multiPv: 4 } },
         root: makeNode(board.fen(), 0, decisionDepth),
     };

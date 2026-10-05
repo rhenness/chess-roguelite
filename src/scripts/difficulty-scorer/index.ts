@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js';
 import type { EngineEvaluation, GeneratedLevel, TreeNode } from '../../types/level.js';
+import { normalizeLevel, type LegacyGeneratedLevel } from '../../types/level-schema.js';
 import { Stockfish, type AnalysisEngine } from '../tree-generator/stockfish.js';
 import { validateGeneratedLevel } from '../tree-generator/validate.js';
 import { resolveScoringConfig, type ScoringConfig } from './config.js';
@@ -14,7 +15,7 @@ export interface NodeDifficulty extends WeightedDifficulty {
 }
 
 export interface ScoringResult {
-    difficulty: number;
+    difficultyScore: number;
     nodes: NodeDifficulty[];
     engineVersion: string | null;
 }
@@ -25,19 +26,21 @@ export interface ScoringOptions {
     onProgress?: (node: NodeDifficulty, decisionsScored: number) => void;
 }
 
-export function validateScorableLevel(level: GeneratedLevel): void {
-    if (!level || !Number.isInteger(level.difficulty) || level.difficulty < -1 || level.difficulty > 100) {
+export function validateScorableLevel(input: GeneratedLevel | LegacyGeneratedLevel): void {
+    const level = normalizeLevel(input);
+    if (!level || !Number.isInteger(level.difficultyScore) || level.difficultyScore < -1 || level.difficultyScore > 100) {
         throw new Error('Invalid generated level: difficulty must be -1 or an integer from 0 to 100.');
     }
     // Replay validation is shared with generation; its sentinel check applies only to generation.
-    validateGeneratedLevel({ ...level, difficulty: -1 });
+    validateGeneratedLevel({ ...level, difficultyScore: -1 });
 }
 
 /** Analyze without mutating the level. Engine callers retain ownership of supplied engines. */
-export async function scoreLevel(level: GeneratedLevel, options: ScoringOptions = {}, suppliedEngine?: AnalysisEngine): Promise<ScoringResult> {
+export async function scoreLevel(input: GeneratedLevel | LegacyGeneratedLevel, options: ScoringOptions = {}, suppliedEngine?: AnalysisEngine): Promise<ScoringResult> {
+    const level = normalizeLevel(input);
     const config = resolveScoringConfig(options.config);
     validateScorableLevel(level);
-    if (level.root.kind !== 'decision') return { difficulty: 0, nodes: [], engineVersion: null };
+    if (level.root.kind !== 'decision') return { difficultyScore: 0, nodes: [], engineVersion: null };
     const engine = suppliedEngine ?? await Stockfish.start({ enginePath: options.enginePath, timeoutMs: config.timeoutMs });
     const nodes: NodeDifficulty[] = [];
     const startingFen = level.root.fen;
@@ -81,23 +84,26 @@ export async function scoreLevel(level: GeneratedLevel, options: ScoringOptions 
             const bestScore = normalizeScore(final.find(line => line.pv[0] === bestMove)!.score, config);
             bestMoveChanged = final.some(line => normalizeScore(line.score, config) > bestScore);
         }
-        const difficulty = clamp(Object.entries(signals).reduce((sum, [key, value]) => sum
+        const difficultyScore = clamp(Object.entries(signals).reduce((sum, [key, value]) => sum
             + config.nodeWeights[key as keyof typeof signals] * value, 0));
         const result: NodeDifficulty = { fen: node.fen, decisionsTaken: node.decisionsTaken,
-            difficulty, reachProbability, signals, bestMoveChanged };
+            difficultyScore, reachProbability, signals, bestMoveChanged };
         nodes.push(result);
         options.onProgress?.(result, nodes.length);
 
-        const probabilityMass = node.choices.reduce((sum, choice) => sum + config.branchProbabilities[choice.quality], 0);
+        const counts = new Map<string, number>();
+        for (const choice of node.choices) counts.set(choice.quality, (counts.get(choice.quality) ?? 0) + 1);
+        const probabilityMass = [...counts.keys()].reduce((sum, quality) => sum
+            + config.branchProbabilities[quality as keyof typeof config.branchProbabilities], 0);
         for (const choice of node.choices) {
             await visit(choice.next, [...moves, choice.playerMove.uci, ...(choice.opponentReply ? [choice.opponentReply.uci] : [])],
-                reachProbability * config.branchProbabilities[choice.quality] / probabilityMass);
+                reachProbability * config.branchProbabilities[choice.quality] / counts.get(choice.quality)! / probabilityMass);
         }
     };
 
     try {
         await visit(level.root, [], 1);
-        return { difficulty: aggregateDifficulty(nodes, config), nodes, engineVersion: engine.version };
+        return { difficultyScore: aggregateDifficulty(nodes, config), nodes, engineVersion: engine.version };
     } finally {
         if (!suppliedEngine) await (engine as Stockfish).close();
     }

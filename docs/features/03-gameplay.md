@@ -117,12 +117,12 @@ At the beginning of the run, load all available precomputed levels with a valid 
 
 For the initial POC:
 
-- Exclude levels with `difficulty: -1`.
+- Exclude levels with `difficultyScore: -1`.
 - Divide the available minimum-to-maximum difficulty range into ten equal-width bands.
 - Randomly select one playable level from each populated band before taking a second from any band.
 - If bands are empty or exhausted, distribute remaining slots evenly across bands with unused levels, randomly breaking ties.
 - Select 10 distinct levels; use all levels if fewer than 10 are available. Band boundaries depend on scores, not the number of levels in each band.
-- Sort the selected levels in ascending order by `difficulty`, with stable ID ordering for equal scores.
+- Sort the selected levels in ascending order by `difficultyScore`, with stable ID ordering for equal scores.
 - Start the run with the lowest-difficulty selected level.
 - After a level is completed, advance to the next level in difficulty order.
 - Levels should not repeat during the same run.
@@ -312,7 +312,7 @@ Within each level:
 The POC should support:
 
 - Loading multiple generated level JSON files.
-- Ignoring unscored levels with `difficulty: -1`.
+- Ignoring unscored levels with `difficultyScore: -1`.
 - Sorting levels by ascending difficulty.
 - Starting a run with fixed health.
 - Progressing through levels in difficulty order.

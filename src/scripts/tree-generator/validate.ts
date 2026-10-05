@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js';
 import type { EngineEvaluation, GeneratedLevel, TreeNode } from '../../types/level.js';
+import { isSkillTier, SKILL_TIER_CONFIG } from '../../config/difficulty.js';
 import { applyUci, colorName, terminalNode } from './chess.js';
 
 function requireRule(condition: boolean, message: string): asserts condition {
@@ -18,10 +19,16 @@ function validateEvaluation(evaluation: EngineEvaluation, fen: string, move?: st
 /** Replays every branch, including its history, before it can be saved for scoring. */
 export function validateGeneratedLevel(level: GeneratedLevel): void {
     requireRule(typeof level.id === 'string' && level.id.trim().length > 0, 'missing level id');
-    requireRule(level.schemaVersion === 1, 'unsupported schema version');
+    requireRule(level.schemaVersion === 2, 'unsupported schema version');
+    requireRule(!Object.hasOwn(level, 'difficulty'), 'version 2 levels must use difficultyScore');
     requireRule(Number.isFinite(Date.parse(level.generatedAt)), 'invalid generation timestamp');
-    requireRule(level.difficulty === -1, 'generator must leave difficulty unscored');
+    requireRule(level.difficultyScore === -1, 'generator must leave difficulty unscored');
+    requireRule(level.skillTier === undefined || isSkillTier(level.skillTier), 'invalid skill tier');
+    const tierOptions = level.skillTier ? SKILL_TIER_CONFIG[level.skillTier].treeGeneration.playerOptions : undefined;
     const { decisionDepth, engine } = level.generation;
+    requireRule(level.generation.configVersion === undefined
+        || (Number.isInteger(level.generation.configVersion) && level.generation.configVersion > 0), 'invalid tier config version');
+    requireRule(level.generation.regenerated === undefined || typeof level.generation.regenerated === 'boolean', 'invalid regeneration flag');
     requireRule(Number.isInteger(decisionDepth) && decisionDepth >= 0, 'invalid decision depth');
     requireRule(engine.name === 'Stockfish' && engine.version.length > 0, 'missing Stockfish version');
     requireRule(Number.isInteger(engine.searchDepth) && engine.searchDepth > 0, 'invalid search depth');
@@ -46,9 +53,13 @@ export function validateGeneratedLevel(level: GeneratedLevel): void {
         }
         requireRule(decisionsTaken < decisionDepth && node.kind === 'decision', 'expected a player decision');
         requireRule(colorName(board.turn()) === level.playerColor, 'decision is not on the player turn');
-        requireRule(node.choices.length === Math.min(4, board.moves().length), 'incorrect number of choices');
+        requireRule(node.choices.length === Math.min(tierOptions?.length ?? 4, board.moves().length), 'incorrect number of choices');
         requireRule(new Set(node.choices.map(choice => choice.playerMove.uci)).size === node.choices.length, 'duplicate moves');
-        requireRule(new Set(node.choices.map(choice => choice.quality)).size === node.choices.length, 'duplicate quality labels');
+        if (tierOptions) {
+            requireRule(node.choices.every((choice, i) => choice.quality === tierOptions[i]!.quality), 'incorrect tier quality labels');
+        } else {
+            requireRule(new Set(node.choices.map(choice => choice.quality)).size === node.choices.length, 'duplicate quality labels');
+        }
         requireRule(node.choices.every(choice => ['best', 'good', 'inaccuracy', 'bad'].includes(choice.quality)), 'invalid quality label');
         const best = node.choices.find(choice => choice.quality === 'best');
         requireRule(Boolean(best), 'missing best move');

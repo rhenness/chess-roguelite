@@ -6,19 +6,19 @@ As a developer, I want to score the difficulty of generated chess levels after t
 
 Generated level JSON files are created first with:
 
-`difficulty: -1`
+`difficultyScore: -1`
 
-A separate difficulty-scoring script should then process those completed level files.
+The scoring module processes those completed trees inside the single `npm run generate:levels` pipeline. Each FEN/tier job generates and scores sequentially with one Stockfish process. The standalone scoring CLI has been removed; the reusable `scoreLevel` and `scoreLevelFiles` APIs remain available.
 
 The scorer should use the existing precomputed decision tree together with additional Stockfish analysis to estimate the difficulty of each player decision and then aggregate those results into one overall level difficulty score.
 
-The scorer should update only the top-level `difficulty` value while preserving the generated tree and all other level data.
+The scorer should update only the top-level `difficultyScore` value while preserving the generated tree and all other level data.
 
 This allows difficulty scoring to evolve independently from tree generation and makes it possible to rescore existing levels without regenerating them.
 
 ## Processing Flow
 
-`Generated level JSON with difficulty: -1`
+`Generated level JSON with difficultyScore: -1`
 → load level
 → analyze each DecisionNode
 → calculate node difficulty
@@ -31,7 +31,7 @@ This allows difficulty scoring to evolve independently from tree generation and 
 
 Each `DecisionNode` should receive an internal difficulty score from `0–100`.
 
-The score should estimate how difficult it is for a player to identify the best move from the four available choices.
+The score should estimate how difficult it is for a player to identify the best move from the available choices, which depend on skill tier and legal move count.
 
 The initial implementation should use four signals.
 
@@ -117,7 +117,7 @@ The scorer should be able to perform:
 
 - MultiPV analysis,
 - analysis at multiple search depths,
-- deeper re-analysis of the four existing candidate moves,
+- deeper re-analysis of the existing candidate moves,
 - evaluation-stability checks,
 - move-uniqueness analysis.
 
@@ -148,6 +148,8 @@ Because player telemetry does not yet exist, use initial assumed probabilities f
 - Bad: 5%
 
 The root node has reach probability `1.0`.
+
+Renormalize probabilities across the available quality categories. When multiple choices share a quality, divide that category's probability equally between them. Expert's two inaccuracy choices share the 20% inaccuracy probability rather than receiving 20% each. Beginner's Best/Bad probabilities renormalize to 40/45 and 5/45. These assumptions describe player choices and are separate from the opponent's tier-specific reply weights.
 
 Each child node's reach probability is:
 
@@ -195,29 +197,29 @@ Higher values indicate more difficult levels.
 
 ## Script Behavior
 
-The scoring script should:
+The scoring module should:
 
 - Read generated level JSON files after tree generation has completed.
-- Process levels with `difficulty: -1`.
-- Validate `schemaVersion: 1`.
+- Process levels with `difficultyScore: -1`.
+- Validate `schemaVersion: 2`.
 - Traverse all reachable `DecisionNode` entries.
 - Run any required additional Stockfish analysis for each node.
 - Calculate node difficulty.
 - Calculate branch reach probabilities.
 - Aggregate node scores into one overall level difficulty.
-- Update only the top-level `difficulty` value.
+- Update only the top-level `difficultyScore` value.
 - Preserve all other generated level data.
 - Write the updated JSON back to disk.
 - Support scoring multiple level files in one run.
-- Support `--concurrency` for 1–32 simultaneous file jobs, defaulting to 1, including rescoring and dry runs.
-- Use separate Stockfish processes for concurrent files, preserve input result order, and report progress per file.
+- Support concurrent jobs through the unified pipeline's `--concurrency` option (1–32, default 1), and through the file-scoring API for rescoring and dry runs.
+- Use separate Stockfish processes for concurrent jobs, reuse each pipeline engine across both stages, preserve input result order, and report progress per source line and tier.
 - Report failures without preventing other valid levels from being processed.
 
 ## Initial Scope
 
 The POC should support:
 
-- `schemaVersion: 1`.
+- `schemaVersion: 2`.
 - `DecisionNode`, `DepthLimitNode`, and `TerminalNode`.
 - Centipawn evaluations.
 - Mate evaluations.
@@ -243,15 +245,17 @@ This story does not include:
 
 ## Design Considerations
 
-Tree generation and difficulty scoring should remain separate workflows:
+Tree generation and difficulty scoring remain separate modules run by one public command:
 
 `FEN`
 → tree generation
-→ `GeneratedLevel { difficulty: -1 }`
+→ `GeneratedLevel { difficultyScore: -1 }`
 → difficulty scoring
-→ `GeneratedLevel { difficulty: 0–100 }`
+→ `GeneratedLevel { difficultyScore: 0–100 }`
 
 This separation should allow existing levels to be rescored whenever the scoring algorithm, weights, thresholds, or Stockfish configuration changes.
+
+The pipeline saves unscored trees in `src/levels/.staging/<tierFolder>`, then publishes scored levels in the tier's folder. Scoring failures retain the pending tree for `--resume`; retries preserve its UUID and every tree field. Resume uses the same input file, FEN line positions, output root, and skill-config version. Normal runs skip existing FEN/tier combinations. `--regenerate` rebuilds and scores the selected combinations, then deletes all older matching files after successful publication. Pending trees record regeneration so resume can finish replacement cleanup. Failures in one job do not stop the other jobs, and generation or scoring failures retain the old levels.
 
 All Stockfish settings, scoring weights, branch probabilities, thresholds, mate handling, and normalization logic should be centralized and configurable.
 
@@ -259,4 +263,4 @@ The initial algorithm is a heuristic. Future player telemetry should be able to 
 
 ## POC Goal
 
-Given one or more completed generated level JSON files with `difficulty: -1`, perform additional offline Stockfish analysis as needed, calculate a deterministic estimated difficulty from `0–100`, and write that value back to each level file without regenerating or modifying the existing decision tree.
+Given one or more completed generated level JSON files with `difficultyScore: -1`, perform additional offline Stockfish analysis as needed, calculate a deterministic estimated difficulty from `0–100`, and write that value back to each level file without regenerating or modifying the existing decision tree.

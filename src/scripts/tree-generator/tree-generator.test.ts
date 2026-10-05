@@ -7,6 +7,7 @@ import { generateTree } from './index.js';
 import { selectCandidates, selectOpponentReply } from './selection.js';
 import { Stockfish, parseInfo, type AnalysisEngine, type AnalysisRequest } from './stockfish.js';
 import { validateGeneratedLevel } from './validate.js';
+import { BEGINNER_CONFIG, EXPERT_CONFIG, SKILL_TIER_CONFIG_VERSION } from '../../config/difficulty.js';
 
 class LegalEngine implements AnalysisEngine {
     version = 'Stockfish test double';
@@ -32,11 +33,47 @@ function countNodes(node: TreeNode): number {
     return 1 + (node.kind === 'decision' ? node.choices.reduce((total, choice) => total + countNodes(choice.next), 0) : 0);
 }
 
+test('tier move selection uses distinct targets and preserves configured qualities with fewer legal moves', () => {
+    const candidates: EngineEvaluation[] = [100, 90, 75, 50, 0, -500].map((value, i) => ({
+        score: { type: 'cp', value }, depth: 10, pv: [`move${i}`],
+    }));
+    assert.deepEqual(selectCandidates(candidates, BEGINNER_CONFIG.treeGeneration.playerOptions)
+        .map(choice => [choice.quality, choice.evaluation.pv[0]]), [['best', 'move0'], ['bad', 'move5']]);
+    assert.deepEqual(selectCandidates(candidates, EXPERT_CONFIG.treeGeneration.playerOptions)
+        .map(choice => [choice.quality, choice.evaluation.pv[0]]),
+    [['best', 'move0'], ['good', 'move2'], ['inaccuracy', 'move3'], ['inaccuracy', 'move4']]);
+    assert.deepEqual(selectCandidates(candidates.slice(0, 2), BEGINNER_CONFIG.treeGeneration.playerOptions)
+        .map(choice => choice.quality), ['best', 'bad']);
+    assert.deepEqual(selectCandidates(candidates.slice(0, 3), EXPERT_CONFIG.treeGeneration.playerOptions)
+        .map(choice => choice.quality), ['best', 'good', 'inaccuracy']);
+});
+
+test('beginner trees use two branches and four player decisions by default, with tier metadata', async () => {
+    const level = await generateTree({ fen: DEFAULT_POSITION, skillTier: 'beginner', random: () => 0 }, new LegalEngine());
+    assert.equal(level.skillTier, 'beginner');
+    assert.equal(level.generation.configVersion, SKILL_TIER_CONFIG_VERSION);
+    assert.equal(level.generation.decisionDepth, 4);
+    assert.equal(countNodes(level.root), 31);
+    validateGeneratedLevel(level);
+});
+
+test('tier opponent weights exclude unwanted qualities and allow a forced reply', () => {
+    const candidates: EngineEvaluation[] = [-100, -95, -50, 0, 50, 500].map((value, i) => ({
+        score: { type: 'cp', value }, depth: 10, pv: [`move${i}`],
+    }));
+    for (const [roll, index] of [[0, 2], [0.4, 4], [0.8, 5]] as const) {
+        assert.equal(selectOpponentReply(candidates, () => roll, BEGINNER_CONFIG.opponentMoves), candidates[index]);
+    }
+    assert.equal(selectOpponentReply(candidates, () => 0, EXPERT_CONFIG.opponentMoves), candidates[0]);
+    assert.equal(selectOpponentReply(candidates, () => 0.6, EXPERT_CONFIG.opponentMoves), candidates[2]);
+    assert.equal(selectOpponentReply(candidates.slice(0, 1), () => 0.9, BEGINNER_CONFIG.opponentMoves), candidates[0]);
+});
+
 test('default depth generates four decisions, four branches each, and final opponent replies', async () => {
     const engine = new LegalEngine();
     const level = await generateTree({ fen: DEFAULT_POSITION, random: () => 0 }, engine);
     assert.equal(level.generation.decisionDepth, 4);
-    assert.equal(level.difficulty, -1);
+    assert.equal(level.difficultyScore, -1);
     assert.match(level.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     assert.throws(() => validateGeneratedLevel({ ...level, id: '' }), /missing level id/);
     assert.equal(countNodes(level.root), 341);

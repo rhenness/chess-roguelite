@@ -1,77 +1,92 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { isSkillTier, SKILL_TIERS } from '../../config/difficulty.js';
 import { generateLevelBatch } from './index.js';
 
-const help = `Generate and score levels from a text file of FENs.
+const help = `Generate complete scored levels from fens.txt for every skill tier.
 
 Usage:
-  npm run generate:levels -- [options]
+  npm run generate:levels -- [input.txt] [options]
 
 Options:
-  --concurrency <n>     Simultaneous FEN jobs, default 1 (1-32)
-  --output-dir <path>    Output directory (default: project's src/levels)
-  --prefix <name>        Unscored filename prefix (default: unique batch timestamp)
-  --depth <number>       Player decisions, default 4 (0-10)
-  --search-depth <n>     Generation search depth, default 10 (1-128)
-  --multi-pv <number>    Generation candidate lines, default 256 (4-256)
-  --timeout-ms <number>  Generation engine timeout, default 120000
-  --config <path>        Difficulty scoring JSON overrides
-  --engine <path>        Native Stockfish executable or JavaScript wrapper
-  --help                Show this help
+  --tier <name>        beginner, intermediate or expert (default: all three)
+  --concurrency <n>    Maximum simultaneous FEN/tier jobs, default 1 (1-32)
+  --resume             Score pending trees without regenerating completed jobs
+  --regenerate         Rebuild and rescore; delete matching old files after success
+  --output-dir <path>  Output root (default: src/levels); tier folders are created
+  --depth <number>     Override player decisions per floor (default: tier config)
+  --search-depth <n>   Generation search depth, default 10 (1-128)
+  --multi-pv <number>  Generation candidate lines, default 256 (4-256)
+  --timeout-ms <n>     Generation timeout, default 120000
+  --config <path>      Difficulty-scoring JSON overrides
+  --engine <path>      Native Stockfish executable or JavaScript wrapper
+  --help               Show this help
 
-Put one FEN on each line in fens.txt. Blank lines and lines starting with # are skipped.
-Scored files are named <difficulty>-<level-guid>.json, with a
-three-digit difficulty prefix for sorting; existing files are preserved.
-Each tree is saved before scoring. If scoring fails, its difficulty stays -1
-and can be retried with score:levels. Other lines continue; failures exit with 1.
-Scoring depth and timeout are controlled separately through --config.
-Concurrent jobs use separate Stockfish processes; each job generates then scores.
+Blank lines, # comments and duplicate FENs are skipped. Without an input path, read fens.txt
+from the project root. Each job generates and scores with one Stockfish process.
+Save finished levels as <three-digit-score>-<guid>.json in the tier's folder.
+Tier folders are 1-beginner, 2-intermediate and 3-expert, including in .staging.
+Unscored trees stay in .staging for --resume using the same input file and tier.
+Existing FEN/tier combinations are skipped unless --regenerate is supplied.
+Untagged existing levels count as intermediate. Regeneration replaces only
+the selected FENs and tiers; failures keep their old levels. --resume remembers
+pending regeneration and finishes its cleanup. Failures do not stop other jobs; exit code is 1
+if any job fails. Progress and summaries identify both the source line and tier.
 `;
 
 async function main(): Promise<void> {
     const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-        'output-dir': { type: 'string' }, prefix: { type: 'string' }, depth: { type: 'string' },
+        tier: { type: 'string' }, concurrency: { type: 'string' }, resume: { type: 'boolean' }, regenerate: { type: 'boolean' },
+        'output-dir': { type: 'string' }, depth: { type: 'string' },
         'search-depth': { type: 'string' }, 'multi-pv': { type: 'string' }, 'timeout-ms': { type: 'string' },
         config: { type: 'string' }, engine: { type: 'string' }, help: { type: 'boolean' },
-        concurrency: { type: 'string' },
     } });
     if (values.help) { console.log(help); return; }
-    if (positionals.length !== 1) throw new Error('Provide one FEN text file. Use --help for usage.');
+    if (positionals.length > 1) throw new Error('Provide at most one FEN text file. Use --help for usage.');
+    if (values.tier !== undefined && !isSkillTier(values.tier)) throw new Error('--tier must be beginner, intermediate or expert.');
     const config = values.config ? JSON.parse(await readFile(resolve(values.config), 'utf8')) : {};
-    const updates = new Map<number, { time: number; stage: string }>();
-    const results = await generateLevelBatch(positionals[0]!, {
-        outputDirectory: values['output-dir'], prefix: values.prefix, config,
+    const updates = new Map<string, { time: number; stage: string }>();
+    const results = await generateLevelBatch(positionals[0], {
+        outputDirectory: values['output-dir'], skillTier: values.tier, resume: values.resume, regenerate: values.regenerate, config,
         concurrency: values.concurrency === undefined ? undefined : Number(values.concurrency),
         decisionDepth: values.depth === undefined ? undefined : Number(values.depth),
         searchDepth: values['search-depth'] === undefined ? undefined : Number(values['search-depth']),
         multiPv: values['multi-pv'] === undefined ? undefined : Number(values['multi-pv']),
         timeoutMs: values['timeout-ms'] === undefined ? undefined : Number(values['timeout-ms']),
         enginePath: values.engine,
-        onStart: entry => { console.log(`Line ${entry.line}: ${entry.fen}`); },
-        onProgress: ({ line, stage, decisions }) => {
-            const last = updates.get(line);
+        onStart: entry => console.log(`Line ${entry.line} [${entry.skillTier}]: ${entry.fen}`),
+        onProgress: ({ line, skillTier, stage, decisions }) => {
+            const key = `${line}:${skillTier}`;
+            const last = updates.get(key);
             const now = Date.now();
             if (!last || stage !== last.stage || now - last.time >= 5000) {
-                console.error(`Line ${line}: ${stage}, ${decisions} player decision(s)...`);
-                updates.set(line, { time: now, stage });
+                console.error(`Line ${line} [${skillTier}]: ${stage}, ${decisions} player decision(s)...`);
+                updates.set(key, { time: now, stage });
             }
         },
         onResult: result => {
-            updates.delete(result.line);
-            if (result.status === 'scored') console.log(`Scored ${result.file}: difficulty ${result.difficulty}`);
+            updates.delete(`${result.line}:${result.skillTier}`);
+            if (result.status === 'scored') console.log(`Scored [${result.skillTier}] ${result.file}: difficulty score ${result.difficultyScore}`);
+            else if (result.status === 'skipped') console.log(`Line ${result.line} [${result.skillTier}]: skipped, ${result.reason}`);
             else {
-                console.error(`Line ${result.line}: ${result.stage} failed: ${result.error}`);
-                if (result.stage === 'scoring') console.error(`Tree saved for scoring retry: ${result.file}`);
+                console.error(`Line ${result.line} [${result.skillTier}]: ${result.stage} failed: ${result.error}`);
+                if (result.stage !== 'generation') console.error(`Pending tree: ${result.file}. Retry with --resume.`);
             }
         },
     });
-    const failed = results.filter(result => result.status === 'failed').length;
-    console.log(`${results.length - failed} generated and scored, ${failed} failed.`);
-    if (failed) process.exitCode = 1;
+    const count = (status: 'scored' | 'skipped' | 'failed') => results.filter(result => result.status === status).length;
+    for (const tier of values.tier ? [values.tier] : SKILL_TIERS) {
+        const entries = results.filter(result => result.skillTier === tier);
+        console.log(`${tier}: ${entries.filter(result => result.status === 'scored').length} scored, `
+            + `${entries.filter(result => result.status === 'skipped').length} skipped, `
+            + `${entries.filter(result => result.status === 'failed').length} failed.`);
+    }
+    console.log(`${count('scored')} generated and scored, ${count('skipped')} skipped, ${count('failed')} failed.`);
+    if (count('failed')) process.exitCode = 1;
 }
 
 main().catch(error => {
-    console.error(`Level batch failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`Level generation failed: ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;
 });

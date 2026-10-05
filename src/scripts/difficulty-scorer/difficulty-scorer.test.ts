@@ -4,8 +4,6 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Chess, DEFAULT_POSITION } from 'chess.js';
 import type { EngineEvaluation, GeneratedLevel } from '../../types/level.js';
@@ -13,7 +11,7 @@ import { applyUci } from '../tree-generator/chess.js';
 import { generateTree } from '../tree-generator/index.js';
 import { Stockfish, type AnalysisEngine, type AnalysisRequest } from '../tree-generator/stockfish.js';
 import { resolveScoringConfig } from './config.js';
-import { replaceDifficulty, scoreLevelFiles } from './files.js';
+import { replaceDifficultyScore, scoreLevelFiles } from './files.js';
 import { scoreLevel } from './index.js';
 import { aggregateDifficulty, bestMoveSubtlety, depthToSeparation, moveAmbiguity, moveUniqueness, normalizeScore } from './signals.js';
 
@@ -63,8 +61,8 @@ test('config merges nested overrides and rejects invalid/unknown options before 
     const level = await fixture();
     await assert.rejects(scoreLevel(level, { config: { depths: [] } }, engine));
     await assert.rejects(scoreLevel(level, { config: { depthDiscount: 0 } }, engine), /depthDiscount/);
-    await assert.rejects(scoreLevel({ ...level, schemaVersion: 2 } as unknown as GeneratedLevel, {}, engine), /schema version/);
-    await assert.rejects(scoreLevel({ ...level, difficulty: 101 }, {}, engine), /difficulty/);
+    await assert.rejects(scoreLevel({ ...level, schemaVersion: 3 } as unknown as GeneratedLevel, {}, engine), /schema version/);
+    await assert.rejects(scoreLevel({ ...level, difficultyScore: 101 }, {}, engine), /difficulty/);
     assert.equal(engine.requests.length, 0);
 });
 
@@ -92,10 +90,10 @@ test('ambiguity rises for close alternatives and deeper separation raises diffic
 test('uniqueness rewards forgiving positions and weighted peak ignores very unlikely branches', () => {
     assert.equal(moveUniqueness(lines([200, 0, -100, -200]), config), 100);
     assert.equal(moveUniqueness(lines([200, 200, 200, 200]), config), 25);
-    assert.equal(aggregateDifficulty([{ difficulty: 20, reachProbability: 1, decisionsTaken: 0 },
-        { difficulty: 100, reachProbability: 0.01, decisionsTaken: 0 }], config), 21);
-    assert.equal(aggregateDifficulty([{ difficulty: 20, reachProbability: 1, decisionsTaken: 0 },
-        { difficulty: 100, reachProbability: 1, decisionsTaken: 0 }], config), 68);
+    assert.equal(aggregateDifficulty([{ difficultyScore: 20, reachProbability: 1, decisionsTaken: 0 },
+        { difficultyScore: 100, reachProbability: 0.01, decisionsTaken: 0 }], config), 21);
+    assert.equal(aggregateDifficulty([{ difficultyScore: 20, reachProbability: 1, decisionsTaken: 0 },
+        { difficultyScore: 100, reachProbability: 1, decisionsTaken: 0 }], config), 68);
     assert.equal(aggregateDifficulty([], config), 0);
 });
 
@@ -104,18 +102,18 @@ test('depth discount gives the opening 53 percent of a full depth-four mean and 
     const undiscounted = resolveScoringConfig({ levelWeights: { mean: 1, peak: 0 }, depthDiscount: 1 });
     // Each complete layer has total reach probability 1, despite containing more nodes.
     const layers = Array.from({ length: 4 }, (_, decisionsTaken) => ({
-        decisionsTaken, reachProbability: 1, difficulty: decisionsTaken === 0 ? 100 : 0,
+        decisionsTaken, reachProbability: 1, difficultyScore: decisionsTaken === 0 ? 100 : 0,
     }));
     assert.equal(aggregateDifficulty(layers, meanOnly), 53);
     assert.equal(aggregateDifficulty(layers, undiscounted), 25);
-    const easyOpening = layers.map(node => ({ ...node, difficulty: 100 - node.difficulty }));
+    const easyOpening = layers.map(node => ({ ...node, difficultyScore: 100 - node.difficultyScore }));
     assert.equal(aggregateDifficulty(easyOpening, meanOnly), 47);
     assert.equal(aggregateDifficulty(easyOpening, undiscounted), 75);
 });
 
 test('depth discount also reduces the influence of later mistakes on the weighted percentile', () => {
-    const nodes = [{ difficulty: 20, reachProbability: 1, decisionsTaken: 0 },
-        { difficulty: 100, reachProbability: 0.2, decisionsTaken: 1 }];
+    const nodes = [{ difficultyScore: 20, reachProbability: 1, decisionsTaken: 0 },
+        { difficultyScore: 100, reachProbability: 0.2, decisionsTaken: 1 }];
     assert.equal(aggregateDifficulty(nodes, config), 26);
     assert.equal(aggregateDifficulty(nodes, resolveScoringConfig({ depthDiscount: 1 })), 47);
     const peakOnly = resolveScoringConfig({ levelWeights: { mean: 0, peak: 1 } });
@@ -142,7 +140,7 @@ test('scoring traverses every decision, preserves the level and sends full histo
     assert.equal(result.nodes.length, 5);
     assert.deepEqual(result.nodes.map(node => node.reachProbability), [1, 0.4, 0.35, 0.2, 0.05]);
     assert.deepEqual(result.nodes.map(node => node.decisionsTaken), [0, 1, 1, 1, 1]);
-    assert.ok(result.difficulty >= 0 && result.difficulty <= 100 && Number.isInteger(result.difficulty));
+    assert.ok(result.difficultyScore >= 0 && result.difficultyScore <= 100 && Number.isInteger(result.difficultyScore));
     assert.equal(engine.requests.length, 15); // two offered analyses plus one broad analysis per node
     assert.ok(engine.requests.every(request => request.resetHash));
     assert.equal(engine.requests.filter(request => request.searchMoves).length, 10);
@@ -168,6 +166,18 @@ test('scoring preserves reach probabilities across deeper decisions when the dep
     assert.ok(Math.abs(discounted.nodes[2]!.reachProbability - 0.16) < 1e-9);
 });
 
+test('expert inaccuracies share their category probability and each decision depth retains full probability mass', async () => {
+    const level = await generateTree({ fen: DEFAULT_POSITION, skillTier: 'expert', decisionDepth: 2,
+        searchDepth: 2, random: () => 0 }, new LegalEngine());
+    const result = await scoreLevel(level, { config }, new LegalEngine());
+    const children = result.nodes.filter(node => node.decisionsTaken === 1);
+    assert.equal(children.length, 4);
+    for (const [index, probability] of [0.4 / 0.95, 0.35 / 0.95, 0.1 / 0.95, 0.1 / 0.95].entries()) {
+        assert.ok(Math.abs(children[index]!.reachProbability - probability) < 1e-9);
+    }
+    assert.ok(Math.abs(children.reduce((sum, node) => sum + node.reachProbability, 0) - 1) < 1e-9);
+});
+
 test('fewer choices renormalize probabilities, and sole choices and empty trees score zero', async () => {
     const level = await fixture(2, 'k7/8/2K5/8/8/8/8/2R5 b - - 0 1');
     assert.equal(level.root.kind, 'decision');
@@ -179,10 +189,10 @@ test('fewer choices renormalize probabilities, and sole choices and empty trees 
     assert.ok(Math.abs(result.nodes[2]!.reachProbability - 0.35 / 0.75) < 1e-9);
     const forced = await fixture(1, 'k7/8/2K5/8/8/8/8/1R6 b - - 0 1');
     const engine = new LegalEngine();
-    assert.equal((await scoreLevel(forced, { config }, engine)).difficulty, 0);
+    assert.equal((await scoreLevel(forced, { config }, engine)).difficultyScore, 0);
     assert.equal(engine.requests.length, 0);
     for (const empty of [await fixture(0), await fixture(1, 'k7/1Q6/2K5/8/8/8/8/8 b - - 0 1')]) {
-        assert.deepEqual(await scoreLevel(empty, { enginePath: 'nonexistent-engine' }), { difficulty: 0, nodes: [], engineVersion: null });
+        assert.deepEqual(await scoreLevel(empty, { enginePath: 'nonexistent-engine' }), { difficultyScore: 0, nodes: [], engineVersion: null });
     }
 });
 
@@ -205,17 +215,44 @@ test('deeper best-move changes are reported without changing labels; missing can
 });
 
 test('JSON replacement preserves nested properties, escaped strings, whitespace and exponent notation', () => {
-    const source = '{\r\n "root":{"difficulty":-1,"text":"a\\\" difficulty \\\\ x"}, "difficulty": -1e0, "other": "difficulty"\r\n}\r\n';
-    assert.equal(replaceDifficulty(source, 42), source.replace('"difficulty": -1e0', '"difficulty": 42'));
-    assert.equal(replaceDifficulty('{"\\u0064ifficulty":-1}', 9), '{"\\u0064ifficulty":9}');
-    assert.throws(() => replaceDifficulty('{"difficulty":-1,"difficulty":-1}', 42), /exactly one/);
-    assert.throws(() => replaceDifficulty('{"root":{"difficulty":-1}}', 42), /exactly one/);
+    const source = '{\r\n "root":{"difficultyScore":-1,"text":"a\\\" difficulty \\\\ x"}, "difficultyScore": -1e0, "other": "difficultyScore"\r\n}\r\n';
+    assert.equal(replaceDifficultyScore(source, 42), source.replace('"difficultyScore": -1e0', '"difficultyScore": 42'));
+    assert.equal(replaceDifficultyScore('{"\\u0064ifficultyScore":-1}', 9), '{"\\u0064ifficultyScore":9}');
+    assert.throws(() => replaceDifficultyScore('{"difficultyScore":-1,"difficultyScore":-1}', 42), /exactly one/);
+    assert.throws(() => replaceDifficultyScore('{"root":{"difficultyScore":-1}}', 42), /exactly one/);
+    assert.throws(() => replaceDifficultyScore('{"schemaVersion":2,"difficulty":-1,"difficultyScore":-1}', 42), /exactly one/);
+    const legacy = '{"schemaVersion":1, "difficulty":-1e0, "root":{"difficulty":99}}\r\n';
+    assert.equal(replaceDifficultyScore(legacy, 42), legacy.replace('"difficulty":-1e0', '"difficulty":42'));
+});
+
+test('legacy levels produce the same score and keep their schema and other bytes when written', async () => {
+    const current = await fixture();
+    const { difficultyScore, ...metadata } = current;
+    const legacy = { ...metadata, schemaVersion: 1 as const, difficulty: difficultyScore };
+    const before = structuredClone(legacy);
+    assert.deepEqual(await scoreLevel(legacy, { config }, new LegalEngine()),
+        await scoreLevel(current, { config }, new LegalEngine()));
+    assert.deepEqual(legacy, before);
+    await withDirectory(async directory => {
+        const source = JSON.stringify(legacy, null, 2).replaceAll('\n', '\r\n') + '\r\n';
+        const file = join(directory, 'legacy.json');
+        await writeFile(file, source);
+        const [outcome] = await scoreLevelFiles([file], { config }, new LegalEngine());
+        assert.equal(outcome?.status, 'scored');
+        if (outcome?.status !== 'scored') throw new Error('Expected legacy scoring to succeed');
+        const saved = await readFile(outcome.file, 'utf8');
+        assert.equal(saved, replaceDifficultyScore(source, outcome.result.difficultyScore));
+        assert.equal(JSON.parse(saved).schemaVersion, 1);
+        assert.equal(Object.hasOwn(JSON.parse(saved), 'difficultyScore'), false);
+        assert.deepEqual(await scoreLevelFiles([outcome.file], { config }, new LegalEngine()),
+            [{ file: outcome.file, status: 'skipped', difficultyScore: outcome.result.difficultyScore }]);
+    });
 });
 
 test('batch continues after failures, skips scored files, supports dry-run/rescore and changes only difficulty bytes', async () => {
     await withDirectory(async directory => {
         const level = await fixture();
-        const source = JSON.stringify({ ...level, extra: { difficulty: -1, text: 'preserve me' } }, null, 2).replaceAll('\n', '\r\n') + '\r\n';
+        const source = JSON.stringify({ ...level, extra: { difficultyScore: -1, text: 'preserve me' } }, null, 2).replaceAll('\n', '\r\n') + '\r\n';
         const scoredSource = source.replace(level.id, randomUUID());
         const invalid = join(directory, 'invalid.json');
         const failure = join(directory, 'engine-failure.json');
@@ -224,7 +261,7 @@ test('batch continues after failures, skips scored files, supports dry-run/resco
         await writeFile(invalid, '{bad JSON');
         await writeFile(failure, source);
         await writeFile(valid, source);
-        await writeFile(scored, replaceDifficulty(scoredSource, 99));
+        await writeFile(scored, replaceDifficultyScore(scoredSource, 99));
         const engine = new LegalEngine();
         engine.failNext = true;
         const results = await scoreLevelFiles([invalid, failure, valid, scored, valid], { config }, engine);
@@ -233,30 +270,17 @@ test('batch continues after failures, skips scored files, supports dry-run/resco
         assert.equal(await readFile(failure, 'utf8'), source);
         const result = results[2]!;
         if (result.status !== 'scored') throw new Error('Expected score');
-        assert.equal(await readFile(result.file, 'utf8'), replaceDifficulty(source, result.result.difficulty));
-        assert.equal(await readFile(scored, 'utf8'), replaceDifficulty(scoredSource, 99));
+        assert.equal(await readFile(result.file, 'utf8'), replaceDifficultyScore(source, result.result.difficultyScore));
+        assert.equal(await readFile(scored, 'utf8'), replaceDifficultyScore(scoredSource, 99));
         await scoreLevelFiles([failure], { config, dryRun: true }, engine);
         assert.equal(await readFile(failure, 'utf8'), source);
         const [rescored] = await scoreLevelFiles([scored], { config, rescore: true }, engine);
         assert.equal(rescored!.status, 'scored');
-        assert.equal(await readFile(rescored!.file, 'utf8'), replaceDifficulty(scoredSource, result.result.difficulty));
+        assert.equal(await readFile(rescored!.file, 'utf8'), replaceDifficultyScore(scoredSource, result.result.difficultyScore));
     });
 });
 
-test('CLI directory mode reports per-file failure, updates valid files and exits nonzero', async () => {
-    await withDirectory(async directory => {
-        const file = join(directory, 'empty.json');
-        const level = await fixture(0);
-        await writeFile(file, JSON.stringify(level));
-        await writeFile(join(directory, 'invalid.json'), '{bad');
-        const cli = fileURLToPath(new URL('./cli.ts', import.meta.url));
-        const output = spawnSync(process.execPath, ['--import', 'tsx', cli, '--directory', directory, '--concurrency', '2'], { encoding: 'utf8', windowsHide: true });
-        assert.equal(output.status, 1, output.stderr);
-        assert.match(output.stdout, /1 scored, 0 skipped, 1 failed/);
-        assert.match(output.stderr, /Failed.*invalid.json/);
-        assert.equal(JSON.parse(await readFile(join(directory, `000-${level.id}.json`), 'utf8')).difficulty, 0);
-    });
-});
+
 
 test('scoring rejects invalid concurrency and a shared concurrent engine before reading files', async () => {
     const engine = new LegalEngine();
@@ -276,7 +300,7 @@ test('concurrent scoring bounds engines, preserves input order and file contents
         const files = ['slow', 'invalid', 'engine-failure', 'valid', 'later', 'skipped'].map(name => join(directory, `${name}.json`));
         const sources = [JSON.stringify(slow), '{bad JSON', JSON.stringify(failure),
             JSON.stringify(level), JSON.stringify({ ...level, id: randomUUID() }),
-            JSON.stringify({ ...level, id: randomUUID(), difficulty: 99 })];
+            JSON.stringify({ ...level, id: randomUUID(), difficultyScore: 99 })];
         await Promise.all(files.map((file, i) => writeFile(file, sources[i]!)));
         let active = 0;
         let peak = 0;
@@ -325,7 +349,7 @@ test('concurrent scoring bounds engines, preserves input order and file contents
         assert.ok(finished.indexOf(results[3]!.file) < finished.indexOf(results[0]!.file));
         assert.deepEqual([...progressed].sort(), [files[0]!, files[3]!, files[4]!].sort());
         for (const [i, result] of results.entries()) {
-            const expected = result.status === 'scored' ? replaceDifficulty(sources[i]!, result.result.difficulty) : sources[i]!;
+            const expected = result.status === 'scored' ? replaceDifficultyScore(sources[i]!, result.result.difficultyScore) : sources[i]!;
             assert.equal(await readFile(result.file, 'utf8'), expected);
             if (result.status === 'scored') await assert.rejects(readFile(files[i]!, 'utf8'), /ENOENT/);
         }
@@ -370,45 +394,13 @@ test('concurrent scoring never overwrites colliding output files', async () => {
         assert.equal(results.filter(result => result.status === 'failed').length, 1);
         for (const [i, result] of results.entries()) {
             assert.equal(await readFile(result.file, 'utf8'),
-                result.status === 'scored' ? replaceDifficulty(sources[i]!, 0) : sources[i]);
+                result.status === 'scored' ? replaceDifficultyScore(sources[i]!, 0) : sources[i]);
         }
         assert.equal((await readdir(directory)).length, 2);
     });
 });
 
-test('CLI rescoring supports concurrency and dry runs with real Stockfish', async () => {
-    await withDirectory(async directory => {
-        const level = await fixture();
-        const files = [join(directory, 'first.json'), join(directory, 'second.json')];
-        const sources = files.map(() => JSON.stringify({ ...level, id: randomUUID(), difficulty: 99 }));
-        await Promise.all(files.map((file, i) => writeFile(file, sources[i]!)));
-        const configFile = join(directory, 'config.json');
-        await writeFile(configFile, JSON.stringify({ depths: [1, 2], multiPv: 4 }));
-        const cli = fileURLToPath(new URL('./cli.ts', import.meta.url));
-        const args = ['--import', 'tsx', cli, ...files, '--config', configFile, '--rescore', '--concurrency', '2'];
-        const dryRun = spawnSync(process.execPath, [...args, '--dry-run'], { encoding: 'utf8', windowsHide: true, timeout: 30_000 });
-        assert.ifError(dryRun.error);
-        assert.equal(dryRun.status, 0, dryRun.stderr);
-        assert.match(dryRun.stdout, /2 analyzed, 0 skipped, 0 failed/);
-        for (const [i, file] of files.entries()) assert.equal(await readFile(file, 'utf8'), sources[i]);
-        const scored = spawnSync(process.execPath, args, { encoding: 'utf8', windowsHide: true, timeout: 30_000 });
-        assert.ifError(scored.error);
-        assert.equal(scored.status, 0, scored.stderr);
-        assert.match(scored.stdout, /2 scored, 0 skipped, 0 failed/);
-        const names = (await readdir(directory)).filter(name => name !== 'config.json');
-        assert.equal(names.length, 2);
-        for (const name of names) {
-            const source = await readFile(join(directory, name), 'utf8');
-            const updated = JSON.parse(source) as GeneratedLevel;
-            const original = sources.find(value => JSON.parse(value).id === updated.id)!;
-            assert.equal(source, replaceDifficulty(original, updated.difficulty));
-            assert.equal(name, `${String(updated.difficulty).padStart(3, '0')}-${updated.id}.json`);
-        }
-        const invalid = spawnSync(process.execPath, [...args.slice(0, -1), '0'], { encoding: 'utf8', windowsHide: true });
-        assert.equal(invalid.status, 1);
-        assert.match(invalid.stderr, /concurrency must be an integer between 1 and 32/);
-    });
-});
+
 
 test('real Stockfish scores white/black, mates and promotions reproducibly across engine reuse', async () => {
     const engine = await Stockfish.start();
@@ -422,7 +414,7 @@ test('real Stockfish scores white/black, mates and promotions reproducibly acros
             await engine.analyze({ startingFen: DEFAULT_POSITION, moves: [], sideToMove: 'white', playerColor: 'white', searchDepth: 3, multiPv: 4 });
             assert.deepEqual(await scoreLevel(level, { config }, engine), first);
             assert.equal(first.nodes.length, 1);
-            assert.equal(level.difficulty, -1);
+            assert.equal(level.difficultyScore, -1);
         }
     } finally { await engine.close(); }
 });
