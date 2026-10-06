@@ -66,7 +66,7 @@ describe('run history', () => {
             { ...valid, id: 'fractions', score: 1.5 }, { ...valid, id: 'overflow', floorsCompleted: 11 },
             { ...valid, id: 'date', mode: 'daily', dailyDay: '2026-02-30' },
         ] }));
-        expect(loadRunHistory().runs).toEqual([valid]);
+        expect(loadRunHistory().runs).toEqual([{ ...valid, skillTier: 'intermediate' }]);
         window.localStorage.setItem(RUN_HISTORY_STORAGE_KEY, '{broken');
         expect(loadRunHistory()).toEqual(initialRunHistory());
         window.localStorage.setItem(RUN_HISTORY_STORAGE_KEY, '{"version":2,"runs":[]}');

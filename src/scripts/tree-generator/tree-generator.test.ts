@@ -7,7 +7,7 @@ import { generateTree } from './index.js';
 import { selectCandidates, selectOpponentReply } from './selection.js';
 import { Stockfish, parseInfo, type AnalysisEngine, type AnalysisRequest } from './stockfish.js';
 import { validateGeneratedLevel } from './validate.js';
-import { BEGINNER_CONFIG, EXPERT_CONFIG, SKILL_TIER_CONFIG_VERSION } from '../../config/difficulty.js';
+import { TWO_OPTIONS_4_DEPTH_10, FOUR_OPTIONS_4_DEPTH_20, FOUR_OPTIONS_4_DEPTH_30, FOUR_OPTIONS_4_DEPTH_40 } from '../../config/generation.js';
 
 class LegalEngine implements AnalysisEngine {
     version = 'Stockfish test double';
@@ -33,40 +33,67 @@ function countNodes(node: TreeNode): number {
     return 1 + (node.kind === 'decision' ? node.choices.reduce((total, choice) => total + countNodes(choice.next), 0) : 0);
 }
 
-test('tier move selection uses distinct targets and preserves configured qualities with fewer legal moves', () => {
+test('profile move selection uses distinct targets and preserves configured qualities with fewer legal moves', () => {
     const candidates: EngineEvaluation[] = [100, 90, 75, 50, 0, -500].map((value, i) => ({
         score: { type: 'cp', value }, depth: 10, pv: [`move${i}`],
     }));
-    assert.deepEqual(selectCandidates(candidates, BEGINNER_CONFIG.treeGeneration.playerOptions)
+    assert.deepEqual(selectCandidates(candidates, TWO_OPTIONS_4_DEPTH_10.treeGeneration.playerOptions)
         .map(choice => [choice.quality, choice.evaluation.pv[0]]), [['best', 'move0'], ['bad', 'move5']]);
-    assert.deepEqual(selectCandidates(candidates, EXPERT_CONFIG.treeGeneration.playerOptions)
+    assert.deepEqual(selectCandidates(candidates, FOUR_OPTIONS_4_DEPTH_20.treeGeneration.playerOptions)
         .map(choice => [choice.quality, choice.evaluation.pv[0]]),
     [['best', 'move0'], ['good', 'move2'], ['inaccuracy', 'move3'], ['inaccuracy', 'move4']]);
-    assert.deepEqual(selectCandidates(candidates.slice(0, 2), BEGINNER_CONFIG.treeGeneration.playerOptions)
+    assert.deepEqual(selectCandidates(candidates, FOUR_OPTIONS_4_DEPTH_30.treeGeneration.playerOptions)
+        .map(choice => [choice.quality, choice.evaluation.pv[0]]),
+    [['best', 'move0'], ['good', 'move1'], ['inaccuracy', 'move2'], ['inaccuracy', 'move3']]);
+    assert.deepEqual(selectCandidates(candidates.slice(0, 2), TWO_OPTIONS_4_DEPTH_10.treeGeneration.playerOptions)
         .map(choice => choice.quality), ['best', 'bad']);
-    assert.deepEqual(selectCandidates(candidates.slice(0, 3), EXPERT_CONFIG.treeGeneration.playerOptions)
+    assert.deepEqual(selectCandidates(candidates.slice(0, 3), FOUR_OPTIONS_4_DEPTH_20.treeGeneration.playerOptions)
         .map(choice => choice.quality), ['best', 'good', 'inaccuracy']);
+    const closeCandidates: EngineEvaluation[] = [100, 95, 90, 85, 75, 70, 50].map((value, i) => ({
+        score: { type: 'cp', value }, depth: 10, pv: [`move${i}`],
+    }));
+    assert.deepEqual(selectCandidates(closeCandidates, FOUR_OPTIONS_4_DEPTH_30.treeGeneration.playerOptions)
+        .map(choice => choice.evaluation.pv[0]), ['move0', 'move2', 'move4', 'move6']);
+    assert.deepEqual(selectCandidates(closeCandidates, FOUR_OPTIONS_4_DEPTH_40.treeGeneration.playerOptions)
+        .map(choice => [choice.quality, choice.evaluation.pv[0]]),
+    [['best', 'move0'], ['good', 'move1'], ['inaccuracy', 'move3'], ['inaccuracy', 'move5']]);
 });
 
-test('beginner trees use two branches and four player decisions by default, with tier metadata', async () => {
-    const level = await generateTree({ fen: DEFAULT_POSITION, skillTier: 'beginner', random: () => 0 }, new LegalEngine());
-    assert.equal(level.skillTier, 'beginner');
-    assert.equal(level.generation.configVersion, SKILL_TIER_CONFIG_VERSION);
+test('beginner trees use two branches and four player decisions by default, with profile metadata', async () => {
+    const level = await generateTree({ fen: DEFAULT_POSITION, profileId: '2-options-4-depth-10', random: () => 0 }, new LegalEngine());
+    assert.equal(level.generation.profileId, '2-options-4-depth-10');
+    assert.equal(level.generation.targetOptionCount, 2);
+    assert.equal(Object.hasOwn(level, 'skillTier'), false);
+    assert.equal(level.generation.profileVersion, TWO_OPTIONS_4_DEPTH_10.profileVersion);
     assert.equal(level.generation.decisionDepth, 4);
     assert.equal(countNodes(level.root), 31);
     validateGeneratedLevel(level);
 });
 
-test('tier opponent weights exclude unwanted qualities and allow a forced reply', () => {
+test('stored recipe snapshots validate independently of current profile registrations', async () => {
+    const level = await generateTree({ fen: DEFAULT_POSITION, profileId: '4-options-4-depth-20',
+        decisionDepth: 1, random: () => 0 }, new LegalEngine());
+    level.generation.profileId = '4-options-4-depth-15';
+    validateGeneratedLevel(level);
+    const malformed = structuredClone(level);
+    malformed.generation.playerQualities = ['best', 'good', 'inaccuracy', 'bad'];
+    assert.throws(() => validateGeneratedLevel(malformed), /incorrect profile quality labels/);
+});
+
+test('profile opponent weights exclude unwanted qualities and allow a forced reply', () => {
     const candidates: EngineEvaluation[] = [-100, -95, -50, 0, 50, 500].map((value, i) => ({
         score: { type: 'cp', value }, depth: 10, pv: [`move${i}`],
     }));
     for (const [roll, index] of [[0, 2], [0.4, 4], [0.8, 5]] as const) {
-        assert.equal(selectOpponentReply(candidates, () => roll, BEGINNER_CONFIG.opponentMoves), candidates[index]);
+        assert.equal(selectOpponentReply(candidates, () => roll, TWO_OPTIONS_4_DEPTH_10.opponentMoves), candidates[index]);
     }
-    assert.equal(selectOpponentReply(candidates, () => 0, EXPERT_CONFIG.opponentMoves), candidates[0]);
-    assert.equal(selectOpponentReply(candidates, () => 0.6, EXPERT_CONFIG.opponentMoves), candidates[2]);
-    assert.equal(selectOpponentReply(candidates.slice(0, 1), () => 0.9, BEGINNER_CONFIG.opponentMoves), candidates[0]);
+    assert.equal(selectOpponentReply(candidates, () => 0, FOUR_OPTIONS_4_DEPTH_20.opponentMoves), candidates[0]);
+    assert.equal(selectOpponentReply(candidates, () => 0.6, FOUR_OPTIONS_4_DEPTH_20.opponentMoves), candidates[2]);
+    assert.equal(selectOpponentReply(candidates.slice(0, 1), () => 0.9, TWO_OPTIONS_4_DEPTH_10.opponentMoves), candidates[0]);
+    for (const roll of [0, 0.4, 0.6, 0.999]) {
+        assert.equal(selectOpponentReply(candidates, () => roll, FOUR_OPTIONS_4_DEPTH_30.opponentMoves), candidates[0]);
+        assert.equal(selectOpponentReply(candidates, () => roll, FOUR_OPTIONS_4_DEPTH_40.opponentMoves), candidates[0]);
+    }
 });
 
 test('default depth generates four decisions, four branches each, and final opponent replies', async () => {

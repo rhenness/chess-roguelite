@@ -1,0 +1,1 @@
+- When designing new UI, aim for simplicity. We do not want to use explanation text if possible. The UI should aim to be intuitive without text. Look at current examples of the UI.

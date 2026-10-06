@@ -7,7 +7,7 @@ import App from '../../App';
 import { makeLevel } from '../../test/levels';
 import { initialUserProgression, loadUserProgression, PROGRESSION_STORAGE_KEY, saveUserProgression } from '../../game/progression';
 import { DAILY_STORAGE_KEY } from '../../game/daily';
-import { PLAYER_PROFILE_STORAGE_KEY } from '../../game/playerProfile';
+import { initialPlayerProfile, PLAYER_PROFILE_STORAGE_KEY, savePlayerProfile } from '../../game/playerProfile';
 import { RUN_HISTORY_STORAGE_KEY } from '../../game/runHistory';
 import { PIECE_SETS, PIECE_SET_IDS } from '../../game/pieceSets';
 import { moveToUci } from './chess';
@@ -30,6 +30,7 @@ beforeEach(() => {
     vi.useFakeTimers();
     window.history.replaceState(null, '', '#/play');
     localStorage.clear();
+    savePlayerProfile({ ...initialPlayerProfile(), preferredSkillTier: 'intermediate' });
     saveUserProgression({ ...initialUserProgression(), finishedRuns: 8, coins: 100 });
     engine.analyze.mockReset(); engine.dispose.mockReset();
     engine.analyze.mockImplementation(async (fen: string) => new Chess(fen).moves({ verbose: true }).slice(0, 8)

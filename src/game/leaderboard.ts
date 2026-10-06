@@ -1,11 +1,13 @@
 import { dailyRandom } from './daily';
 import { AVATARS, AVATAR_COLORS, BANNERS, type PlayerProfile } from './playerProfile';
+import { SKILL_TIERS, type SkillTier } from '../config/difficulty';
 
 export interface LeaderboardEntry {
     id: string;
     profile: PlayerProfile;
     score: number;
     rank: number;
+    skillTier?: SkillTier;
 }
 
 const MOCK_NAMES = ['Quiet Gambit', 'Open File', 'Castle Keeper', 'Fork Finder', 'Endgame Study', 'Tempo',
@@ -21,7 +23,7 @@ export function rankLeaderboard(entries: Omit<LeaderboardEntry, 'rank'>[]): Lead
     });
 }
 
-export function dailyLeaderboard(day: string, player: PlayerProfile, score: number | null): LeaderboardEntry[] {
+export function dailyLeaderboard(day: string, player: PlayerProfile, score: number | null, skillTier: SkillTier = 'intermediate'): LeaderboardEntry[] {
     const random = dailyRandom(`standings:${day}`);
     const entries: Omit<LeaderboardEntry, 'rank'>[] = MOCK_NAMES.map((name, index) => ({
         id: `mock-${String(index).padStart(2, '0')}`,
@@ -29,7 +31,8 @@ export function dailyLeaderboard(day: string, player: PlayerProfile, score: numb
             avatarBackgroundColor: AVATAR_COLORS[(index * 3) % AVATAR_COLORS.length]!.color,
             bannerId: BANNERS[index % BANNERS.length]!.id },
         score: Math.round((1200 + random() * 7800) / 25) * 25,
+        skillTier: SKILL_TIERS[index % SKILL_TIERS.length]!,
     }));
-    if (score !== null) entries.push({ id: 'you', profile: player, score });
+    if (score !== null) entries.push({ id: 'you', profile: player, score, skillTier });
     return rankLeaderboard(entries);
 }

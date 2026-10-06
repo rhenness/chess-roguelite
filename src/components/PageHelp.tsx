@@ -4,6 +4,7 @@ import { LOADOUT_LIMIT } from '../game/items';
 import { BEST_MOVE_STREAK_LENGTH, QUALITY_LABELS, QUALITY_ORDER, RUN_LEVEL_COUNT, type RunRules } from '../game/run';
 import type { Page } from '../game/usePageNavigation';
 import type { EndlessSession } from '../features/endless/types';
+import type { MoveQuality } from '../types/level';
 
 interface PageHelpProps {
     page: Page;
@@ -14,6 +15,8 @@ interface PageHelpProps {
     dailyClosed: boolean;
     editingProfile: boolean;
     endless: EndlessSession | null;
+    moveQualities?: readonly MoveQuality[];
+    floorCount?: number;
 }
 
 const pageCopy = {
@@ -28,7 +31,7 @@ const pageCopy = {
     regular: {
         title: 'Choosing your set',
         lines: [
-            'Your set determines starting health and the square multipliers used at the end of your run.',
+            'Choose a skill level; your latest choice is remembered. Your set determines starting health and the square multipliers used at the end of your run.',
             'Finish runs to unlock more sets. Each locked set shows how many runs you need.',
             'Tap the sparkle beside a set to spend coins on permanent square multiplier increases.',
         ],
@@ -60,7 +63,7 @@ const pageCopy = {
     leaderboards: {
         title: 'Daily leaderboard help',
         lines: [
-            'Scores are ranked highest first. Equal scores share a rank.',
+            'Scores are ranked highest first. Equal scores share a rank. All skill levels share one leaderboard, with a skill badge on each entry.',
             'Finish today’s dungeon to add your final score.',
             'The other entries are demo players for now.',
         ],
@@ -75,7 +78,7 @@ const pageCopy = {
     },
 } satisfies Partial<Record<Page, { title: string; lines: string[] }>>;
 
-export function PageHelp({ page, rules, result, dailyRun, dailyStatus, dailyClosed, editingProfile, endless }: PageHelpProps) {
+export function PageHelp({ page, rules, result, dailyRun, dailyStatus, dailyClosed, editingProfile, endless, moveQualities, floorCount = RUN_LEVEL_COUNT }: PageHelpProps) {
     let title: string;
     let lines: string[];
     let gameDetails = false;
@@ -91,8 +94,8 @@ export function PageHelp({ page, rules, result, dailyRun, dailyStatus, dailyClos
         ] : [
             'Tap a piece, then an offered destination. Or tap a colored option twice. Colors identify options, not move quality.',
             `Start with ${rules.startingHealth} health. Health and score carry across floors. Mistakes cost health; ${BEST_MOVE_STREAK_LENGTH} Best moves in a row restore one heart.`,
-            dailyRun ? 'Finish before the dungeon timer expires. Activate supplies before confirming a move.'
-                : `Reach the end of ${RUN_LEVEL_COUNT} floors. Activate any items before confirming a move.`,
+            dailyRun ? 'The dungeon resets at 00:00 UTC each day. Activate supplies before confirming a move.'
+                : `Reach the end of up to ${floorCount} floors. Activate any items before confirming a move.`,
             'After rounds 3 and 6, choose one of two free items. Your choice goes into your inventory for later use.',
         ];
         gameDetails = !result;
@@ -103,11 +106,11 @@ export function PageHelp({ page, rules, result, dailyRun, dailyStatus, dailyClos
             `Daily runs award ${DAILY_COIN_MULTIPLIER} times the normal coins. Clearing every floor also upgrades one square.`,
             'You get one attempt per dungeon. Come back for the next one.',
         ] : dailyClosed || dailyStatus === 'expired' ? [
-            'This dungeon is closed. An unfinished attempt expires without rewards.',
+            'This dungeon has ended. Unfinished attempts reset without rewards.',
             'A new dungeon opens each day. Open today’s dungeon to play.',
         ] : [
-            dailyStatus === 'active' ? 'Resume your existing attempt; you cannot restart this dungeon.' : 'Choose a set for your one attempt at today’s dungeon.',
-            'Finish before the timer expires. One of each item is supplied free.',
+            dailyStatus === 'active' ? 'Resume your existing attempt; your skill level is locked and you cannot restart this dungeon.' : 'Choose a skill level and set for your one attempt at today’s dungeon. Entering locks your skill level and consumes your attempt across all skill levels.',
+            'The dungeon resets at 00:00 UTC each day. One of each item is supplied free.',
             `Earn ${DAILY_COIN_MULTIPLIER} times the normal coins. Clear every floor to upgrade one square.`,
         ];
     } else if (page === 'endless-game') {
@@ -138,15 +141,15 @@ export function PageHelp({ page, rules, result, dailyRun, dailyStatus, dailyClos
         {gameDetails && <div className="help-details">
             <h3>{hardcore ? 'Controls' : 'Controls and scoring'}</h3>
             <p>Use arrow keys to switch colored options. Press Enter or Space once to select, then again to confirm.</p>
-            {!hardcore && <ul>{QUALITY_ORDER.map(quality => <li key={quality}>
+            {!hardcore && <ul>{QUALITY_ORDER.filter(quality => !moveQualities || moveQualities.includes(quality)).map(quality => <li key={quality}>
                 <strong>{QUALITY_LABELS[quality]}</strong>
-                <span>+{rules.points[quality]} points / {rules.damage[quality]} health lost</span>
+                <span>{rules.points[quality] >= 0 ? '+' : ''}{rules.points[quality]} points / {rules.damage[quality]} health lost</span>
             </li>)}</ul>}
-            {!hardcore && <p>Activate items before confirming a move. Effects carry across floors or boards. Shields block damage, but mistakes still break your streak. Score boosts do not increase coin earnings.</p>}
+            {!hardcore && <p>Activate items before confirming a move. Effects carry across floors or boards. Shields block damage, but mistakes still break your streak. Score boosts apply to positive points and do not increase coin earnings. Penalties can reduce your score to zero.</p>}
         </div>}
         {itemDetails && <div className="help-details">
             <h3>Item details</h3>
-            <p>Timed effects spend a charge on each move you play and carry across floors or boards. A shield is spent even on a safe move; mistakes still break your streak.</p>
+            <p>Timed effects spend a charge on each move you play and carry across floors or boards. A shield charge is spent even on a safe move; mistakes still break your streak.</p>
             <p>Score boosts do not increase coin earnings or checkmate bonus points.</p>
         </div>}
         <p className="help-page-note"><small>Help changes based on the page you’re viewing.</small></p>

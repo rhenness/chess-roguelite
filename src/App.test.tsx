@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChessboardOptions } from 'react-chessboard';
 import type { GeneratedLevel, MoveQuality } from './types/level';
-import { continueToNextRound, decision, makeLevel } from './test/levels';
+import { continueToNextRound, decision, makeLevel, makeSkillLevel } from './test/levels';
 import { advancePlayback, chooseMove, DEFAULT_RULES } from './game/run';
 import { ITEMS } from './game/items';
 import { BOARD_SQUARES, formatMultiplier, initialMultiplierProfile, loadMultiplierProfile, MULTIPLIER_STORAGE_KEY } from './game/multipliers';
@@ -14,7 +14,7 @@ import { PIECE_RENDERERS } from './components/pieces/pieceRenderers';
 import App from './App';
 import { HELP_WELCOME_STORAGE_KEY } from './components/HelpWelcome';
 import { finishPlayTutorial, initialPlayTutorial, PLAY_TUTORIAL_STORAGE_KEY, savePlayTutorial } from './game/playTutorial';
-import { initialPlayerProfile, loadPlayerProfile, PLAYER_PROFILE_STORAGE_KEY } from './game/playerProfile';
+import { initialPlayerProfile, loadPlayerProfile, PLAYER_PROFILE_STORAGE_KEY, savePlayerProfile } from './game/playerProfile';
 import { loadRunHistory, RUN_HISTORY_STORAGE_KEY, saveRunHistory, type RunRecord } from './game/runHistory';
 import { ENDLESS_STORAGE_KEY, saveState } from './features/endless/storage';
 import { REGULAR_STORAGE_KEY } from './game/regular';
@@ -45,6 +45,7 @@ beforeEach(() => {
     window.localStorage.removeItem(HELP_WELCOME_STORAGE_KEY);
     window.localStorage.removeItem(DAILY_STORAGE_KEY);
     window.localStorage.removeItem(PLAYER_PROFILE_STORAGE_KEY);
+    savePlayerProfile({ ...initialPlayerProfile(), preferredSkillTier: 'intermediate' });
     window.localStorage.removeItem(RUN_HISTORY_STORAGE_KEY);
     window.localStorage.removeItem(ENDLESS_STORAGE_KEY);
     window.localStorage.removeItem(REGULAR_STORAGE_KEY);
@@ -136,6 +137,174 @@ function openProfileEditor() {
     fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
 }
 
+describe('skill selection', () => {
+    const tierPool = () => [makeSkillLevel('beginner'), makeSkillLevel('intermediate'), makeSkillLevel('expert')];
+
+    it.each(['regular', 'daily'] as const)('changes %s difficulty without walking catalog move trees again', page => {
+        const pool = tierPool();
+        const readFen = vi.fn();
+        for (const level of pool) {
+            const node = decision(level).choices[0]!.next;
+            const fen = node.fen;
+            Object.defineProperty(node, 'fen', { enumerable: true, get: () => { readFen(); return fen; } });
+        }
+        window.history.replaceState(null, '', `#/${page}`);
+        render(<App levels={pool} />);
+        readFen.mockClear();
+
+        for (const tier of ['Beginner', 'Expert', 'Intermediate', 'Beginner']) {
+            fireEvent.click(screen.getByRole('button', { name: tier }));
+            expect(screen.getByRole('button', { name: tier })).toHaveAttribute('aria-pressed', 'true');
+            expect(screen.getByRole('button', { name: page === 'daily' ? 'Enter dungeon' : 'Next: items' })).toBeEnabled();
+        }
+        expect(readFen).not.toHaveBeenCalled();
+    });
+
+    it('requires a first choice before play, remembers it, and uses it for the guided first run', () => {
+        window.localStorage.removeItem(PLAYER_PROFILE_STORAGE_KEY);
+        window.localStorage.removeItem(PLAY_TUTORIAL_STORAGE_KEY);
+        saveUserProgression(initialUserProgression());
+        const pool = tierPool();
+        const view = render(<App levels={pool} />);
+        const home = screen.getByRole('region', { name: 'Knightfall' });
+        const choices = within(home).getByRole('group', { name: 'Choose your skill level' });
+        expect(within(home).getByText('Choose your skill level')).toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(within(home).getByRole('button', { name: 'Continue' })).toBeDisabled();
+        expect(screen.queryByRole('button', { name: 'Regular run' })).not.toBeInTheDocument();
+        fireEvent.keyDown(choices, { key: 'Escape' });
+        expect(choices).toBeInTheDocument();
+        fireEvent.click(within(choices).getByRole('button', { name: 'Beginner' }));
+        expect(within(choices).getByRole('button', { name: 'Beginner' })).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(within(home).getByRole('button', { name: 'Continue' }));
+        expect(loadPlayerProfile().preferredSkillTier).toBe('beginner');
+        expect(screen.getByRole('heading', { name: 'Knightfall', level: 1 })).toHaveFocus();
+        fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
+        expect(screen.getByRole('heading', { name: 'Your first run' })).toBeInTheDocument();
+        const saved = JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!);
+        expect(saved).toMatchObject({ skillTier: 'beginner', rules: { points: { best: 50, bad: 0 } } });
+        expect(saved.levelIds).toEqual(['beginner']);
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        expect(screen.getAllByRole('button', { name: /^Option / })).toHaveLength(2);
+        view.unmount();
+        window.history.replaceState(null, '', '#/play');
+        render(<App levels={pool} />);
+        expect(screen.queryByRole('group', { name: 'Choose your skill level' })).not.toBeInTheDocument();
+    });
+
+    it('opens first-time selection on Home even when arriving through a direct link', () => {
+        window.localStorage.removeItem(PLAYER_PROFILE_STORAGE_KEY);
+        window.history.replaceState(null, '', '#/daily');
+        render(<App levels={tierPool()} />);
+        expect(window.location.hash).toBe('#/play');
+        expect(screen.getByRole('region', { name: 'Knightfall' })).toContainElement(screen.getByRole('group', { name: 'Choose your skill level' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Expert' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+        expect(screen.getByRole('button', { name: 'Regular run' })).toBeInTheDocument();
+        expect(loadPlayerProfile().preferredSkillTier).toBe('expert');
+    });
+
+    it('remembers menu changes across refresh, while resumed runs retain their original tier and rules', () => {
+        const pool = tierPool();
+        const view = renderSetup(<App levels={pool} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Expert' }));
+        expect(loadPlayerProfile().preferredSkillTier).toBe('expert');
+        startRegular();
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!)).toMatchObject({ skillTier: 'expert', rules: { points: { best: 150, inaccuracy: -25 } } });
+        fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
+        openRegular();
+        fireEvent.click(screen.getByRole('button', { name: 'Beginner' }));
+        view.unmount();
+        window.history.replaceState(null, '', '#/play');
+        renderSetup(<App levels={pool} />);
+        expect(screen.getByRole('button', { name: 'Beginner' })).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(screen.getByRole('button', { name: 'Resume regular run' }));
+        expect(screen.getByLabelText('Expert skill level')).toBeInTheDocument();
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!)).toMatchObject({ skillTier: 'expert', rules: { points: { best: 150 } } });
+    });
+
+    it('shows signed penalties and clamps the score without presenting a score boost for a penalty', () => {
+        const pool = [makeSkillLevel('expert', 'expert-feedback', 60, 2)];
+        savePlayerProfile({ ...initialPlayerProfile(), preferredSkillTier: 'expert' });
+        renderGame(<App levels={pool} />);
+        selectQuality(pool[0]!, 'inaccuracy');
+        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent('-25 points');
+        expect(screen.getByRole('status', { name: 'Move quality' })).not.toHaveTextContent('+-25');
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+        expect(screen.getByLabelText('Health: 2')).toBeInTheDocument();
+    });
+
+    it('defaults Daily to the last selection, locks its tier, and keeps its attempt consumed after changing preferences', () => {
+        const pool = [makeSkillLevel('beginner', 'daily-beginner', 10, 2), makeSkillLevel('expert', 'daily-expert', 60, 2), makeLevel('daily-legacy')];
+        savePlayerProfile({ ...initialPlayerProfile(), preferredSkillTier: 'expert' });
+        const view = render(<App levels={pool} />);
+        openDaily();
+        expect(screen.getByRole('button', { name: 'Expert' })).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(screen.getByRole('button', { name: 'Beginner' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        const day = Object.values(loadDailyArchive(pool).days)[0]!;
+        expect(day).toMatchObject({ skillTier: 'beginner', attempt: { skillTier: 'beginner', rules: { points: { best: 50 } } } });
+        fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
+        openRegular();
+        fireEvent.click(screen.getByRole('button', { name: 'Expert' }));
+        view.unmount();
+        window.history.replaceState(null, '', '#/play');
+        render(<App levels={pool} />);
+        openDaily();
+        expect(screen.getByRole('button', { name: 'Resume dungeon' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Enter dungeon' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Expert' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' }));
+        expect(screen.getByLabelText('Beginner skill level')).toBeInTheDocument();
+        expect(loadPlayerProfile().preferredSkillTier).toBe('expert');
+    });
+
+    it('keeps an unavailable tier explicit and lets the player choose another tier', () => {
+        renderSetup(<App levels={[makeLevel()]} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Expert' }));
+        expect(screen.getByText(/No floors are available for this skill level/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Next: items' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Intermediate' }));
+        expect(screen.getByRole('button', { name: 'Next: items' })).toBeEnabled();
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Beginner' }));
+        expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Intermediate' }));
+        expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeEnabled();
+    });
+
+    it('preserves an attempt started in another tab when this tab changes its daily tier preview', () => {
+        const pool = tierPool();
+        render(<App levels={pool} />);
+        openDaily();
+        const entered = enterDailyDungeon(createDailyDungeon(pool, Date.now(), 'beginner'), 'default',
+            { ...DEFAULT_RULES, points: { ...DEFAULT_RULES.points, best: 50 } }, initialMultiplierProfile().board);
+        saveDailyArchive(storeDailyDungeon(initialDailyArchive(), entered.dungeon));
+        fireEvent.click(screen.getByRole('button', { name: 'Expert' }));
+        expect(screen.queryByRole('button', { name: 'Enter dungeon' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Resume dungeon' })).toBeInTheDocument();
+        expect(loadDailyArchive(pool).days[entered.dungeon.day]?.attempt?.id).toBe(entered.run.id);
+    });
+
+    it('shows the daily attempt tier on the shared leaderboard even after the preference changes', () => {
+        vi.useFakeTimers();
+        const pool = [makeSkillLevel('beginner'), makeSkillLevel('expert'), makeLevel()];
+        savePlayerProfile({ ...initialPlayerProfile(), preferredSkillTier: 'beginner' });
+        render(<App levels={pool} />);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        selectQuality(pool[0]!, 'best');
+        finishPayout();
+        fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
+        openRegular();
+        fireEvent.click(screen.getByRole('button', { name: 'Expert' }));
+        fireEvent.click(screen.getByRole('link', { name: 'Leaderboards' }));
+        const own = within(screen.getByRole('list', { name: 'Daily standings' })).getByRole('listitem', { name: /, you,/ });
+        expect(within(own).getByLabelText('Beginner skill level')).toBeInTheDocument();
+    });
+});
+
 describe('first play tutorial', () => {
     function newPlayer() {
         window.localStorage.removeItem(PLAY_TUTORIAL_STORAGE_KEY);
@@ -166,7 +335,7 @@ describe('first play tutorial', () => {
 
     it('locks other modes and non-Home navigation until the first run ends, including after a refresh', () => {
         newPlayer();
-        const level = makeLevel('locked-first-play', 10, 2);
+        const level = makeLevel('locked-first-play', 50, 2);
         let view = render(<App levels={[level]} />);
         function expectLockedHome() {
             expect(screen.getByRole('button', { name: 'Regular run' })).toBeEnabled();
@@ -235,7 +404,7 @@ describe('first play tutorial', () => {
     it('teaches a real piece/destination move, holds its feedback, and keeps the damage example separate from health', () => {
         vi.useFakeTimers();
         newPlayer();
-        const level = makeLevel('tutorial-opening', 10, 2);
+        const level = makeLevel('tutorial-opening', 50, 2);
         renderGame(<App levels={[level]} />);
         expect(screen.getByRole('heading', { name: 'Your first run' })).toBeInTheDocument();
         expect(screen.queryByLabelText('Available moves')).not.toBeInTheDocument();
@@ -270,7 +439,7 @@ describe('first play tutorial', () => {
             saveUserProgression({ ...initialUserProgression(), finishedRuns });
             savePlayTutorial(finishPlayTutorial(initialPlayTutorial()));
         }
-        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`tutorial-${index}`, index));
+        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`tutorial-${index}`, 45 + index));
         renderGame(<App levels={levels} />);
         if (!finishedRuns) beginMoveLesson();
         selectQuality(levels[0]!, 'best');
@@ -288,7 +457,7 @@ describe('first play tutorial', () => {
     it('resumes guidance after refresh, permits skipping, and leaves the multiplier presentation unchanged', () => {
         vi.useFakeTimers();
         newPlayer();
-        const level = makeLevel('tutorial-resume', 10, 1);
+        const level = makeLevel('tutorial-resume', 50, 1);
         let view = renderGame(<App levels={[level]} />);
         beginMoveLesson();
         const move = selectQuality(level, 'good');
@@ -309,7 +478,7 @@ describe('first play tutorial', () => {
     it('teaches the free potion after explaining rounds, then resumes without giving or using it twice', () => {
         vi.useFakeTimers();
         newPlayer();
-        const level = makeLevel('starting-tutorial-item', 10, 2);
+        const level = makeLevel('starting-tutorial-item', 50, 2);
         let view = renderGame(<App levels={[level]} />);
         const saved = JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!);
         expect(saved.initialItems).toEqual({ 'healing-potion': 1 });
@@ -354,7 +523,7 @@ describe('first play tutorial', () => {
 
     it('leaves normal purchased loadouts unchanged and does not show a separate item guide', () => {
         saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 70 });
-        renderSetup(<App levels={[makeLevel('normal-items', 10, 2)]} />);
+        renderSetup(<App levels={[makeLevel('normal-items', 50, 2)]} />);
         openRegularItems();
         fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
         startRegular();
@@ -366,7 +535,7 @@ describe('first play tutorial', () => {
     });
 
     it('replays from Help on the current run without spending coins, replacing the run, or making a move', () => {
-        const level = makeLevel('replay-guide', 10, 2);
+        const level = makeLevel('replay-guide', 50, 2);
         renderGame(<App levels={[level]} />);
         const saved = JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!);
         fireEvent.click(screen.getByRole('button', { name: 'Help for this page' }));
@@ -383,7 +552,7 @@ describe('first play tutorial', () => {
     it('keeps the regular guide paused during dungeon play', () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
-        const level = makeLevel('tutorial-daily', 10, 2);
+        const level = makeLevel('tutorial-daily', 50, 2);
         renderGame(<App levels={[level]} />);
         fireEvent.click(screen.getByRole('button', { name: 'Help for this page' }));
         fireEvent.click(screen.getByRole('button', { name: 'Replay play tutorial' }));
@@ -401,7 +570,7 @@ describe('first play tutorial', () => {
 
     it('starts a new player directly from the menu and resumes that same run on their return', () => {
         newPlayer();
-        render(<App levels={[makeLevel('first-menu', 10, 2)]} />);
+        render(<App levels={[makeLevel('first-menu', 50, 2)]} />);
         fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
         expect(window.location.hash).toBe('#/game');
         expect(screen.getByRole('heading', { name: 'Your first run' })).toBeInTheDocument();
@@ -421,7 +590,7 @@ describe('first play tutorial', () => {
 
     it('guides two taps on a colored move square without automatically playing a move', () => {
         newPlayer();
-        const level = makeLevel('option-guide', 10, 2);
+        const level = makeLevel('option-guide', 50, 2);
         renderGame(<App levels={[level]} />);
         beginMoveLesson();
         const bestMove = decision(level).choices.find(choice => choice.quality === 'best')!;
@@ -441,7 +610,7 @@ describe('first play tutorial', () => {
 describe('regular run persistence', () => {
     it('resumes after refreshing during a move and continues playback without scoring it again', () => {
         vi.useFakeTimers();
-        const level = makeLevel('regular-refresh', 10, 2);
+        const level = makeLevel('regular-refresh', 50, 2);
         const view = renderGame(<App levels={[level]} />);
         const choice = selectQuality(level, 'good');
         expect(window.localStorage.getItem(REGULAR_STORAGE_KEY)).not.toBeNull();
@@ -460,7 +629,7 @@ describe('regular run persistence', () => {
 
     it('restores the current floor after advancement and replaces the save when starting a new run', () => {
         vi.useFakeTimers();
-        const levels = [makeLevel('regular-first', 10), makeLevel('regular-second', 30)];
+        const levels = [makeLevel('regular-first', 50), makeLevel('regular-second', 60)];
         const view = renderGame(<App levels={levels} />);
         selectQuality(levels[0]!, 'good');
         act(() => { vi.advanceTimersByTime(1400); });
@@ -480,7 +649,7 @@ describe('regular run persistence', () => {
 
     it('keeps a paused regular run saved when a daily dungeon is entered and refreshed', () => {
         vi.useFakeTimers();
-        const level = makeLevel('regular-and-daily', 10, 2);
+        const level = makeLevel('regular-and-daily', 50, 2);
         const view = renderGame(<App levels={[level]} />);
         const choice = selectQuality(level, 'good');
         openDaily();
@@ -499,7 +668,7 @@ describe('regular run persistence', () => {
 
     it('restores the chosen set and purchased supplies without charging again or replaying item notices', () => {
         vi.useFakeTimers();
-        const level = makeLevel('regular-supplies', 10, 3);
+        const level = makeLevel('regular-supplies', 50, 3);
         saveUserProgression({ ...initialUserProgression(), finishedRuns: 8, coins: 70 });
         const view = renderSetup(<App levels={[level]} />);
         fireEvent.click(screen.getByRole('button', { name: 'Obsidian Order' }));
@@ -542,7 +711,7 @@ describe('run reward checkpoints', () => {
     it.each(['regular', 'daily'] as const)('shows %s rewards over a cleared board after rounds 3 and 6 and takes an item with one tap', mode => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
-        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`checkpoint-${index}`, index));
+        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`checkpoint-${index}`, 45 + index));
         renderSetup(<App levels={levels} />);
         if (mode === 'regular') startRegular();
         else {
@@ -592,7 +761,7 @@ describe('run reward checkpoints', () => {
     it.each(['regular', 'daily'] as const)('preserves %s offers on refresh and grants the chosen item once', mode => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
-        const levels = Array.from({ length: 7 }, (_, index) => makeLevel(`resume-checkpoint-${index}`, index));
+        const levels = Array.from({ length: 7 }, (_, index) => makeLevel(`resume-checkpoint-${index}`, 45 + index));
         let view = renderSetup(<App levels={levels} />);
         if (mode === 'regular') startRegular();
         else { openDaily(); fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' })); }
@@ -787,7 +956,7 @@ describe('page help', () => {
 describe('run supplies', () => {
     it('selects items in setup, charges once at entry, and brings only selected items', () => {
         saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 70 });
-        renderSetup(<App levels={[makeLevel('supplies', 10, 3)]} />);
+        renderSetup(<App levels={[makeLevel('supplies', 50, 3)]} />);
         expect(screen.queryByRole('link', { name: 'Shop' })).not.toBeInTheDocument();
         openRegularItems();
         fireEvent.click(screen.getByRole('button', { name: 'Bring Triple Crown for 30 coins' }));
@@ -817,7 +986,7 @@ describe('run supplies', () => {
     });
     it('activates a boost, clears pending move confirmation, and shows actual points and duration', () => {
         vi.useFakeTimers();
-        const level = makeLevel('boost-ui', 10, 3);
+        const level = makeLevel('boost-ui', 50, 3);
         saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 30 });
         renderSetup(<App levels={[level]} />);
         openRegularItems();
@@ -839,7 +1008,7 @@ describe('run supplies', () => {
     });
     it('announces prevented damage without reporting a health loss or ending the run', () => {
         vi.useFakeTimers();
-        const level = makeLevel('shield-ui', 10, 3);
+        const level = makeLevel('shield-ui', 50, 3);
         saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 20 });
         renderSetup(<App levels={[level]} rules={{ ...DEFAULT_RULES, startingHealth: 1 }} />);
         openRegularItems();
@@ -847,16 +1016,18 @@ describe('run supplies', () => {
         startRegular();
         fireEvent.click(screen.getByRole('button', { name: 'King’s Guard, 1 remaining' }));
         fireEvent.click(screen.getByRole('button', { name: 'Confirm use of King’s Guard' }));
+        expect(screen.getByLabelText(/King’s Guard: 3 moves remaining/)).toBeInTheDocument();
         act(() => { vi.advanceTimersByTime(1200); });
         selectQuality(level, 'bad');
         expect(screen.getByLabelText('Health: 1')).toBeInTheDocument();
+        expect(screen.getByLabelText(/King’s Guard: 2 moves remaining/)).toBeInTheDocument();
         const notice = screen.getByRole('status', { name: 'Prevented 2 damage' });
         expect(notice).toHaveTextContent('Damage blocked');
         expect(screen.queryByRole('status', { name: /Run over|−2 health/ })).not.toBeInTheDocument();
         expect(loadUserProgression().coins).toBe(0);
     });
     it('resumes free daily item effects after remount without charging coins or replaying notices', () => {
-        const level = makeLevel('daily-supplies', 10, 3);
+        const level = makeLevel('daily-supplies', 50, 3);
         saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 80 });
         const view = render(<App levels={[level]} />);
         openDaily();
@@ -873,7 +1044,7 @@ describe('run supplies', () => {
         expect(loadUserProgression().coins).toBe(80);
     });
     it('shows square cancel/confirm controls above an item and cancels without spending it', () => {
-        const level = makeLevel('confirmation', 10, 3);
+        const level = makeLevel('confirmation', 50, 3);
         saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 20 });
         renderSetup(<App levels={[level]} />);
         openRegularItems();
@@ -910,7 +1081,7 @@ describe('daily dungeon console reset', () => {
     });
 
     it('clears an active attempt immediately, preserves the draw and other days, and starts fresh', () => {
-        const level = makeLevel('reset-active', 10, 3);
+        const level = makeLevel('reset-active', 50, 3);
         const yesterday = createDailyDungeon([level], Date.parse('2026-10-03T12:00:00Z'));
         saveDailyArchive(storeDailyDungeon(initialDailyArchive(), yesterday));
         render(<StrictMode><App levels={[level]} /></StrictMode>);
@@ -962,7 +1133,7 @@ describe('daily dungeon console reset', () => {
     });
 
     it('preserves a paused regular run while clearing the active daily run', () => {
-        const level = makeLevel('reset-regular', 10, 3);
+        const level = makeLevel('reset-regular', 50, 3);
         renderGame(<App levels={[level]} />);
         const choice = selectQuality(level, 'good');
         openDaily();
@@ -1011,7 +1182,7 @@ describe('main navigation', () => {
 
     it('pauses a regular move while visiting destinations and resumes the same playback from Home', () => {
         vi.useFakeTimers();
-        const level = makeLevel('navigation-pause', 10, 2);
+        const level = makeLevel('navigation-pause', 50, 2);
         renderGame(<App levels={[level]} />);
         const choice = selectQuality(level, 'good');
         const position = screen.getByTestId('board').getAttribute('data-position');
@@ -1037,7 +1208,7 @@ describe('main navigation', () => {
         fireEvent.click(screen.getByRole('link', { name: 'Profile' }));
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
-        expect(screen.getByRole('textbox', { name: 'Display name' })).toHaveFocus();
+        expect(screen.getByRole('textbox', { name: 'Display name' })).not.toHaveFocus();
         fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Nav Knight' } });
         fireEvent.click(screen.getByRole('button', { name: 'Rook avatar' }));
         fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -1216,7 +1387,7 @@ describe('player profile interface', () => {
         openProfileEditor();
         const editor = screen.getByRole('dialog', { name: 'Edit profile' });
         expect(screen.getAllByRole('dialog')).toHaveLength(1);
-        expect(screen.getByRole('textbox', { name: 'Display name' })).toHaveFocus();
+        expect(screen.getByRole('textbox', { name: 'Display name' })).not.toHaveFocus();
         fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Castle Keeper' } });
         fireEvent.click(screen.getByRole('button', { name: 'Rook avatar' }));
         fireEvent.click(screen.getByRole('button', { name: 'Sapphire avatar background' }));
@@ -1226,7 +1397,7 @@ describe('player profile interface', () => {
         expect(preview).toHaveStyle({ backgroundImage: 'url("/profile/banners/crimson.svg")' });
         expect(preview.querySelector('.player-avatar')).toHaveStyle({ backgroundColor: '#345d85' });
         expect(preview.querySelector('img')).toHaveAttribute('src', '/profile/avatars/rook.svg');
-        expect(loadPlayerProfile()).toEqual(initialPlayerProfile());
+        expect(loadPlayerProfile()).toEqual({ ...initialPlayerProfile(), preferredSkillTier: 'intermediate' });
         fireEvent.click(within(editor).getByRole('button', { name: 'Save changes' }));
         expect(loadPlayerProfile()).toMatchObject({ displayName: 'Castle Keeper', avatarId: 'rook',
             avatarBackgroundColor: '#345d85', bannerId: 'crimson' });
@@ -1263,7 +1434,7 @@ describe('player profile interface', () => {
         expect(screen.getByRole('dialog', { name: 'Your profile' })).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
         expect(screen.getByRole('button', { name: 'View profile' })).toHaveFocus();
-        expect(loadPlayerProfile()).toEqual(initialPlayerProfile());
+        expect(loadPlayerProfile()).toEqual({ ...initialPlayerProfile(), preferredSkillTier: 'intermediate' });
     });
 
     it('validates empty names, offers preset colors, and includes inputs in keyboard navigation', () => {
@@ -1319,7 +1490,7 @@ describe('page navigation', () => {
 
     it('pauses browsing, preserves both runs, and requires explicit daily entry', () => {
         vi.useFakeTimers();
-        const level = makeLevel('resumable', 10, 2);
+        const level = makeLevel('resumable', 50, 2);
         renderGame(<App levels={[level]} />);
         const choice = selectQuality(level, 'good');
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
@@ -1372,7 +1543,7 @@ describe('page navigation', () => {
 
     it('restores a daily checkpoint after refresh, including automatic level advancement', () => {
         vi.useFakeTimers();
-        const levels = [makeLevel('daily-first', 10), makeLevel('daily-next', 30)];
+        const levels = [makeLevel('daily-first', 50), makeLevel('daily-next', 60)];
         const view = render(<App levels={levels} />);
         openDaily();
         fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
@@ -1391,34 +1562,135 @@ describe('page navigation', () => {
         expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
     });
 
-    it('shows expiration before opening the new daily page and preserves the regular run', () => {
+    it('silently opens today\'s unstarted dungeon at midnight and preserves the regular run', () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-10-04T23:59:57Z'));
-        const level = makeLevel('expiration', 10, 2);
+        const level = makeLevel('expiration', 50, 2);
         renderGame(<App levels={[level]} />);
         const position = screen.getByTestId('board').getAttribute('data-position');
         openDaily();
         fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
         fireEvent.click(screen.getByRole('button', { name: 'Daily leaderboard' }));
         act(() => { vi.advanceTimersByTime(3000); });
-        expect(screen.getByRole('status', { name: 'Dungeon expired. Your daily attempt has ended.' })).toBeInTheDocument();
+        expect(screen.queryByText(/expired/i)).not.toBeInTheDocument();
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-        act(() => { vi.advanceTimersByTime(2500); });
         expect(screen.getByRole('heading', { name: 'Daily dungeon', level: 1 })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeInTheDocument();
+        expect(window.location.hash).toBe('#/daily');
         expect(loadUserProgression().coins).toBe(0);
         expect(JSON.parse(window.localStorage.getItem(DAILY_STORAGE_KEY)!).days['2026-10-04'].attempt.status).toBe('expired');
+        expect(loadDailyArchive([level]).days['2026-10-05']!.attempt).toBeNull();
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
         expect(screen.getByRole('button', { name: 'Regular run' })).toHaveAccessibleDescription('In progress · Floor 1');
         resumeRegularFromHome();
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', position);
+    });
+
+    it('replaces yesterday\'s unfinished dated dungeon page at midnight', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-04T23:59:57Z'));
+        const level = makeLevel('browsing-rollover', 50, 2);
+        render(<App levels={[level]} />);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        act(() => {
+            window.history.replaceState(null, '', '#/daily/2026-10-04');
+            window.dispatchEvent(new HashChangeEvent('hashchange'));
+        });
+        expect(screen.getByRole('button', { name: 'Resume dungeon' })).toBeInTheDocument();
+        act(() => { vi.advanceTimersByTime(3000); });
+        expect(window.location.hash).toBe('#/daily');
+        expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Resume dungeon' })).not.toBeInTheDocument();
+        expect(screen.queryByText(/expired/i)).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        expect(loadDailyArchive([level]).days['2026-10-05']!.attempt?.status).toBe('active');
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+    });
+
+    it.each(['active', 'expired'] as const)('resets a saved %s attempt from yesterday when reopening its page', status => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
+        const level = makeLevel('reopened-rollover', 50, 2);
+        const previousTime = Date.parse('2026-10-04T12:00:00Z');
+        const entered = enterDailyDungeon(createDailyDungeon([level], previousTime), 'default', DEFAULT_RULES,
+            initialMultiplierProfile().board, previousTime);
+        entered.dungeon.attempt!.status = status;
+        saveDailyArchive(storeDailyDungeon(initialDailyArchive(), entered.dungeon));
+        window.history.replaceState(null, '', '#/daily/2026-10-04');
+        render(<App levels={[level]} />);
+        expect(window.location.hash).toBe('#/daily');
+        expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Resume dungeon' })).not.toBeInTheDocument();
+        expect(screen.queryByText(/expired/i)).not.toBeInTheDocument();
+        expect(loadDailyArchive([level]).days['2026-10-05']!.attempt).toBeNull();
+    });
+
+    it.each(['expired', 'invalid checkpoint', 'missing floors'] as const)('reopens today\'s dungeon when its saved attempt has %s', reason => {
+        vi.useFakeTimers();
+        const now = Date.parse('2026-10-05T12:00:00Z');
+        vi.setSystemTime(now);
+        const level = makeLevel('current-dungeon', 50, 2);
+        const savedLevel = reason === 'missing floors' ? makeLevel('retired-dungeon', 50, 2) : level;
+        const entered = enterDailyDungeon(createDailyDungeon([savedLevel], now), 'default', DEFAULT_RULES,
+            initialMultiplierProfile().board, now);
+        if (reason === 'expired') entered.dungeon.attempt!.status = 'expired';
+        if (reason === 'invalid checkpoint') {
+            entered.dungeon.attempt!.checkpoint.moves.push({ levelId: savedLevel.id, uci: 'a1a8' });
+        }
+        saveDailyArchive(storeDailyDungeon(initialDailyArchive(), entered.dungeon));
+        render(<App levels={[level]} />);
+        expect(screen.queryByText(/expired/i)).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Time until daily dungeon resets')).toHaveTextContent('12:00:00');
+        openDaily();
+        expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeInTheDocument();
+        expect(loadDailyArchive([level]).days['2026-10-05']!.attempt).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
+        expect(loadDailyArchive([level]).days['2026-10-05']!.attempt).toMatchObject({ status: 'active' });
+        expect(loadDailyArchive([level]).days['2026-10-05']!.attempt!.id).not.toBe(entered.run.id);
+    });
+
+    it('returns to a fresh dungeon when an unavailable attempt synchronizes from storage', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
+        const level = makeLevel('synced-dungeon', 50, 2);
+        render(<App levels={[level]} />);
+        openDaily();
+        fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
+        const archive = loadDailyArchive([level]);
+        archive.days['2026-10-05']!.attempt!.status = 'expired';
+        saveDailyArchive(archive);
+        act(() => { window.dispatchEvent(new StorageEvent('storage', { key: DAILY_STORAGE_KEY })); });
+        expect(screen.getByRole('button', { name: 'Enter dungeon' })).toBeInTheDocument();
+        expect(screen.queryByText(/expired|No rewards earned/i)).not.toBeInTheDocument();
+        expect(loadDailyArchive([level]).days['2026-10-05']!.attempt).toBeNull();
+    });
+
+    it('keeps yesterday\'s finished result available on its dated page', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
+        const level = makeLevel('finished-rollover', 50, 2);
+        const previousTime = Date.parse('2026-10-04T12:00:00Z');
+        const entered = enterDailyDungeon(createDailyDungeon([level], previousTime), 'default',
+            { ...DEFAULT_RULES, startingHealth: 1 }, initialMultiplierProfile().board, previousTime);
+        const run = chooseMove(entered.run, decision(level).choices.find(choice => choice.quality === 'bad')!.playerMove.uci);
+        const finished = recordDailyRun(entered.dungeon, run, previousTime, () => 0);
+        saveDailyArchive(storeDailyDungeon(initialDailyArchive(), finished));
+        window.history.replaceState(null, '', '#/daily/2026-10-04');
+        render(<App levels={[level]} />);
+        expect(window.location.hash).toBe('#/daily/2026-10-04');
+        expect(screen.getByText('Final score')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: "Today's dungeon" })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Enter dungeon' })).not.toBeInTheDocument();
+        expect(loadDailyArchive([level]).days['2026-10-04']!.attempt?.payout).toEqual(finished.attempt!.payout);
     });
 });
 
 describe('daily leaderboard interface', () => {
     it('offers a daily-only modal that returns to the same game and selection', () => {
         vi.useFakeTimers();
-        renderGame(<App levels={[makeLevel('leaderboard', 10, 2)]} />);
+        renderGame(<App levels={[makeLevel('leaderboard', 50, 2)]} />);
         expect(screen.queryByRole('button', { name: 'Daily leaderboard' })).not.toBeInTheDocument();
         openDaily();
         fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
@@ -1560,7 +1832,7 @@ describe('daily rewards interface', () => {
     it('recovers interrupted finished rewards once and retains the completed daily page after refresh', () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-10-04T12:00:00Z'));
-        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`reward-${index}`, index));
+        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`reward-${index}`, 45 + index));
         const entered = enterDailyDungeon(createDailyDungeon(levels), 'default', DEFAULT_RULES, initialMultiplierProfile().board);
         let run = entered.run;
         for (let index = 0; index < 10; index++) {
@@ -1617,7 +1889,7 @@ describe('daily rewards interface', () => {
 
     it('grants five times earned coins on defeat', () => {
         vi.useFakeTimers();
-        const level = makeLevel('daily-reward', 10, 2);
+        const level = makeLevel('daily-reward', 50, 2);
         render(<App levels={[level]} rules={{ ...DEFAULT_RULES, startingHealth: 1 }} />);
         openDaily();
         fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' }));
@@ -1723,7 +1995,7 @@ describe('gameplay interface', () => {
         saveUserProgression({ ...initialUserProgression(), finishedRuns: 1, coins: 60 });
         const random = vi.spyOn(Math, 'random').mockReturnValue(0);
         try {
-            const levels = [makeLevel('first', 10), makeLevel('second', 20)];
+            const levels = [makeLevel('first', 50), makeLevel('second', 55)];
             renderGame(<App levels={levels} rules={{ ...DEFAULT_RULES, startingHealth: 2 }} />);
             selectQuality(levels[0]!, 'good');
             act(() => { vi.advanceTimersByTime(1400); });
@@ -1746,7 +2018,7 @@ describe('gameplay interface', () => {
 
     it('keeps premium sets locked for a new player and gives no credit for abandoning a run', () => {
         window.localStorage.removeItem(PROGRESSION_STORAGE_KEY);
-        const level = makeLevel('abandoned', 10, 2);
+        const level = makeLevel('abandoned', 50, 2);
         window.history.replaceState(null, '', '#/regular');
         renderSetup(<App levels={[level]} />);
         expect(screen.getByRole('button', { name: 'Default' })).toBeEnabled();
@@ -1829,7 +2101,10 @@ describe('gameplay interface', () => {
         const read = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Unavailable'); });
         const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Unavailable'); });
         try {
-            renderGame(<App levels={[level]} rules={{ ...DEFAULT_RULES, startingHealth: 1 }} />);
+            render(<App levels={[level]} rules={{ ...DEFAULT_RULES, startingHealth: 1 }} />);
+            fireEvent.click(screen.getByRole('button', { name: 'Intermediate' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
             fireEvent.click(screen.getByRole('button', { name: 'Skip tutorial' }));
             for (let count = 1; count <= 3; count++) {
                 selectQuality(level, 'bad');
@@ -1844,7 +2119,7 @@ describe('gameplay interface', () => {
     });
 
     it.each(['white', 'black'] as const)('plays only an offered source/destination pair for %s', color => {
-        const level = makeLevel('board-taps', 10, 2, color);
+        const level = makeLevel('board-taps', 50, 2, color);
         renderGame(<App levels={[level]} />);
         const choice = decision(level).choices.find(candidate => candidate.quality === 'inaccuracy')!;
         const from = choice.playerMove.uci.slice(0, 2);
@@ -1933,7 +2208,7 @@ describe('gameplay interface', () => {
 
     it('pauses playback while browsing and resumes without changing the run', () => {
         vi.useFakeTimers();
-        const level = makeLevel('paused', 10, 2);
+        const level = makeLevel('paused', 50, 2);
         renderGame(<App levels={[level]} />);
         const choice = selectQuality(level, 'good');
         openRegular();
@@ -1953,7 +2228,7 @@ describe('gameplay interface', () => {
         vi.useFakeTimers();
         const random = vi.spyOn(Math, 'random').mockReturnValue(0);
         try {
-            const levels = [makeLevel('first', 10), makeLevel('second', 20)];
+            const levels = [makeLevel('first', 50), makeLevel('second', 55)];
             renderSetup(<App levels={levels} />);
             startRegular('Obsidian Order');
             selectQuality(levels[0]!, 'good');
@@ -1963,8 +2238,8 @@ describe('gameplay interface', () => {
             selectQuality(levels[1]!, 'bad');
             expect(screen.getByLabelText('Health: 0')).toBeInTheDocument();
             finishPayout();
-            expect(screen.getByText('75 1.3x')).toBeInTheDocument();
-            expect(screen.getByText('Total score').nextElementSibling).toHaveTextContent('98');
+            expect(screen.getByText('50 1.3x')).toBeInTheDocument();
+            expect(screen.getByText('Total score').nextElementSibling).toHaveTextContent('65');
             expect(window.localStorage.getItem(MULTIPLIER_STORAGE_KEY)).toBeNull();
             fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
             startRegular('Default');
@@ -2035,8 +2310,8 @@ describe('gameplay interface', () => {
         ['branch', 4, 2], ['branch', 2, 3], ['floor', 4, 2], ['floor', 2, 3],
     ] as const)('restores arrow focus after a %s switch to %i options from position %i', (transition, count, index) => {
         vi.useFakeTimers();
-        const first = makeLevel('first', 10, transition === 'branch' ? 2 : 1);
-        const second = makeLevel('second', 20);
+        const first = makeLevel('first', 50, transition === 'branch' ? 2 : 1);
+        const second = makeLevel('second', 55);
         if (transition === 'branch') {
             for (const choice of decision(first).choices) {
                 if (choice.next.kind !== 'decision') throw new Error('Expected branch decision.');
@@ -2065,7 +2340,7 @@ describe('gameplay interface', () => {
 
     it('stops restoring arrow focus after the player switches to pointer controls', () => {
         vi.useFakeTimers();
-        renderGame(<App levels={[makeLevel('pointer', 10, 2)]} />);
+        renderGame(<App levels={[makeLevel('pointer', 50, 2)]} />);
         fireEvent.keyDown(document.body, { key: 'ArrowRight' });
         fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
         const button = document.activeElement!;
@@ -2080,7 +2355,7 @@ describe('gameplay interface', () => {
 
     it('keeps focus on another control while new keyboard options appear', () => {
         vi.useFakeTimers();
-        renderGame(<App levels={[makeLevel('focus', 10, 2)]} />);
+        renderGame(<App levels={[makeLevel('focus', 50, 2)]} />);
         fireEvent.keyDown(document.body, { key: 'ArrowRight' });
         const button = document.activeElement!;
         fireEvent.keyDown(button, { key: 'Enter' });
@@ -2136,8 +2411,8 @@ describe('gameplay interface', () => {
     });
 
     it('keeps the board oriented to the player’s side across runs', () => {
-        const level = makeLevel('black', 10, 1, 'black');
-        renderGame(<App levels={[level, makeLevel('next', 30)]} />);
+        const level = makeLevel('black', 50, 1, 'black');
+        renderGame(<App levels={[level, makeLevel('next', 60)]} />);
         expect(screen.getByTestId('board')).toHaveAttribute('data-orientation', 'black');
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', level.root.fen);
         selectQuality(level, 'good');
@@ -2160,7 +2435,7 @@ describe('gameplay interface', () => {
 
     it('puts black player moves and white replies in the correct history columns', () => {
         vi.useFakeTimers();
-        const level = makeLevel('black', 10, 1, 'black');
+        const level = makeLevel('black', 50, 1, 'black');
         renderGame(<App levels={[level]} />);
         const choice = selectQuality(level, 'best');
         const history = screen.getByLabelText('Move history');
@@ -2174,7 +2449,7 @@ describe('gameplay interface', () => {
     });
 
     it('starts the easiest scored level, respects black orientation, and hides qualities before selection', () => {
-        const easy = makeLevel('easy', 10, 1, 'black');
+        const easy = makeLevel('easy', 50, 1, 'black');
         renderGame(<App levels={[makeLevel('hard', 80), makeLevel('unscored', -1), easy]} />);
         expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument();
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
@@ -2200,7 +2475,7 @@ describe('gameplay interface', () => {
 
     it('shows player and opponent positions in sequence and renders only the selected branch next', () => {
         vi.useFakeTimers();
-        const level = makeLevel('branches', 10, 2);
+        const level = makeLevel('branches', 50, 2);
         renderGame(<StrictMode><App levels={[level]} /></StrictMode>);
         const choice = selectQuality(level, 'inaccuracy');
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
@@ -2227,8 +2502,8 @@ describe('gameplay interface', () => {
 
     it('advances playback automatically, persists run totals between levels, and shows the complete summary', () => {
         vi.useFakeTimers();
-        const easy = makeLevel('easy', 10);
-        const hard = makeLevel('hard', 70);
+        const easy = makeLevel('easy', 50);
+        const hard = makeLevel('hard', 65);
         renderGame(<App levels={[hard, easy]} />);
         selectQuality(easy, 'inaccuracy');
         act(() => { vi.advanceTimersByTime(1400); });
@@ -2279,7 +2554,7 @@ describe('gameplay interface', () => {
 
     it('ends immediately on lethal damage, blocks further moves, and restarts with fresh health', () => {
         vi.useFakeTimers();
-        const level = makeLevel('lethal', 25);
+        const level = makeLevel('lethal', 57);
         const rules = { ...DEFAULT_RULES, startingHealth: 1 };
         renderGame(<App levels={[level]} rules={rules} />);
         const choice = selectQuality(level, 'bad');
@@ -2328,12 +2603,12 @@ describe('gameplay interface', () => {
 
     it.each(['white', 'black'] as const)('shows the %s player a Checkmate notice and preserves points when advancing floors', playerColor => {
         vi.useFakeTimers();
-        const level = makeLevel('early-mate', 10, 4, playerColor);
+        const level = makeLevel('early-mate', 50, 4, playerColor);
         const choice = decision(level).choices[0]!;
         choice.opponentReply = null;
         choice.next = { kind: 'terminal', fen: choice.fenAfterPlayerMove,
             decisionsTaken: 1, reason: 'checkmate', result: playerColor };
-        const next = makeLevel('next', 30);
+        const next = makeLevel('next', 60);
         renderGame(<App levels={[level, next]} />);
         selectQuality(level, 'best');
         expect(screen.getByLabelText('Score: 100')).toBeInTheDocument();
@@ -2388,7 +2663,7 @@ describe('gameplay interface', () => {
         const level = makeLevel();
         const choice = decision(level).choices[0]!;
         choice.next = { kind: 'terminal', fen: choice.next.fen, decisionsTaken: 1, reason: 'checkmate', result: 'black' };
-        renderGame(<App levels={[level, makeLevel('next', 30)]} />);
+        renderGame(<App levels={[level, makeLevel('next', 60)]} />);
         selectQuality(level, 'best');
         act(() => { vi.advanceTimersByTime(1400); });
         act(() => { vi.advanceTimersByTime(1000); });
@@ -2402,7 +2677,7 @@ describe('gameplay interface', () => {
     it('pauses automatic level advancement while the profile editor is open', () => {
         vi.useFakeTimers();
         const level = makeLevel();
-        const next = makeLevel('next', 30);
+        const next = makeLevel('next', 60);
         renderGame(<App levels={[level, next]} />);
         selectQuality(level, 'best');
         act(() => { vi.advanceTimersByTime(1400); });
@@ -2439,7 +2714,7 @@ describe('gameplay interface', () => {
 
     it('shows extra health on the fourth consecutive Best move and resets it on a new run', () => {
         vi.useFakeTimers();
-        const levels = Array.from({ length: 4 }, (_, index) => makeLevel(`streak-${index}`, index));
+        const levels = Array.from({ length: 4 }, (_, index) => makeLevel(`streak-${index}`, 45 + index));
         renderGame(<App levels={levels} />);
         levels.forEach((level, index) => {
             selectQuality(level, 'best');
@@ -2529,7 +2804,7 @@ describe('gameplay interface', () => {
 
     it('saves one upgrade for ten completed levels and does not award another when reopening the score', () => {
         vi.useFakeTimers();
-        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`complete-${index}`, index));
+        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`complete-${index}`, 45 + index));
         renderGame(<App levels={levels} />);
         for (let index = 0; index < 10; index++) {
             selectQuality(levels[index]!, 'best');
@@ -2553,7 +2828,7 @@ describe('gameplay interface', () => {
 
     it('awards Obsidian upgrades to its own profile and retains them across set changes', () => {
         vi.useFakeTimers();
-        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`obsidian-${index}`, index));
+        const levels = Array.from({ length: 10 }, (_, index) => makeLevel(`obsidian-${index}`, 45 + index));
         renderSetup(<App levels={levels} />);
         startRegular('Obsidian Order');
         for (let index = 0; index < 10; index++) {

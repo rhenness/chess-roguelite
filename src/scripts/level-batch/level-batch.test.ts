@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Chess, DEFAULT_POSITION } from 'chess.js';
-import { SKILL_TIERS, SKILL_TIER_CONFIG, SKILL_TIER_CONFIG_VERSION } from '../../config/difficulty.js';
+import { GENERATION_PROFILE_IDS, GENERATION_PROFILES, generationLevelFolder } from '../../config/generation.js';
 import type { GeneratedLevel } from '../../types/level.js';
 import { applyUci } from '../tree-generator/chess.js';
 import { scoreLevel, validateScorableLevel } from '../difficulty-scorer/index.js';
@@ -50,13 +50,13 @@ const options = (directory: string): BatchOptions => ({
     searchDepth: 1, multiPv: 4, config: { depths: [1, 2], multiPv: 4 }, random: () => 0,
 });
 
-test('every FEN produces three configured tiers, with BOM/comments, line numbers and isolated invalid input', async () => {
+test('every FEN produces all configured profiles, with BOM/comments, line numbers and isolated invalid input', async () => {
     await withDirectory(async directory => {
         const input = join(directory, 'fens.txt');
         await writeFile(input, `\uFEFF # Positions\r\n\r\n  ${DEFAULT_POSITION}  \r\ninvalid\r\n${DEFAULT_POSITION.replace(' w ', ' b ')}\r\n`);
         const results = await generateLevelBatch(input, options(directory), new LegalEngine());
-        assert.deepEqual(results.map(result => [result.line, result.skillTier, result.status]),
-            [3, 4, 5].flatMap(line => SKILL_TIERS.map(tier => [line, tier, line === 4 ? 'failed' : 'scored'])));
+        assert.deepEqual(results.map(result => [result.line, result.profileId, result.status]),
+            [3, 4, 5].flatMap(line => GENERATION_PROFILE_IDS.map(profile => [line, profile, line === 4 ? 'failed' : 'scored'])));
         const ids = new Set<string>();
         for (const result of results) {
             if (result.status === 'failed') { assert.match(result.error, /Invalid starting FEN/); continue; }
@@ -64,25 +64,25 @@ test('every FEN produces three configured tiers, with BOM/comments, line numbers
             const level = JSON.parse(await readFile(result.file, 'utf8')) as GeneratedLevel;
             validateScorableLevel(level);
             ids.add(level.id);
-            assert.equal(level.skillTier, result.skillTier);
-            assert.equal(level.generation.configVersion, SKILL_TIER_CONFIG_VERSION);
+            assert.equal(level.generation.profileId, result.profileId);
+            assert.equal(level.generation.profileVersion, GENERATION_PROFILES[result.profileId].profileVersion);
             assert.equal(level.playerColor, result.line === 3 ? 'white' : 'black');
-            assert.equal(dirname(result.file), join(directory, 'levels', basename(SKILL_TIER_CONFIG[result.skillTier].levelFolder)));
+            assert.equal(dirname(result.file), join(directory, 'levels', basename(generationLevelFolder(result.profileId, 1))));
             assert.equal(result.file, scoredLevelPath(result.file, level.difficultyScore, level.id));
             assert.equal(level.root.kind, 'decision');
             if (level.root.kind === 'decision') {
-                assert.deepEqual(level.root.choices.map(choice => choice.quality), result.skillTier === 'beginner'
-                    ? ['best', 'bad'] : result.skillTier === 'expert'
-                        ? ['best', 'good', 'inaccuracy', 'inaccuracy'] : ['best', 'good', 'inaccuracy', 'bad']);
+                assert.deepEqual(level.root.choices.map(choice => choice.quality), result.profileId === '2-options-4-depth-10'
+                    ? ['best', 'bad'] : result.profileId === '4-options-4-depth-10'
+                        ? ['best', 'good', 'inaccuracy', 'bad'] : ['best', 'good', 'inaccuracy', 'inaccuracy']);
                 assert.equal(new Set(level.root.choices.map(choice => choice.playerMove.uci)).size, level.root.choices.length);
             }
         }
-        assert.equal(ids.size, 6);
-        for (const tier of SKILL_TIERS) assert.deepEqual(await readdir(join(directory, 'levels', '.staging', basename(SKILL_TIER_CONFIG[tier].levelFolder))), []);
+        assert.equal(ids.size, 2 * GENERATION_PROFILE_IDS.length);
+        for (const profile of GENERATION_PROFILE_IDS) assert.deepEqual(await readdir(join(directory, 'levels', '.staging', basename(generationLevelFolder(profile, 1)))), []);
     });
 });
 
-test('a scoring failure leaves a resumable tree; resume preserves its identity and never regenerates completed tiers', async () => {
+test('a scoring failure leaves a resumable tree; resume preserves its identity and never regenerates completed profiles', async () => {
     await withDirectory(async directory => {
         const input = join(directory, 'fens.txt');
         await writeFile(input, DEFAULT_POSITION);
@@ -96,15 +96,15 @@ test('a scoring failure leaves a resumable tree; resume preserves its identity a
         const source = await readFile(pending.file, 'utf8');
         const tree = JSON.parse(source) as GeneratedLevel;
         assert.equal(tree.difficultyScore, -1);
-        assert.deepEqual(results.slice(1).map(result => result.status), ['scored', 'scored']);
-        const [blocked] = await generateLevelBatch(input, { ...options(directory), skillTier: 'beginner' }, engine);
+        assert.deepEqual(results.slice(1).map(result => result.status), GENERATION_PROFILE_IDS.slice(1).map(() => 'scored'));
+        const [blocked] = await generateLevelBatch(input, { ...options(directory), profileId: '2-options-4-depth-10' }, engine);
         assert.equal(blocked?.status, 'failed');
         if (blocked?.status === 'failed') assert.match(blocked.error, /Use --resume/);
         assert.equal(await readFile(pending.file, 'utf8'), source);
         const resumedEngine = new LegalEngine();
-        // The saved tree's depth is used even if the invocation has a different override.
-        const resumed = await generateLevelBatch(input, { ...options(directory), decisionDepth: 0, resume: true }, resumedEngine);
-        assert.deepEqual(resumed.map(result => result.status), ['scored', 'skipped', 'skipped']);
+        // Resume selects the same depth pool as the original invocation.
+        const resumed = await generateLevelBatch(input, { ...options(directory), resume: true }, resumedEngine);
+        assert.deepEqual(resumed.map(result => result.status), GENERATION_PROFILE_IDS.map((_, index) => index === 0 ? 'scored' : 'skipped'));
         assert.ok(resumedEngine.requests.length > 0);
         assert.ok(resumedEngine.requests.every(request => request.resetHash));
         const completed = JSON.parse(await readFile(resumed[0]!.file, 'utf8')) as GeneratedLevel;
@@ -122,13 +122,13 @@ test('publication preserves colliding output and can recover publication complet
         await writeFile(input, DEFAULT_POSITION);
         const engine = new LegalEngine();
         engine.failScoringOnce = true;
-        const settings = { ...options(directory), skillTier: 'expert' as const };
+        const settings = { ...options(directory), profileId: '4-options-4-depth-20' as const };
         const [pending] = await generateLevelBatch(input, settings, engine);
         assert.equal(pending?.status, 'failed');
         const source = await readFile(pending!.file, 'utf8');
         const level = JSON.parse(source) as GeneratedLevel;
         const score = await scoreLevel(level, { config: settings.config }, new LegalEngine());
-        const destination = scoredLevelPath(join(directory, 'levels', '3-expert', 'level.json'), score.difficultyScore, level.id);
+        const destination = scoredLevelPath(join(directory, 'levels', '4-options-1-depth', 'level.json'), score.difficultyScore, level.id);
         await mkdir(dirname(destination), { recursive: true });
         await writeFile(destination, 'existing content');
         const [collision] = await generateLevelBatch(input, { ...settings, resume: true }, new LegalEngine());
@@ -144,16 +144,16 @@ test('publication preserves colliding output and can recover publication complet
     });
 });
 
-test('resume rejects a modified pending tree instead of publishing it under the wrong tier', async () => {
+test('resume rejects a modified pending tree instead of publishing it under the wrong profile', async () => {
     await withDirectory(async directory => {
         const input = join(directory, 'fens.txt');
         await writeFile(input, DEFAULT_POSITION);
         const engine = new LegalEngine();
         engine.failScoringOnce = true;
-        const settings = { ...options(directory), skillTier: 'expert' as const };
+        const settings = { ...options(directory), profileId: '4-options-4-depth-20' as const };
         const [pending] = await generateLevelBatch(input, settings, engine);
         const level = JSON.parse(await readFile(pending!.file, 'utf8')) as GeneratedLevel;
-        level.skillTier = 'intermediate';
+        level.generation.profileId = '4-options-4-depth-10';
         const changed = JSON.stringify(level);
         await writeFile(pending!.file, changed);
         const resumedEngine = new LegalEngine();
@@ -164,7 +164,7 @@ test('resume rejects a modified pending tree instead of publishing it under the 
     });
 });
 
-test('concurrency bounds engines across all tiers and each engine handles both stages before closing', async context => {
+test('concurrency bounds engines across all profiles and each engine handles both stages before closing', async context => {
     await withDirectory(async directory => {
         const input = join(directory, 'fens.txt');
         await writeFile(input, `${DEFAULT_POSITION}\n${DEFAULT_POSITION.replace(' w ', ' b ')}`);
@@ -183,10 +183,10 @@ test('concurrency bounds engines across all tiers and each engine handles both s
         const results = await generateLevelBatch(input, { ...options(directory), concurrency: 2 });
         assert.equal(peak, 2);
         assert.equal(active, 0);
-        assert.equal(closed, 6);
-        assert.equal(engines.length, 6);
-        assert.deepEqual(results.map(result => [result.line, result.skillTier, result.status]),
-            [1, 2].flatMap(line => SKILL_TIERS.map(tier => [line, tier, 'scored'])));
+        assert.equal(closed, 2 * GENERATION_PROFILE_IDS.length);
+        assert.equal(engines.length, 2 * GENERATION_PROFILE_IDS.length);
+        assert.deepEqual(results.map(result => [result.line, result.profileId, result.status]),
+            [1, 2].flatMap(line => GENERATION_PROFILE_IDS.map(profile => [line, profile, 'scored'])));
         for (const engine of engines) {
             assert.ok(engine.requests.some(request => !request.resetHash));
             assert.ok(engine.requests.some(request => request.resetHash));
@@ -217,61 +217,104 @@ test('invalid options fail before output is created', async () => {
         await writeFile(input, DEFAULT_POSITION);
         for (const overrides of [{ decisionDepth: NaN }, { config: { depths: [1] } },
             { concurrency: 0 }, { concurrency: 1.5 }, { concurrency: 33 }, { concurrency: 2 },
-            { skillTier: 'invalid' }]) {
+            { profileId: 'invalid' }]) {
             await assert.rejects(generateLevelBatch(input, { ...options(directory), ...overrides } as BatchOptions, new LegalEngine()));
         }
         assert.deepEqual(await readdir(directory), ['fens.txt']);
     });
 });
 
-test('single-tier selection and config defaults keep four player decisions per floor', async () => {
+test('single-profile selection and config defaults keep four player decisions per floor', async () => {
     await withDirectory(async directory => {
         const input = join(directory, 'fens.txt');
         await writeFile(input, 'k7/1Q6/2K5/8/8/8/8/8 b - - 0 1');
-        for (const skillTier of SKILL_TIERS) {
-            const [result] = await generateLevelBatch(input, { ...options(directory), decisionDepth: undefined, skillTier }, new LegalEngine());
+        for (const profileId of GENERATION_PROFILE_IDS) {
+            const [result] = await generateLevelBatch(input, { ...options(directory), decisionDepth: undefined, profileId }, new LegalEngine());
             assert.equal(result?.status, 'scored');
             const level = JSON.parse(await readFile(result!.file, 'utf8')) as GeneratedLevel;
-            assert.equal(level.skillTier, skillTier);
+            assert.equal(level.generation.profileId, profileId);
             assert.equal(level.generation.decisionDepth, 4);
             assert.equal(level.difficultyScore, 0);
         }
     });
 });
 
-test('normal runs fill only missing tiers, skip repeat runs, and deduplicate FENs before starting jobs', async () => {
+test('normal runs fill only missing profiles, skip repeat runs, and deduplicate FENs before starting jobs', async () => {
     await withDirectory(async directory => {
         const input = join(directory, 'fens.txt');
         await writeFile(input, DEFAULT_POSITION);
-        for (const skillTier of ['beginner', 'intermediate'] as const) {
-            await generateLevelBatch(input, { ...options(directory), skillTier }, new LegalEngine());
+        for (const profileId of ['2-options-4-depth-10', '4-options-4-depth-10'] as const) {
+            await generateLevelBatch(input, { ...options(directory), profileId }, new LegalEngine());
         }
         await writeFile(input, `${DEFAULT_POSITION}\n  ${DEFAULT_POSITION}  `);
         const engine = new LegalEngine();
         const results = await generateLevelBatch(input, options(directory), engine);
-        assert.deepEqual(results.map(result => result.status), ['skipped', 'skipped', 'scored', 'skipped', 'skipped', 'skipped']);
-        assert.equal(results[2]!.skillTier, 'expert');
+        assert.deepEqual(results.map(result => result.status), [
+            ...GENERATION_PROFILE_IDS.map((_, index) => index < 2 ? 'skipped' : 'scored'),
+            ...GENERATION_PROFILE_IDS.map(() => 'skipped'),
+        ]);
+        assert.equal(results[2]!.profileId, '4-options-4-depth-20');
         assert.ok(engine.requests.some(request => !request.resetHash));
-        for (const tier of SKILL_TIERS) assert.equal((await readdir(join(directory, 'levels', basename(SKILL_TIER_CONFIG[tier].levelFolder)))).length, 1);
+        assert.equal((await readdir(join(directory, 'levels', '2-options-1-depth'))).length, 1);
+        assert.equal((await readdir(join(directory, 'levels', '4-options-1-depth'))).length, GENERATION_PROFILE_IDS.length - 1);
         const repeatedEngine = new LegalEngine();
         const repeated = await generateLevelBatch(input, options(directory), repeatedEngine);
         assert.ok(repeated.every(result => result.status === 'skipped'));
         assert.equal(repeatedEngine.requests.length, 0);
         const regenerated = await generateLevelBatch(input, { ...options(directory), regenerate: true }, new LegalEngine());
-        assert.deepEqual(regenerated.map(result => result.status), ['scored', 'scored', 'scored', 'skipped', 'skipped', 'skipped']);
-        for (const tier of SKILL_TIERS) assert.equal((await readdir(join(directory, 'levels', basename(SKILL_TIER_CONFIG[tier].levelFolder)))).length, 1);
-        for (const result of results.slice(0, 3)) await assert.rejects(readFile(result.file), { code: 'ENOENT' });
+        assert.deepEqual(regenerated.map(result => result.status), [
+            ...GENERATION_PROFILE_IDS.map(() => 'scored'), ...GENERATION_PROFILE_IDS.map(() => 'skipped'),
+        ]);
+        assert.equal((await readdir(join(directory, 'levels', '2-options-1-depth'))).length, 1);
+        assert.equal((await readdir(join(directory, 'levels', '4-options-1-depth'))).length, GENERATION_PROFILE_IDS.length - 1);
+        for (const result of results.slice(0, GENERATION_PROFILE_IDS.length)) await assert.rejects(readFile(result.file), { code: 'ENOENT' });
     });
 });
 
-test('untagged root levels count as intermediate, and regeneration removes all matching files only in the selected tier', async () => {
+test('depth overrides keep completed levels and pending jobs in separate pools during skip, resume and regeneration', async () => {
+    await withDirectory(async directory => {
+        const input = join(directory, 'fens.txt');
+        await writeFile(input, DEFAULT_POSITION);
+        const settings = { ...options(directory), profileId: '2-options-4-depth-10' as const };
+        const [shallow] = await generateLevelBatch(input, { ...settings, decisionDepth: 0 }, new LegalEngine());
+        assert.equal(shallow?.status, 'scored');
+        assert.equal(basename(dirname(shallow!.file)), '2-options-0-depth');
+        // Also exercise the legacy root scan, where folders cannot distinguish depth.
+        const shallowSource = await readFile(shallow!.file, 'utf8');
+        const rootLevel = join(directory, 'levels', 'shallow.json');
+        await writeFile(rootLevel, shallowSource);
+        await rm(shallow!.file);
+        const failedEngine = new LegalEngine();
+        failedEngine.failScoringOnce = true;
+        const [pending] = await generateLevelBatch(input, settings, failedEngine);
+        assert.equal(pending?.status, 'failed');
+        assert.equal(basename(dirname(pending!.file)), '2-options-1-depth');
+        const pendingSource = await readFile(pending!.file, 'utf8');
+        const unusedEngine = new LegalEngine();
+        const [wrongDepth] = await generateLevelBatch(input, { ...settings, decisionDepth: 0, resume: true }, unusedEngine);
+        assert.equal(wrongDepth?.status, 'skipped');
+        assert.equal(unusedEngine.requests.length, 0);
+        assert.equal(await readFile(pending!.file, 'utf8'), pendingSource);
+        const [resumed] = await generateLevelBatch(input, { ...settings, resume: true }, new LegalEngine());
+        assert.equal(resumed?.status, 'scored');
+        const [replacement] = await generateLevelBatch(input, { ...settings, regenerate: true }, new LegalEngine());
+        assert.equal(replacement?.status, 'scored');
+        await assert.rejects(readFile(resumed!.file), { code: 'ENOENT' });
+        assert.equal(await readFile(rootLevel, 'utf8'), shallowSource);
+    });
+});
+
+test('untagged root levels map to 4-options-4-depth-10, and regeneration removes only matching profile files', async () => {
     await withDirectory(async directory => {
         const input = join(directory, 'fens.txt');
         await writeFile(input, `${DEFAULT_POSITION}\n${DEFAULT_POSITION.replace(' w ', ' b ')}`);
         const originals = await generateLevelBatch(input, options(directory), new LegalEngine());
         const intermediate = originals[1]!;
         const level = JSON.parse(await readFile(intermediate.file, 'utf8')) as GeneratedLevel;
-        delete level.skillTier;
+        delete level.generation.profileId;
+        delete level.generation.profileVersion;
+        delete level.generation.targetOptionCount;
+        delete level.generation.playerQualities;
         const { difficultyScore, ...metadata } = level;
         const legacy = join(directory, 'levels', 'legacy.json');
         const legacySource = JSON.stringify({ ...metadata, schemaVersion: 1, difficulty: difficultyScore });
@@ -280,7 +323,7 @@ test('untagged root levels count as intermediate, and regeneration removes all m
         await writeFile(unscored, JSON.stringify({ ...level, difficultyScore: -1 }));
         await rm(intermediate.file);
         await writeFile(input, DEFAULT_POSITION);
-        const settings = { ...options(directory), skillTier: 'intermediate' as const };
+        const settings = { ...options(directory), profileId: '4-options-4-depth-10' as const };
         const unused = new LegalEngine();
         const [skipped] = await generateLevelBatch(input, settings, unused);
         assert.equal(skipped?.status, 'skipped');
@@ -296,7 +339,7 @@ test('untagged root levels count as intermediate, and regeneration removes all m
         for (const original of originals.filter(result => result.file !== intermediate.file)) {
             assert.ok(await readFile(original.file, 'utf8'));
         }
-        assert.equal((await readdir(join(directory, 'levels', '2-intermediate'))).length, 2);
+        assert.equal((await readdir(join(directory, 'levels', '4-options-1-depth'))).length, 2 * (GENERATION_PROFILE_IDS.length - 1));
     });
 });
 
@@ -307,9 +350,9 @@ test('FEN matching normalizes en-passant fields and does not depend on output fi
         const input = join(directory, 'fens.txt');
         const fen = board.fen();
         await writeFile(input, fen);
-        const settings = { ...options(directory), skillTier: 'beginner' as const };
+        const settings = { ...options(directory), profileId: '2-options-4-depth-10' as const };
         const [original] = await generateLevelBatch(input, settings, new LegalEngine());
-        const renamed = join(directory, 'levels', '1-beginner', 'custom-name.json');
+        const renamed = join(directory, 'levels', '2-options-1-depth', 'custom-name.json');
         const source = await readFile(original!.file, 'utf8');
         await writeFile(renamed, source.replace(fen, fen.replace(' - 0 1', ' e3 0 1')));
         await rm(original!.file);
@@ -325,7 +368,7 @@ test('regeneration failures retain old levels and resume remembers replacement c
     await withDirectory(async directory => {
         const input = join(directory, 'fens.txt');
         await writeFile(input, DEFAULT_POSITION);
-        const settings = { ...options(directory), skillTier: 'expert' as const };
+        const settings = { ...options(directory), profileId: '4-options-4-depth-20' as const };
         const [original] = await generateLevelBatch(input, settings, new LegalEngine());
         const oldSource = await readFile(original!.file, 'utf8');
         const generationFailure = new LegalEngine();
@@ -350,7 +393,7 @@ test('regeneration failures retain old levels and resume remembers replacement c
         assert.equal(replacement.id, pendingLevel.id);
         await assert.rejects(readFile(original!.file), { code: 'ENOENT' });
         await assert.rejects(readFile(pending!.file), { code: 'ENOENT' });
-        assert.deepEqual(await readdir(join(directory, 'levels', '3-expert')), [resumed!.file.split(/[\\/]/).pop()]);
+        assert.deepEqual(await readdir(join(directory, 'levels', '4-options-1-depth')), [resumed!.file.split(/[\\/]/).pop()]);
     });
 });
 
@@ -358,7 +401,7 @@ test('full regeneration replaces a pending tree with a fresh tree and UUID', asy
     await withDirectory(async directory => {
         const input = join(directory, 'fens.txt');
         await writeFile(input, DEFAULT_POSITION);
-        const settings = { ...options(directory), skillTier: 'beginner' as const };
+        const settings = { ...options(directory), profileId: '2-options-4-depth-10' as const };
         const failedEngine = new LegalEngine();
         failedEngine.failScoringOnce = true;
         const [pending] = await generateLevelBatch(input, settings, failedEngine);
@@ -384,7 +427,7 @@ test('regeneration preserves an old file edited during analysis and retains the 
     await withDirectory(async directory => {
         const input = join(directory, 'fens.txt');
         await writeFile(input, DEFAULT_POSITION);
-        const settings = { ...options(directory), skillTier: 'expert' as const };
+        const settings = { ...options(directory), profileId: '4-options-4-depth-20' as const };
         const [original] = await generateLevelBatch(input, settings, new LegalEngine());
         const oldSource = await readFile(original!.file, 'utf8');
         const changed = oldSource + ' ';
@@ -402,12 +445,12 @@ test('regeneration preserves an old file edited during analysis and retains the 
             assert.match(failed.error, /Existing level changed/);
         }
         assert.equal(await readFile(original!.file, 'utf8'), changed);
-        assert.equal((await readdir(join(directory, 'levels', '3-expert'))).length, 1);
+        assert.equal((await readdir(join(directory, 'levels', '4-options-1-depth'))).length, 1);
         assert.ok(await readFile(failed!.file, 'utf8'));
     });
 });
 
-test('one CLI handles all tiers, tier filtering, concurrency, resume, and per-line errors with real Stockfish', async () => {
+test('one CLI handles all profiles, profile filtering, concurrency, resume, and per-line errors with real Stockfish', async () => {
     await withDirectory(async directory => {
         const input = join(directory, 'fens.txt');
         const config = join(directory, 'config.json');
@@ -419,33 +462,35 @@ test('one CLI handles all tiers, tier filtering, concurrency, resume, and per-li
         const result = spawnSync(process.execPath, args, { encoding: 'utf8', windowsHide: true, timeout: 120_000 });
         assert.ifError(result.error);
         assert.equal(result.status, 1, result.stderr);
-        assert.match(result.stdout, /6 generated and scored, 0 skipped, 3 failed/);
-        assert.match(result.stderr, /Line 2 \[expert\]: generation failed: Invalid starting FEN/);
-        for (const tier of SKILL_TIERS) {
-            assert.match(result.stdout, new RegExp(`${tier}: 2 scored, 0 skipped, 1 failed`));
-            const folder = join(directory, 'levels', basename(SKILL_TIER_CONFIG[tier].levelFolder));
+        assert.match(result.stdout, new RegExp(`${2 * GENERATION_PROFILE_IDS.length} generated and scored, 0 skipped, ${GENERATION_PROFILE_IDS.length} failed`));
+        assert.match(result.stderr, /Line 2 \[4-options-4-depth-20\]: generation failed: Invalid starting FEN/);
+        for (const profile of GENERATION_PROFILE_IDS) {
+            assert.match(result.stdout, new RegExp(`${profile}: 2 scored, 0 skipped, 1 failed`));
+            const folder = join(directory, 'levels', basename(generationLevelFolder(profile, 1)));
             const files = await readdir(folder);
-            assert.equal(files.length, 2);
+            assert.equal(files.length, profile === '2-options-4-depth-10' ? 2 : 2 * (GENERATION_PROFILE_IDS.length - 1));
+            let matchingProfileCount = 0;
             for (const file of files) {
                 const level = JSON.parse(await readFile(join(folder, file), 'utf8')) as GeneratedLevel;
                 validateScorableLevel(level);
-                assert.equal(level.skillTier, tier);
+                if (level.generation.profileId === profile) matchingProfileCount++;
             }
+            assert.equal(matchingProfileCount, 2);
         }
         await writeFile(input, DEFAULT_POSITION);
-        const filtered = spawnSync(process.execPath, [...args, '--tier', 'expert'], { encoding: 'utf8', windowsHide: true, timeout: 60_000 });
+        const filtered = spawnSync(process.execPath, [...args, '--profile', '4-options-4-depth-40'], { encoding: 'utf8', windowsHide: true, timeout: 60_000 });
         assert.equal(filtered.status, 0, filtered.stderr);
         assert.match(filtered.stdout, /0 generated and scored, 1 skipped, 0 failed/);
-        assert.doesNotMatch(filtered.stdout, /\[beginner\]/);
+        assert.doesNotMatch(filtered.stdout, /\[2-options-4-depth-10\]/);
         const resumed = spawnSync(process.execPath, [...args, '--resume'], { encoding: 'utf8', windowsHide: true, timeout: 30_000 });
         assert.equal(resumed.status, 0, resumed.stderr);
-        assert.match(resumed.stdout, /0 generated and scored, 3 skipped, 0 failed/);
-        const regenerated = spawnSync(process.execPath, [...args, '--tier', 'expert', '--regenerate'],
+        assert.match(resumed.stdout, new RegExp(`0 generated and scored, ${GENERATION_PROFILE_IDS.length} skipped, 0 failed`));
+        const regenerated = spawnSync(process.execPath, [...args, '--profile', '4-options-4-depth-40', '--regenerate'],
             { encoding: 'utf8', windowsHide: true, timeout: 60_000 });
         assert.equal(regenerated.status, 0, regenerated.stderr);
         assert.match(regenerated.stdout, /1 generated and scored, 0 skipped, 0 failed/);
-        assert.equal((await readdir(join(directory, 'levels', '3-expert'))).length, 2);
-        for (const flags of [['--tier', 'bad'], ['--concurrency', '0']]) {
+        assert.equal((await readdir(join(directory, 'levels', '4-options-1-depth'))).length, 2 * (GENERATION_PROFILE_IDS.length - 1));
+        for (const flags of [['--profile', 'bad'], ['--concurrency', '0']]) {
             const invalid = spawnSync(process.execPath, ['--import', 'tsx', cli, ...flags], { encoding: 'utf8', windowsHide: true });
             assert.equal(invalid.status, 1);
         }

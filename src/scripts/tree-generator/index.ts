@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Chess, validateFen } from 'chess.js';
 import type { GeneratedLevel, PlayerChoice, TreeNode } from '../../types/level.js';
-import { isSkillTier, SKILL_TIER_CONFIG, SKILL_TIER_CONFIG_VERSION, type SkillTier } from '../../config/difficulty.js';
+import { DEFAULT_GENERATION_PROFILE, GENERATION_PROFILES, isGenerationProfileId, type GenerationProfileId } from '../../config/generation.js';
 import { applyUci, colorName, describeMove, terminalNode } from './chess.js';
 import { selectCandidates, selectOpponentReply } from './selection.js';
 import { Stockfish, type AnalysisEngine } from './stockfish.js';
@@ -9,7 +9,7 @@ import { validateGeneratedLevel } from './validate.js';
 
 export interface GeneratorOptions {
     fen: string;
-    skillTier?: SkillTier;
+    profileId?: GenerationProfileId;
     decisionDepth?: number;
     searchDepth?: number;
     /** Defaults to 256, covering all legal moves (Stockfish clamps to legal count). */
@@ -32,9 +32,10 @@ export function integerOption(name: string, value: number, min: number, max: num
 export async function generateTree(options: GeneratorOptions, suppliedEngine?: AnalysisEngine): Promise<GeneratedLevel> {
     const fenResult = validateFen(options.fen);
     if (!fenResult.ok) throw new Error(`Invalid starting FEN: ${fenResult.error}`);
-    if (options.skillTier !== undefined && !isSkillTier(options.skillTier)) throw new Error('Unknown skill tier.');
-    const tierConfig = options.skillTier ? SKILL_TIER_CONFIG[options.skillTier] : undefined;
-    const decisionDepth = integerOption('decisionDepth', options.decisionDepth ?? tierConfig?.treeGeneration.decisionDepth ?? 4, 0, 10);
+    const profileId = options.profileId ?? DEFAULT_GENERATION_PROFILE;
+    if (!isGenerationProfileId(profileId)) throw new Error('Unknown generation profile.');
+    const profile = GENERATION_PROFILES[profileId];
+    const decisionDepth = integerOption('decisionDepth', options.decisionDepth ?? profile.treeGeneration.decisionDepth ?? 4, 0, 10);
     const searchDepth = integerOption('searchDepth', options.searchDepth ?? 10, 1, 128);
     const multiPv = integerOption('multiPv', options.multiPv ?? 256, 4, 256);
     const timeoutMs = integerOption('timeoutMs', options.timeoutMs ?? 120_000, 1, 2_147_483_647);
@@ -68,7 +69,7 @@ export async function generateTree(options: GeneratorOptions, suppliedEngine?: A
         const fen = board.fen();
         if (decisionsTaken === decisionDepth) return { kind: 'depth-limit', fen, decisionsTaken };
         const candidates = await analyzeCandidates();
-        const selected = selectCandidates(candidates, tierConfig?.treeGeneration.playerOptions);
+        const selected = selectCandidates(candidates, profile.treeGeneration.playerOptions);
         const choices: PlayerChoice[] = [];
         options.onProgress?.({ decisionsGenerated: ++decisionsGenerated, decisionsTaken });
         for (const { quality, evaluation } of selected) {
@@ -83,7 +84,7 @@ export async function generateTree(options: GeneratorOptions, suppliedEngine?: A
                     continue;
                 }
                 const replies = await analyzeCandidates();
-                const replyUci = selectOpponentReply(replies, options.random, tierConfig?.opponentMoves).pv[0]!;
+                const replyUci = selectOpponentReply(replies, options.random, profile.opponentMoves).pv[0]!;
                 const reply = applyUci(board, replyUci);
                 history.push(reply.lan);
                 try {
@@ -99,8 +100,9 @@ export async function generateTree(options: GeneratorOptions, suppliedEngine?: A
         const level: GeneratedLevel = {
             id: randomUUID(),
             schemaVersion: 2, generatedAt: new Date().toISOString(), playerColor,
-            ...(options.skillTier ? { skillTier: options.skillTier } : {}),
-            generation: { decisionDepth, ...(tierConfig ? { configVersion: SKILL_TIER_CONFIG_VERSION } : {}),
+            generation: { decisionDepth, profileId, profileVersion: profile.profileVersion,
+                targetOptionCount: profile.treeGeneration.playerOptions.length,
+                playerQualities: profile.treeGeneration.playerOptions.map(option => option.quality),
                 engine: { name: 'Stockfish', version: engine.version, searchDepth, multiPv } },
             root: await expand(0), difficultyScore: -1,
         };

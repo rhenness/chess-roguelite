@@ -1,7 +1,7 @@
 import { validateFen } from 'chess.js';
-import type { Color, GeneratedLevel, TreeNode } from '../types/level';
-import { normalizeLevel } from '../types/level-schema';
-import { isSkillTier, SKILL_TIER_CONFIG, type SkillTier } from '../config/difficulty';
+import type { Color, GeneratedLevel, MoveQuality, TreeNode } from '../types/level';
+import { isGenerationMetadata, normalizeLevel } from '../types/level-schema';
+import { SKILL_TIER_CONFIG, type SkillTier } from '../config/difficulty';
 
 export interface LevelCatalog {
     levels: GeneratedLevel[];
@@ -14,7 +14,7 @@ const object = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** Validate the fields gameplay consumes without importing any offline engine code. */
-function playableNode(value: unknown, depth: number, limit: number, playerColor: Color, skillTier?: SkillTier): value is TreeNode {
+function playableNode(value: unknown, depth: number, limit: number, playerColor: Color, playerQualities: readonly MoveQuality[]): value is TreeNode {
     if (!object(value) || typeof value.fen !== 'string' || !validateFen(value.fen).ok
         || value.decisionsTaken !== depth || depth > limit) return false;
     if (value.kind === 'depth-limit') return depth === limit;
@@ -23,15 +23,11 @@ function playableNode(value: unknown, depth: number, limit: number, playerColor:
     if (value.kind !== 'decision' || value.fen.split(' ')[1] !== (playerColor === 'white' ? 'w' : 'b')
         || depth === limit || !Array.isArray(value.choices)
         || value.choices.length === 0
-        || value.choices.length > (skillTier ? SKILL_TIER_CONFIG[skillTier].treeGeneration.playerOptions.length : 4)) return false;
+        || value.choices.length > playerQualities.length) return false;
     const moves = new Set<string>();
     const labels = new Map<string, number>();
     const allowed = new Map<string, number>();
-    if (skillTier) {
-        for (const option of SKILL_TIER_CONFIG[skillTier].treeGeneration.playerOptions) {
-            allowed.set(option.quality, (allowed.get(option.quality) ?? 0) + 1);
-        }
-    } else for (const quality of qualities) allowed.set(quality, 1);
+    for (const quality of playerQualities) allowed.set(quality, (allowed.get(quality) ?? 0) + 1);
     return value.choices.every((choice: unknown) => {
         if (!object(choice) || !qualities.has(String(choice.quality))
             || (labels.get(String(choice.quality)) ?? 0) >= (allowed.get(String(choice.quality)) ?? 0)
@@ -44,25 +40,26 @@ function playableNode(value: unknown, depth: number, limit: number, playerColor:
             || typeof choice.opponentReply.san !== 'string' || !choice.opponentReply.san)) return false;
         moves.add(choice.playerMove.uci);
         labels.set(String(choice.quality), (labels.get(String(choice.quality)) ?? 0) + 1);
-        return playableNode(choice.next, depth + 1, limit, playerColor, skillTier);
+        return playableNode(choice.next, depth + 1, limit, playerColor, playerQualities);
     });
 }
 
 export function isPlayableLevel(value: unknown): value is GeneratedLevel {
+    value = normalizeLevel(value);
     if (!object(value) || typeof value.id !== 'string' || !value.id.trim() || value.schemaVersion !== 2
         || Object.hasOwn(value, 'difficulty')
-        || (value.skillTier !== undefined && !isSkillTier(value.skillTier))
+        || Object.hasOwn(value, 'skillTier')
         || !['white', 'black'].includes(String(value.playerColor))
         || !Number.isInteger(value.difficultyScore) || Number(value.difficultyScore) < 0 || Number(value.difficultyScore) > 100
-        || !object(value.generation) || !Number.isInteger(value.generation.decisionDepth)
+        || !isGenerationMetadata(value.generation) || !Number.isInteger(value.generation.decisionDepth)
         || Number(value.generation.decisionDepth) < 0 || Number(value.generation.decisionDepth) > 10) return false;
-    return playableNode(value.root, 0, Number(value.generation.decisionDepth), value.playerColor as Color, value.skillTier as SkillTier | undefined);
+    return playableNode(value.root, 0, Number(value.generation.decisionDepth), value.playerColor as Color, value.generation.playerQualities);
 }
 
 /** Difficulty ordering is separate from gameplay; IDs prevent repeats within a run. */
 export function selectLevels(levels: readonly GeneratedLevel[]): GeneratedLevel[] {
     const seen = new Set<string>();
-    return levels.filter(level => {
+    return levels.map(level => normalizeLevel(level)).filter(level => {
         if (!isPlayableLevel(level) || seen.has(level.id)) return false;
         seen.add(level.id);
         return true;
@@ -106,7 +103,7 @@ export function loadLevelCatalog(files: Record<string, unknown>, skillTier?: Ski
         if (object(value) && value.difficultyScore === -1) continue;
         if (!isPlayableLevel(value)) {
             warnings.push(`${file.split('/').pop()}: invalid floor data.`);
-        } else if (skillTier && (value.skillTier ?? 'intermediate') !== skillTier) {
+        } else if (skillTier && !isLevelCompatibleWithSkillTier(value, skillTier)) {
             continue;
         } else if (seen.has(value.id)) {
             warnings.push(`${file.split('/').pop()}: duplicate floor ID.`);
@@ -115,10 +112,27 @@ export function loadLevelCatalog(files: Record<string, unknown>, skillTier?: Ski
             levels.push(value);
         }
     }
-    return { levels: selectLevels(levels), warnings };
+    return { levels: skillTier ? selectSkillTierLevels(levels, skillTier) : selectLevels(levels), warnings };
 }
 
-export function loadBundledLevels(skillTier: SkillTier = 'intermediate'): LevelCatalog {
+/** Saved runs check target option count without applying today's score cutoffs. */
+export function isLevelCompatibleWithSkillTier(level: GeneratedLevel, skillTier: SkillTier): boolean {
+    return normalizeLevel(level).generation.targetOptionCount === SKILL_TIER_CONFIG[skillTier].targetOptionCount;
+}
+
+/** Select the option-count pool and inclusive score band for every new run. */
+export function selectSkillTierLevels(levels: readonly GeneratedLevel[], skillTier: SkillTier): GeneratedLevel[] {
+    return filterSkillTierLevels(selectLevels(levels), skillTier);
+}
+
+/** Filter an already normalized, validated catalog without walking its move trees again. */
+export function filterSkillTierLevels(levels: readonly GeneratedLevel[], skillTier: SkillTier): GeneratedLevel[] {
+    const [minimum, maximum] = SKILL_TIER_CONFIG[skillTier].run.difficultyScoreRange;
+    return levels.filter(level => isLevelCompatibleWithSkillTier(level, skillTier)
+        && level.difficultyScore >= minimum && level.difficultyScore <= maximum);
+}
+
+export function loadBundledLevels(skillTier?: SkillTier): LevelCatalog {
     return loadLevelCatalog(import.meta.glob(['../levels/**/*.json', '!../levels/.staging/**'],
         { eager: true, import: 'default' }), skillTier);
 }

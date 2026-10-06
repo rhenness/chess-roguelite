@@ -25,7 +25,7 @@ in a fixed footer above the bottom navigation while the set/item content scrolls
 | Item | Cost | Effect |
 | --- | ---: | --- |
 | Triple Crown | 30 | Multiply points for the next three player decisions by three. |
-| King’s Guard | 20 | Block damage for the next player decision, even if lethal. |
+| King’s Guard | 20 | Block damage for the next three player decisions, even if lethal. |
 | Healing Potion | 20 | Restore one heart immediately without introducing a health cap. |
 
 Timed effects count actual confirmed player decisions, including zero-point and
@@ -80,7 +80,7 @@ Consuming an item does not resize the board.
 
 Use actual resolved points and health changes for feedback. A shield reports
 Damage blocked and the prevented amount, rather than a health-loss notice. A
-shield spent on a safe move reports Guard spent. Healing and activation use the
+shield charge spent on a safe move reports Guard spent. Healing and activation use the
 existing board notices. Queue notices so activation, health, checkmate, floor
 advancement, and payout cannot overwrite each other. Death replaces pending
 ordinary notices. Notices do not block move input; reduced-motion behavior and

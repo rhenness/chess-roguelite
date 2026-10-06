@@ -1,8 +1,9 @@
 import type { GeneratedLevel } from '../types/level';
-import { isPlayableLevel } from './levels';
+import { isLevelCompatibleWithSkillTier, isPlayableLevel, selectSkillTierLevels } from './levels';
+import { isSkillTier, SKILL_TIER_CONFIG, type SkillTier } from '../config/difficulty';
 import { BOARD_SQUARES, createPayout, type MultiplierBoard, type PayoutResult } from './multipliers';
 import { PIECE_SET_IDS, type PieceSetId } from './pieceSets';
-import { advancePlayback, DEFAULT_RULES, RUN_LEVEL_COUNT, startRun, type RunRules, type RunState } from './run';
+import { advancePlayback, DEFAULT_RULES, RUN_LEVEL_COUNT, skillTierRules, startRun, type RunRules, type RunState } from './run';
 import { DAILY_ITEMS } from './items';
 import { createCheckpointRewards } from './checkpointRewards';
 import { checkpointRun, restoreRunCheckpoint, type RunCheckpoint } from './runCheckpoint';
@@ -38,6 +39,7 @@ export interface DailyAttempt {
     payout: PayoutResult | null;
     finishedAt: number | null;
     itemRulesVersion?: 1;
+    skillTier?: SkillTier;
 }
 
 export interface DailyDungeon {
@@ -45,6 +47,8 @@ export interface DailyDungeon {
     expiresAt: number;
     levels: GeneratedLevel[];
     attempt: DailyAttempt | null;
+    skillTier?: SkillTier;
+    floorCount?: number;
 }
 
 export interface DailyArchive {
@@ -67,8 +71,15 @@ export function dailyRandom(day: string): () => number {
     };
 }
 
-export function createDailyDungeon(pool: readonly GeneratedLevel[], now = Date.now()): DailyDungeon {
+export function createDailyDungeon(pool: readonly GeneratedLevel[], now = Date.now(), skillTier?: SkillTier): DailyDungeon {
     const day = utcDay(now);
+    if (skillTier) {
+        const selected = selectSkillTierLevels(pool, skillTier);
+        const floorCount = SKILL_TIER_CONFIG[skillTier].run.floorCount;
+        return { day, expiresAt: dailyDeadline(day), skillTier, floorCount, attempt: null,
+            levels: selected.length ? structuredClone(startRun(selected, skillTierRules(skillTier),
+                dailyRandom(`${day}:${skillTier}`), {}, undefined, { skillTier, floorCount }).levels) : [] };
+    }
     const versioned = pool.filter(level => DAILY_V1_LEVEL_IDS.has(level.id));
     return { day, expiresAt: dailyDeadline(day),
         levels: structuredClone(startRun(versioned.length ? versioned : pool, DEFAULT_RULES, dailyRandom(day)).levels), attempt: null };
@@ -78,10 +89,16 @@ export function enterDailyDungeon(dungeon: DailyDungeon, setId: PieceSetId, rule
     multipliers: MultiplierBoard, now = Date.now()): { dungeon: DailyDungeon; run: RunState } {
     if (now >= dungeon.expiresAt) throw new Error('This dungeon has expired.');
     if (dungeon.attempt) throw new Error('The daily attempt has already been used.');
+    const skillTier = dungeon.skillTier ?? 'intermediate';
+    if (!isSkillTier(skillTier) || dungeon.levels.some(level => !isLevelCompatibleWithSkillTier(level, skillTier))) {
+        throw new Error('Invalid daily skill tier.');
+    }
     const rewards = createCheckpointRewards(dungeon.levels.length, dailyRandom(`${dungeon.day}:checkpoint-rewards-v1`));
-    const run = { ...startRun(dungeon.levels, rules, Math.random, DAILY_ITEMS, rewards), daily: { day: dungeon.day, expiresAt: dungeon.expiresAt } };
+    const run = { ...startRun(dungeon.levels, rules, Math.random, DAILY_ITEMS, rewards,
+        { floorCount: dungeon.floorCount ?? RUN_LEVEL_COUNT }), skillTier, daily: { day: dungeon.day, expiresAt: dungeon.expiresAt } };
     return { run, dungeon: { ...dungeon, attempt: {
         id: run.id, setId, rules: structuredClone(rules), multipliers: { ...multipliers },
+        skillTier,
         checkpoint: checkpointRun(run), status: 'active', payout: null, finishedAt: null, itemRulesVersion: 1,
     } } };
 }
@@ -100,7 +117,7 @@ export function recordDailyRun(dungeon: DailyDungeon, run: RunState, now = Date.
     const finished = settled.phase === 'finished';
     const resultRun = finished ? settled : run;
     const payout = finished ? createPayout(attempt.multipliers, resultRun.score,
-        resultRun.result === 'complete' && resultRun.levelsCompleted === RUN_LEVEL_COUNT, random) : null;
+        resultRun.result === 'complete' && resultRun.levelsCompleted === resultRun.floorCount, random) : null;
     return { ...dungeon, attempt: { ...attempt, checkpoint: checkpointRun(resultRun),
         status: finished ? 'finished' : 'active', finishedAt: finished ? now : null,
         payout: payout ? { ...payout, id: `daily-payout-${dungeon.day}-${attempt.id}` } : null,
@@ -111,6 +128,9 @@ export function recordDailyRun(dungeon: DailyDungeon, run: RunState, now = Date.
 export function restoreDailyRun(dungeon: DailyDungeon): RunState | null {
     const attempt = dungeon.attempt;
     if (!attempt || attempt.status === 'expired') return null;
+    const skillTier = attempt.skillTier ?? dungeon.skillTier ?? 'intermediate';
+    if (!isSkillTier(skillTier) || skillTier !== (dungeon.skillTier ?? 'intermediate')
+        || dungeon.levels.some(level => !isLevelCompatibleWithSkillTier(level, skillTier))) throw new Error('Invalid daily skill tier.');
     if (attempt.itemRulesVersion !== undefined && attempt.itemRulesVersion !== 1) throw new Error('Invalid daily item rules.');
     const rewards = attempt.checkpoint.checkpointRewards;
     if (rewards?.length) {
@@ -120,9 +140,10 @@ export function restoreDailyRun(dungeon: DailyDungeon): RunState | null {
         }
     }
     const run = restoreRunCheckpoint(dungeon.levels, attempt.rules,
-        attempt.itemRulesVersion === 1 ? DAILY_ITEMS : {}, attempt.checkpoint);
+        attempt.itemRulesVersion === 1 ? DAILY_ITEMS : {}, attempt.checkpoint,
+        { floorCount: dungeon.floorCount ?? RUN_LEVEL_COUNT });
     if ((attempt.status === 'finished') !== (run.phase === 'finished')) throw new Error('Invalid daily result.');
-    return { ...run, id: attempt.id, daily: { day: dungeon.day, expiresAt: dungeon.expiresAt } };
+    return { ...run, id: attempt.id, skillTier, daily: { day: dungeon.day, expiresAt: dungeon.expiresAt } };
 }
 
 export const initialDailyArchive = (): DailyArchive => ({ version: 1, days: {} });
@@ -145,7 +166,7 @@ export function saveDailyArchive(archive: DailyArchive): boolean {
 
 const object = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
-export function loadDailyArchive(pool: readonly GeneratedLevel[]): DailyArchive {
+export function loadDailyArchive(pool: readonly GeneratedLevel[], { attemptsOnly = false }: { attemptsOnly?: boolean } = {}): DailyArchive {
     try {
         const source = window.localStorage.getItem(DAILY_STORAGE_KEY);
         if (!source) return initialDailyArchive();
@@ -154,12 +175,24 @@ export function loadDailyArchive(pool: readonly GeneratedLevel[]): DailyArchive 
         let archive = initialDailyArchive();
         const catalog = new Map(pool.map(level => [level.id, level]));
         for (const [day, entry] of Object.entries(value.days)) {
+            // Tier previews only need to check for a consumed attempt in another tab.
+            if (attemptsOnly && object(entry) && entry.attempt === null) continue;
             if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !object(entry) || entry.day !== day
                 || entry.expiresAt !== dailyDeadline(day) || !Array.isArray(entry.levelIds)
-                || !entry.levelIds.length || entry.levelIds.length > RUN_LEVEL_COUNT) continue;
+                || !Number.isSafeInteger(entry.floorCount ?? RUN_LEVEL_COUNT) || Number(entry.floorCount ?? RUN_LEVEL_COUNT) <= 0
+                || entry.levelIds.length > Number(entry.floorCount ?? RUN_LEVEL_COUNT)) continue;
             const levels = entry.levelIds.map(id => catalog.get(String(id)));
-            if (!levels.every(isPlayableLevel) || new Set(entry.levelIds).size !== entry.levelIds.length) continue;
             const dungeon = { ...entry, levels } as unknown as DailyDungeon;
+            if (!levels.every(isPlayableLevel) || new Set(entry.levelIds).size !== entry.levelIds.length
+                || (entry.skillTier !== undefined && !isSkillTier(entry.skillTier))
+                || (!levels.length && dungeon.attempt !== null)) {
+                // Missing/regenerated assets never turn an already consumed daily into a retry.
+                if (!dungeon.attempt) continue;
+                dungeon.levels = [];
+                dungeon.attempt = { ...dungeon.attempt, status: 'expired', payout: null };
+                archive = storeDailyDungeon(archive, dungeon);
+                continue;
+            }
             if (dungeon.attempt !== null) {
                 const attempt = dungeon.attempt;
                 try {
@@ -179,7 +212,7 @@ export function loadDailyArchive(pool: readonly GeneratedLevel[]): DailyArchive 
                         if (attempt.payout?.upgrade && (!BOARD_SQUARES.includes(attempt.payout.upgrade.square)
                             || attempt.payout.upgrade.before !== attempt.multipliers[attempt.payout.upgrade.square]
                             || attempt.payout.upgrade.after !== attempt.payout.upgrade.before + 1
-                            || run.result !== 'complete' || run.levelsCompleted !== RUN_LEVEL_COUNT)) throw new Error('Invalid upgrade.');
+                            || run.result !== 'complete' || run.levelsCompleted !== run.floorCount)) throw new Error('Invalid upgrade.');
                     }
                 } catch {
                     // A broken attempt stays consumed until reset rather than becoming a free retry.

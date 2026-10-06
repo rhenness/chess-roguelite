@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { decision, makeLevel } from '../test/levels';
-import { isPlayableLevel, loadBundledLevels, loadLevelCatalog, selectLevels } from './levels';
+import { decision, makeLevel, makeSkillLevel } from '../test/levels';
+import { isPlayableLevel, loadBundledLevels, loadLevelCatalog, selectLevels, selectSkillTierLevels } from './levels';
 
 describe('level selection', () => {
     it('ignores unscored levels, sorts by difficulty, and prevents repeat IDs without mutating the pool', () => {
@@ -76,21 +76,81 @@ describe('level selection', () => {
         expect(catalog.warnings).toHaveLength(3);
     });
 
-    it('accepts expert inaccuracies and selects one tier while retaining legacy levels for intermediate', () => {
-        const beginner = { ...makeLevel('beginner', 10), skillTier: 'beginner' as const };
-        decision(beginner).choices = [decision(beginner).choices[0]!, decision(beginner).choices[3]!];
-        const expert = { ...makeLevel('expert', 30), skillTier: 'expert' as const };
-        decision(expert).choices[3]!.quality = 'inaccuracy';
-        const intermediate = { ...makeLevel('intermediate', 20), skillTier: 'intermediate' as const };
+    it('accepts expert inaccuracies and selects score bands while retaining legacy four-option levels', () => {
+        const beginner = makeSkillLevel('beginner', 'beginner', 10);
+        const expert = makeSkillLevel('expert', 'expert', 60);
+        const intermediate = makeSkillLevel('intermediate', 'intermediate', 50);
+        for (const [level, tier] of [[beginner, 'beginner'], [expert, 'expert'], [intermediate, 'intermediate']] as const) {
+            delete level.generation.profileId;
+            delete level.generation.profileVersion;
+            delete level.generation.targetOptionCount;
+            delete level.generation.playerQualities;
+            level.skillTier = tier;
+            level.generation.configVersion = 1;
+        }
         const files = { 'beginner.json': beginner, 'expert.json': expert,
-            'intermediate.json': intermediate, 'legacy.json': makeLevel('legacy', 15) };
+            'intermediate.json': intermediate, 'legacy.json': makeLevel('legacy', 45) };
         expect(loadLevelCatalog(files).warnings).toEqual([]);
         expect(loadLevelCatalog(files, 'beginner').levels.map(level => level.id)).toEqual(['beginner']);
         expect(loadLevelCatalog(files, 'expert').levels.map(level => level.id)).toEqual(['expert']);
-        expect(loadLevelCatalog(files, 'intermediate').levels.map(level => level.id)).toEqual(['legacy', 'intermediate']);
+        expect(loadLevelCatalog(files, 'intermediate').levels.map(level => level.id)).toEqual(['legacy', 'intermediate', 'expert']);
+        expect(loadLevelCatalog(files).levels.every(level => !Object.hasOwn(level, 'skillTier'))).toBe(true);
+        expect(loadLevelCatalog(files, 'expert').levels[0]!.generation).toMatchObject({
+            profileId: '4-options-4-depth-20', profileVersion: 1, targetOptionCount: 4,
+        });
         const invalid = structuredClone(expert);
         decision(invalid).choices[1]!.quality = 'inaccuracy';
         expect(isPlayableLevel(invalid)).toBe(false);
         expect(isPlayableLevel({ ...expert, skillTier: 'unknown' })).toBe(false);
+        expect(isPlayableLevel({ ...expert, skillTier: null })).toBe(false);
+        expect(isPlayableLevel({ ...expert, generation: { ...expert.generation, configVersion: null } })).toBe(false);
+    });
+
+    it('validates archived recipe snapshots without requiring a currently registered profile', () => {
+        const level = makeSkillLevel('expert', 'archived', 60);
+        level.generation.profileId = '4-options-4-depth-15';
+        expect(isPlayableLevel(level)).toBe(true);
+        expect(selectSkillTierLevels([level], 'expert')).toEqual([level]);
+        expect(isPlayableLevel({ ...level, generation: { ...level.generation, targetOptionCount: 2 } })).toBe(false);
+        expect(isPlayableLevel({ ...level, generation: { ...level.generation, profileVersion: 0 } })).toBe(false);
+        expect(isPlayableLevel({ ...level, generation: { ...level.generation, playerQualities: undefined } })).toBe(false);
+        expect(isPlayableLevel({ ...level, skillTier: 'expert' })).toBe(false);
+    });
+
+    it('reads profile IDs predating depth names without changing their trees or source metadata', () => {
+        const old = makeSkillLevel('expert', 'old-profile', 60);
+        old.generation.profileId = '4-options-20';
+        const before = structuredClone(old);
+        const catalog = loadLevelCatalog({ 'old.json': old }, 'expert');
+        expect(catalog.warnings).toEqual([]);
+        expect(catalog.levels[0]!.generation.profileId).toBe('4-options-4-depth-20');
+        expect(catalog.levels[0]!.root).toBe(old.root);
+        expect(old).toEqual(before);
+        expect(isPlayableLevel({ ...old, generation: { ...old.generation, playerQualities: undefined } })).toBe(false);
+    });
+
+    it('uses inclusive score boundaries and shares four-option profiles across run tiers', () => {
+        const pool = [
+            makeSkillLevel('beginner', 'beginner-min', 0),
+            makeSkillLevel('beginner', 'beginner-max', 39),
+            makeSkillLevel('beginner', 'beginner-outside', 40),
+            makeSkillLevel('expert', 'four-below', 44),
+            makeSkillLevel('expert', 'four-45', 45),
+            makeSkillLevel('expert', 'four-57', 57),
+            makeSkillLevel('intermediate', 'four-58', 58),
+            makeSkillLevel('expert', 'four-68', 68),
+            makeSkillLevel('intermediate', 'four-69', 69),
+            makeLevel('legacy-max', 100),
+        ];
+        expect(selectSkillTierLevels(pool, 'beginner').map(level => level.id))
+            .toEqual(['beginner-min', 'beginner-max']);
+        expect(selectSkillTierLevels(pool, 'intermediate').map(level => level.id))
+            .toEqual(['four-45', 'four-57', 'four-58', 'four-68']);
+        expect(selectSkillTierLevels(pool, 'expert').map(level => level.id))
+            .toEqual(['four-58', 'four-68', 'four-69', 'legacy-max']);
+        const files = Object.fromEntries(pool.map(level => [`${level.id}.json`, level]));
+        for (const tier of ['beginner', 'intermediate', 'expert'] as const) {
+            expect(loadLevelCatalog(files, tier).levels).toEqual(selectSkillTierLevels(pool, tier));
+        }
     });
 });

@@ -8,7 +8,7 @@ import {
 } from './daily';
 
 const now = Date.parse('2026-10-04T12:00:00Z');
-const pool = Array.from({ length: 14 }, (_, i) => makeLevel(`daily-${i}`, i));
+const pool = Array.from({ length: 14 }, (_, i) => makeLevel(`daily-${i}`, 45 + i));
 const board = initialMultiplierProfile().board;
 const best = (run: RunState) => {
     if (run.node.kind !== 'decision') throw new Error('Expected decision.');
@@ -27,7 +27,7 @@ describe('daily dungeon', () => {
     });
 
     it('includes early checkmate points in payouts and reconstructs them once from saved decisions', () => {
-        const level = makeLevel('early-mate', 20, 2);
+        const level = makeLevel('early-mate', 50, 2);
         const choice = decision(level).choices[0]!;
         choice.opponentReply = null;
         choice.next = { kind: 'terminal', fen: choice.fenAfterPlayerMove,

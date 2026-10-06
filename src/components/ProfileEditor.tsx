@@ -35,7 +35,7 @@ export function ProfileEditor({ profile, onSave, onCancel, asPage = false }: {
         <div className="profile-editor-body">
             <div className="profile-name-field">
                 <label htmlFor="profile-name">Display name</label>
-                <input id="profile-name" value={draft.displayName} maxLength={DISPLAY_NAME_LIMIT} autoFocus
+                <input id="profile-name" value={draft.displayName} maxLength={DISPLAY_NAME_LIMIT}
                     autoComplete="nickname" aria-invalid={nameTouched && !!error}
                     aria-describedby={nameTouched && error ? 'profile-name-error' : undefined}
                     onBlur={() => setNameTouched(true)}

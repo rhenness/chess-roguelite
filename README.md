@@ -8,7 +8,9 @@ are normalized when loaded. Scoring a version 1 file preserves its original
 schema and formatting. Beginner, intermediate, and expert are skill tiers,
 defined by `SkillTier` and `SKILL_TIER_CONFIG` in
 [`difficulty.ts`](src/config/difficulty.ts). All move evaluations, including mate
-distances, use the player's perspective. Difficulty scoring runs after generation.
+distances, use the player's perspective. Difficulty scoring runs after generation. Generation recipes live separately in
+[`generation.ts`](src/config/generation.ts); their IDs describe intended difficulty,
+while run eligibility uses the stored target option count and actual score.
 
 Requires Node.js 22 or newer. Install dependencies with `npm install` (or
 `npm ci` when using the lockfile).
@@ -62,6 +64,12 @@ browser with `html-to-image`; no server or image upload is required.
 ## Play a run
 
 ### Main menu
+
+On first launch, choose **Beginner**, **Intermediate**, or **Expert** directly on
+the home page, then press **Continue** to see the run menu. This defaults
+your first run. Regular and daily setup remember the most recently selected skill
+level, and let you change it before entering a new run. Your choice is stored with
+your player profile. Existing profiles without a preference are asked once.
 
 The main menu at `#/play` shows your wallet, profile and help shortcuts, **Regular run**,
 **Daily dungeon**, and **Endless**. Each mode shows **In progress** beneath its title
@@ -124,10 +132,11 @@ or refreshing does not duplicate results. History remains local to this browser.
 
 ### Daily dungeon
 
-Choose **Daily dungeon** on the main menu, choose an unlocked set, and press
-**Enter dungeon**. Set selection does not consume the attempt. Each UTC day has
-the same seeded ten-level selection for everyone, with one attempt per local player.
-Your set's health, rules, and personal multiplier board are frozen at entry.
+Choose **Daily dungeon** on the main menu, choose a skill level and an unlocked set,
+and press **Enter dungeon**. Changing either selection does not consume the attempt.
+Each UTC day has the same seeded selection for players in the same skill tier,
+with one attempt per local player across all tiers. Your skill tier, floors,
+set's health, rules, and personal multiplier board are frozen at entry.
 **Resume dungeon** restores saved moves after refresh or a regular run.
 
 The final score includes your own multiplier on an individually random payout
@@ -140,7 +149,8 @@ finished rewards recover without double granting coins or upgrades.
 Set selection and results stay in **Dungeon**, with Enter or Resume pinned
 beneath the scrollable content. **Leaderboards** opens the current daily standings
 as its own page and shows every player in one scrollable list: stable mock players plus
-your actual multiplied score. Ties share ranks; your row is highlighted and pinned.
+your actual multiplied score. All skill tiers share this leaderboard, ranked by
+final score with a skill badge on each entry. Ties share ranks; your row is highlighted and pinned.
 Switching destinations preserves selection and scroll position. The header logo
 returns to Home. The trophy shortcut appears only in daily
 games and opens standings in a modal; closing it returns to the same game and
@@ -150,8 +160,8 @@ Dungeon rules and rewards use compact badges and icon tiles. Set cards show
 starting hearts and square bonuses, with a checkmark on the selected set.
 Reward rates, earned coins, and result calculations are visible without expanding sections.
 
-At 00:00 UTC unfinished daily attempts expire without scores or rewards. An active
-dungeon shows an expiration notification, then opens today's daily page. A final
+At 00:00 UTC unfinished daily attempts reset to today's unstarted dungeon without
+scores, rewards, or an expiration notification. An active dungeon opens today's daily page. A final
 decision made before the deadline counts even if its animation ends afterward.
 Daily storage keeps today and yesterday as compact checkpoints in
 `knightfall.daily.v1`. All profiles, standings, and progression remain local.
@@ -159,7 +169,7 @@ See [development phases and rules](docs/features/04-daily-dungeon-profile.md).
 
 ### Regular runs
 
-The main menu sends new players straight into a Default regular run. They
+After choosing their skill level, the main menu sends new players straight into a Default regular run. They
 receive a free Healing Potion and a centered introduction. Tooltips explain move
 controls, feedback, hearts, healing streaks, and rounds, followed by item usage.
 The guide
@@ -261,8 +271,8 @@ the selection before entry costs nothing. **Play again** returns to set selectio
 the previous piece set selected and an empty item selection.
 
 - **Triple Crown (30 coins):** triple move points for the next three player decisions.
-- **King’s Guard (20 coins):** block all damage from the next player decision,
-  including lethal damage. The shield is spent even on a safe move; move quality
+- **King’s Guard (20 coins):** block all damage from the next three player decisions,
+  including lethal damage. A shield charge is spent even on a safe move; move quality
   and streak breaking still apply.
 - **Healing Potion (20 coins):** immediately restore one heart, with no new health cap.
 
@@ -296,9 +306,13 @@ offers and claimed rewards on refresh; older saves retain their original rules.
 
 The game loads the
 precomputed JSON files recursively in `src/levels`, excludes `.staging`, and
-skips unscored files (`difficultyScore: -1`). It currently uses intermediate-tier
-levels plus existing untagged levels, and selects 10 distinct scored levels
-spread across difficulty. A skill-tier chooser is not yet wired into gameplay.
+skips unscored files (`difficultyScore: -1`). It selects by target option count
+and inclusive difficulty-score range: Beginner uses `2-options-4-depth` at 0–39; Intermediate
+uses `4-options-4-depth` at 45–68; Expert uses `4-options-4-depth` at 58–100. Intermediate and Expert
+share all four-option generation profiles; scores 58–68 are eligible for both tiers.
+Untagged levels belong to that pool.
+Each tier currently selects 10 distinct scored levels spread across difficulty.
+Entry is disabled if the selected tier has no playable levels.
 The available minimum-to-maximum score range is divided into ten equal-width bands, with one
 random level per populated band before any band receives a second level. Empty
 or exhausted bands redistribute slots evenly among bands with levels remaining.
@@ -319,8 +333,12 @@ are hidden. Difficulty is used only for level ordering and is never displayed.
 Use **Flip board** to change the view and **?** for the rules. Move history
 shows the current level's played moves, including replies only after playback.
 
-Default and Gilded Court runs begin with 3 health; Obsidian Order begins with 2. Best/Good/Inaccuracy/Bad moves award 100/75/25/0 points
-and cost 0/0/1/2 health. Every four consecutive Best moves earn one extra health
+Default and Gilded Court runs begin with 3 health; Obsidian Order begins with 2.
+Beginner awards 50 for Best and 0 for Blunder. Intermediate awards 100/75/25/−25
+for Best/Good/Inaccuracy/Blunder. Expert awards 150/100/−25 for
+Best/Good/Inaccuracy. Total score cannot fall below zero, and score boosts only
+multiply positive awards. Best/Good/Inaccuracy/Bad moves cost 0/0/1/2 health.
+Every four consecutive Best moves earn one extra health
 point, including streaks spanning levels. Other move qualities break the streak;
 a new run resets it. A fire icon and the current Best streak appear beside health
 while the streak is above zero. Health changes appear over the board as a filled
@@ -333,7 +351,7 @@ a color theme, and a display duration for other milestone notifications.
 
 Checkmating the opponent before the floor's configured decision limit awards
 Best-move points for every unplayed decision: a win on move two of a
-four-decision floor adds 200 bonus points. These points do not increase move
+four-decision intermediate floor adds 200 bonus points. These points do not increase move
 counts, the Best streak, or health. Draws and losses award no such bonus.
 Player checkmates show a "Checkmate" board notification, followed by the next
 floor notification before advancing. On the final floor, payout starts after
@@ -417,11 +435,13 @@ decision, and move-quality counts under **Run details**. **Play again** returns 
 chess set selection; **Share run** opens an image and text sharing preview. The daily
 page combines daily results and rewards, with standings on **Leaderboards**. Setup and result pages scroll
 on mobile, while gameplay keeps its viewport layout. Rules open in a modal and
-return to their opener. Rules are configurable through `DEFAULT_RULES`
-and `RunRules` in [`src/game/run.ts`](src/game/run.ts), or by supplying the `rules`
-prop to `App`; Obsidian overrides starting health to 2. Active runs are held in memory;
-refreshing a regular game returns to the mode chooser while retaining saved
-unlocks and square upgrades. Daily attempts remain resumable after refresh.
+return to their opener. Tier settings are configurable through `SKILL_TIER_CONFIG`
+in [`src/config/difficulty.ts`](src/config/difficulty.ts); Obsidian overrides starting
+health to 2. Tree choices, opponent replies, and decision depth are baked into the
+generated levels, so changing those settings requires regeneration. Run rules can
+also be overridden through the `rules` prop to `App`. Saved regular and daily runs
+retain their skill tier, rules, floor count, and selected floors across refresh and
+preference changes. Older saves use intermediate metadata with their original rules.
 
 Gameplay uses React, chess.js, and react-chessboard. It follows only the selected
 precomputed branch and performs no Stockfish analysis. Level JSON is never modified
@@ -438,45 +458,55 @@ rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1
 ```
 
-The single command generates a tree and scores it for missing beginner,
-intermediate, and expert FEN/tier combinations:
+The command generates and scores each missing FEN/profile combination for all
+registered recipes:
 
 ```powershell
 npm run generate:levels
-npm run generate:levels -- --tier expert --concurrency 4
+npm run generate:levels -- --profile 4-options-4-depth-20 --concurrency 4
 npm run generate:levels -- other-fens.txt --concurrency 2
 npm run generate:levels -- --regenerate
-npm run generate:levels -- --tier expert --regenerate
+npm run generate:levels -- --profile 4-options-4-depth-20 --regenerate
 ```
 
-Completed levels go into `src/levels/1-beginner`, `src/levels/2-intermediate`,
-or `src/levels/3-expert`, named `<three-digit-score>-<guid>.json`.
-Each level records its `skillTier`, `generation.configVersion`, stable UUID
-`id`, generation settings, nested `root` tree, and numeric `difficultyScore`.
-Blank lines and lines starting with `#` are skipped; Windows line endings and
-a UTF-8 BOM are supported. Duplicate normalized FENs are skipped after the first
-occurrence in the input file. Matching uses the normalized root FEN and skill tier,
-independently of the filename or configuration version. Existing untagged levels
-in the output root count as intermediate. For example, if beginner and intermediate
-already exist for a FEN, a normal run generates only expert.
+Two-option recipes save into `src/levels/2-options-4-depth`; four-option recipes share
+`src/levels/4-options-4-depth`. A `--depth` override uses a folder matching that depth;
+the profile ID still identifies the selected recipe and its default depth. Files are named `<three-digit-score>-<guid>.json`. Each new level
+records `generation.profileId`, `profileVersion`, `targetOptionCount`, a frozen
+`playerQualities` recipe, a stable UUID, its tree, and `difficultyScore`. It has
+no top-level `skillTier`; the player's selected run tier controls points and rules.
 
-Use `--regenerate` to build fresh trees and scores for the selected FENs and tiers.
-After each replacement is published, all older matching level files are deleted,
-including duplicate generations and matching untagged intermediate files. Other
-FENs and unselected tiers are preserved. The replacement receives a fresh UUID.
-Generation and scoring failures leave the old files available. Regeneration is
-also how changes to tier settings are applied to existing levels.
+Blank lines, comments, a UTF-8 BOM, and Windows line endings are supported.
+Matching uses the normalized root FEN, profile ID and decision depth, independently of filename
+or profile version. Legacy beginner/intermediate/expert tags map to
+`2-options-4-depth-10`/`4-options-4-depth-10`/`4-options-4-depth-20`; untagged levels map to
+`4-options-4-depth-10`. Loaders preserve existing files, trees, IDs, and saved runs.
 
-Tier settings live in [`difficulty.ts`](src/config/difficulty.ts). They define
-player choices, loss targets, opponent reply weights, and four player decisions
-per floor. Bump `SKILL_TIER_CONFIG_VERSION` when changing generation rules so
-pending jobs from an older configuration are kept separate.
+Use `--regenerate` to rebuild selected FENs/profiles. After each replacement is
+published, older matching files are removed. Other FENs and profiles remain.
+Failures retain the old levels. Changes to profile settings take effect on new
+generation; use regeneration to replace old trees.
 
-| Tier | Player choices | Opponent weights: best / good / inaccuracy / blunder |
+Recipes live in [`generation.ts`](src/config/generation.ts). IDs follow
+`<option-count>-options-<depth>-depth-<recipe-number>`: higher numbers aim for harder trees
+within the same option count and default depth, with gaps for additions such as `4-options-4-depth-15`.
+The score determines actual run eligibility. Increment a recipe's
+`profileVersion` when revising its settings; versioned staging keeps pending
+jobs from different revisions separate. Run cutoffs, health, damage, points,
+and floor counts live independently in [`difficulty.ts`](src/config/difficulty.ts).
+
+| Profile | Player choices | Opponent weights: best / good / inaccuracy / blunder |
 | --- | --- | --- |
-| Beginner | Best and worst analyzed move | 0 / 40 / 40 / 20% |
-| Intermediate | Best, good (50 cp loss), inaccuracy (150 cp loss), worst | 40 / 40 / 18 / 2% |
-| Expert | Best, good (25 cp loss), two distinct inaccuracies (50 / 100 cp loss) | 60 / 40 / 0 / 0% |
+| `2-options-4-depth-10` | Best and worst analyzed move | 0 / 40 / 40 / 20% |
+| `4-options-4-depth-10` | Best, good (50 cp loss), inaccuracy (150 cp loss), worst | 40 / 40 / 18 / 2% |
+| `4-options-4-depth-20` | Best, good (25 cp loss), two inaccuracies (50 / 100 cp loss) | 60 / 40 / 0 / 0% |
+| `4-options-4-depth-30` | Best, good (10 cp loss), two inaccuracies (25 / 50 cp loss) | 100 / 0 / 0 / 0% |
+| `4-options-4-depth-40` | Best, good (5 cp loss), two inaccuracies (15 / 30 cp loss) | 100 / 0 / 0 / 0% |
+
+Recipes 30 and 40 target closer alternatives and always choose the best analyzed
+opponent reply. Recipe 40 tightens the loss targets further, aiming for harder choices
+at the same depth. Generate it with `npm run generate:levels -- --profile 4-options-4-depth-40`.
+The score still determines whether a generated level qualifies for Intermediate or Expert.
 
 Losses are targets relative to the best evaluation. Selection follows Stockfish's
 rank order and reserves distinct, worse moves for subsequent options. Actual
@@ -507,12 +537,12 @@ Use `npm run generate:levels -- --help` for all options:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--tier` | All three | Generate only beginner, intermediate, or expert |
-| `--concurrency` | `1` | Global limit of 1–32 simultaneous FEN/tier jobs |
-| `--output-dir` | `src/levels` | Output root containing tier subfolders and staging |
+| `--profile` | All registered profiles | Generate one recipe, such as `4-options-4-depth-20` |
+| `--concurrency` | `1` | Global limit of 1–32 simultaneous FEN/profile jobs |
+| `--output-dir` | `src/levels` | Output root containing option-count/depth subfolders and staging |
 | `--resume` | Off | Score matching pending trees without regenerating them |
-| `--regenerate` | Off | Rebuild and rescore selected FENs/tiers, then delete matching old files |
-| `--depth` | Tier config: `4` | Override player decisions, each followed by a reply |
+| `--regenerate` | Off | Rebuild and rescore selected FENs/profiles, then delete matching old files |
+| `--depth` | Profile config: `4` | Override player decisions, each followed by a reply |
 | `--search-depth` | `10` | Generation search depth |
 | `--multi-pv` | `256` | Generation candidates, capped by the legal move count |
 | `--timeout-ms` | `120000` | Generation timeout per engine operation |
@@ -521,13 +551,13 @@ Use `npm run generate:levels -- --help` for all options:
 
 Every active job uses one independent, single-threaded Stockfish process with
 64 MB of hash memory, reusing it sequentially for generation and scoring. The
-concurrency limit covers all tiers together. Higher concurrency increases CPU
+concurrency limit covers all profiles together. Higher concurrency increases CPU
 and memory use. Four-way branching at depth four can produce 85 player decision
 nodes, 340 choices, and 256 leaves; analyzing all legal moves can take several
 minutes per tree. For a quick trial in a separate output folder:
 
 ```powershell
-npm run generate:levels -- --tier beginner --depth 1 --search-depth 4 --output-dir scratch-levels
+npm run generate:levels -- --profile 2-options-4-depth-10 --depth 1 --search-depth 4 --output-dir scratch-levels
 ```
 
 The full, single-threaded [Stockfish.js engine](https://github.com/nmrugg/stockfish.js)
@@ -547,7 +577,7 @@ do not sum to 1 are rejected. For example:
 }
 ```
 
-Progress and summaries identify both the original source line and tier.
+Progress and summaries identify both the original source line and profile.
 Invalid FENs and generation, scoring, or publication failures are reported while
 other jobs continue. Any failure produces exit code 1. Scored outputs become
 visible as complete JSON files; regeneration cleans up older matching levels
@@ -555,17 +585,17 @@ only after the replacement is saved. Files edited during analysis are preserved
 and reported as a publication failure.
 
 Completed trees are first saved with `difficultyScore: -1` in
-`src/levels/.staging/<tierFolder>`. If scoring or publication fails, retry with:
+`src/levels/.staging/<options>-options-<depth>-depth`. If scoring or publication fails, retry with:
 
 ```powershell
 npm run generate:levels -- --resume
-npm run generate:levels -- --tier expert --concurrency 4 --resume
+npm run generate:levels -- --profile 4-options-4-depth-20 --concurrency 4 --resume
 ```
 
-Use the same input file, FEN line positions, output root, and config version to
+Use the same input file, FEN line positions, output root, profile ID, and profile version to
 find pending work. Resume retains the saved tree, depth, and UUID; it skips jobs
 without a pending tree and performs no tree generation. Scoring replaces only
-the top-level score, publishes the final tier file, then removes the pending
+the top-level score, publishes the final level file, then removes the pending
 file. Pending replacements record `generation.regenerated: true`, so `--resume`
 also finishes old-file cleanup after a failed regeneration. Staging is excluded
 from the game's level catalog. A normal run skips existing levels and refuses
@@ -573,7 +603,7 @@ to replace a pending tree. `--regenerate` rebuilds even a pending tree; `--resum
 retains it. Generation failures can be retried with the original command.
 
 For programmatic use, [`generateLevelBatch`](src/scripts/level-batch/index.ts)
-returns results in FEN/tier order and reports results as they finish through
+returns results in FEN/profile order and reports results as they finish through
 `onResult`. A caller-supplied `AnalysisEngine` supports concurrency 1.
 [`generateTree`](src/scripts/tree-generator/index.ts) and
 [`scoreLevel`](src/scripts/difficulty-scorer/index.ts) remain reusable modules.

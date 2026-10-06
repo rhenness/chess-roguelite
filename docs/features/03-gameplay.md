@@ -6,6 +6,17 @@ As a player, I want to continuously play through precomputed chess levels in inc
 
 The game should load precomputed level JSON files and use them to create a continuous gameplay run.
 
+On first launch, ask the player to choose Beginner, Intermediate, or Expert and
+save the choice with their profile. Regular and daily setup default to the last
+selected tier and allow changing it before entry. Read selection limits, health,
+damage, and points from `SKILL_TIER_CONFIG`. Beginner selects two-option levels at
+scores 0-39; Intermediate and Expert share four-option trees at scores 45-68 and
+58-100 respectively, with 58-68 eligible for both. Generated trees supply move choices, opponent replies, and
+four player decisions per floor. Clamp scores at
+zero and apply score boosts only to positive awards. Saved runs retain their tier,
+rules, floor count, and floors; older saves keep their original intermediate rules.
+Disable entry when the selected tier has no playable floors.
+
 Before each run, show a modal with three visual cards: Default, Obsidian Order, and Gilded Court.
 Show a visible "Choose your set" title, both colors of each set, and a short
 benefit line with starting hearts and the initial square bonus. Preview all six

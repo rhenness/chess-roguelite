@@ -11,6 +11,13 @@
 .menu-identity #play-title { color: #f5efdc; font: 600 42px/1.1 Georgia, serif; letter-spacing: -.03em; text-shadow: 0 3px 18px rgba(4, 12, 10, .65); }
 .menu-subtitle { max-width: 30ch; min-height: 2.8em; margin: 0; color: #e5c782; font: italic 15px/1.4 Georgia, serif; text-align: center; text-wrap: balance; text-shadow: 0 2px 8px #04120d; }
 .menu-actions { display: grid; gap: 12px; width: 100%; }
+.menu-skill-selection { display: grid; gap: 16px; width: 100%; }
+.menu-skill-selection .skill-tier-picker { margin: 0; }
+.menu-skill-selection .skill-tier-options { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.menu-skill-selection .skill-tier-options button { min-height: 56px; padding: 16px 20px; border-color: #55705b; border-radius: 10px; color: #f5efdc; background: #193b32; box-shadow: 0 5px 20px rgba(4, 12, 10, .22); }
+.menu-skill-selection .skill-tier-options strong { font-size: 18px; font-weight: 650; }
+.menu-skill-selection .skill-tier-options button:hover { border-color: #b9b08b; background: #234b40; }
+.menu-skill-selection .skill-tier-options button[aria-pressed="true"] { border-color: #dfbc77; outline-color: #dfbc77; background: #285746; }
 .menu-action { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; padding: 18px 20px; border: 1px solid #55705b; border-radius: 10px; color: #f5efdc; background: #193b32; box-shadow: 0 5px 20px rgba(4, 12, 10, .22); text-align: left; }
 .menu-action:hover:enabled { border-color: #b9b08b; background: #234b40; box-shadow: 0 6px 24px rgba(4, 12, 10, .3); }
 .menu-action:disabled { opacity: 1; cursor: not-allowed; color: #aeb8b0; background: #20342d; border-color: #47594d; }
@@ -31,6 +38,10 @@
 @media (max-width: 900px) {
     .play-page.main-menu { gap: 16px; padding: 16px 12px 32px; }
     .menu-actions { gap: 8px; }
+    .menu-skill-selection { gap: 12px; }
+    .menu-skill-selection .skill-tier-options { gap: 8px; }
+    .menu-skill-selection .skill-tier-options button { min-height: 48px; padding: 12px 16px; }
+    .menu-skill-selection .skill-tier-options strong { font-size: 16px; }
     .menu-action { min-height: 68px; padding: 12px 16px; }
     .menu-action strong { font-size: 16px; }
     .menu-daily-content { gap: 6px; }
@@ -55,6 +66,7 @@
     .menu-identity { flex: 1; }
     .menu-identity #play-title { font-size: 36px; }
     .menu-actions { flex: 1.4; width: auto; }
+    .menu-skill-selection { flex: 1.4; width: auto; }
     .menu-regular { min-height: 56px; }
     .menu-daily { min-height: 68px; }
     .menu-action { padding: 12px 16px; }

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import { createPortal } from 'react-dom';
 import { Heart } from 'lucide-react';
 import type { PlayTutorialStep } from '../game/playTutorial';
-import { BEST_MOVE_STREAK_LENGTH, QUALITY_LABELS, RUN_LEVEL_COUNT, type RunState } from '../game/run';
+import { BEST_MOVE_STREAK_LENGTH, QUALITY_LABELS, type RunState } from '../game/run';
 import './PlayTutorial.css';
 
 function HealthExample({ damage }: { damage: number }) {
@@ -117,13 +117,15 @@ export function PlayTutorial({ step, run, selectedFrom, targetSquare, targetMove
     const healthFeedback = [run.lastMoveResolution?.damageTaken ? `lost ${run.lastMoveResolution.damageTaken} ${run.lastMoveResolution.damageTaken === 1 ? 'heart' : 'hearts'}` : '',
         run.lastMoveResolution?.healthBonus ? `restored ${run.lastMoveResolution.healthBonus} ${run.lastMoveResolution.healthBonus === 1 ? 'heart' : 'hearts'}` : '']
         .filter(Boolean).join(' and ') || 'kept your hearts';
+    const damagingQualities = [...new Set(run.levels.flatMap(level => level.generation.playerQualities ?? []))]
+        .filter(quality => run.rules.damage[quality] > 0);
     const copy: Record<PlayTutorialStep, { title: string; text: string }> = {
-        welcome: { title: 'Your first run', text: `Survive ${RUN_LEVEL_COUNT} rounds and build your score. Your hearts show how much health you have. The run ends when they reach zero.` },
+        welcome: { title: 'Your first run', text: `Survive up to ${run.floorCount} rounds and build your score. Your hearts show how much health you have. The run ends when they reach zero.` },
         piece: { title: 'Choose a move', text: 'Tap the highlighted colored square to select a move, then tap it again to play. You can also use the board: tap a piece, then one of its colored destinations.' },
         destination: pendingMove ? { title: 'Confirm your move', text: 'Tap the selected colored option again to play it. Colors identify options; move quality is revealed afterward.' }
             : { title: 'Choose a destination', text: `Tap a colored destination${selectedFrom ? ` for the piece on ${selectedFrom}` : ''} to play your move. Colors identify options; move quality is revealed afterward.` },
-        feedback: { title: 'Read your move', text: `${quality ? QUALITY_LABELS[quality] : 'Move played'}: you earned ${points} points and ${healthFeedback}. Any opponent reply plays automatically.` },
-        health: { title: 'Keep an eye on your hearts', text: `Best and Good moves keep your health. Inaccuracy costs ${run.rules.damage.inaccuracy}; Bad costs ${run.rules.damage.bad}. This example shows what damage looks like.` },
+        feedback: { title: 'Read your move', text: `${quality ? QUALITY_LABELS[quality] : 'Move played'}: you ${points < 0 ? `lost ${Math.abs(points)}` : `earned ${points}`} points and ${healthFeedback}. Any opponent reply plays automatically.` },
+        health: { title: 'Keep an eye on your hearts', text: `Best moves keep your health. ${damagingQualities.map(quality => `${QUALITY_LABELS[quality]} costs ${run.rules.damage[quality]}`).join('; ')}. This example shows what damage looks like.` },
         healing: { title: 'Build a Best streak', text: `${BEST_MOVE_STREAK_LENGTH} consecutive Best moves restore one heart. A different move quality resets the streak. The flame beside your hearts tracks your progress.` },
         carryover: { title: 'Keep going between rounds', text: 'Hearts, score, items, and active effects carry into the next round. The bars under the board track your progress; the dots mark rewards after rounds 3 and 6.' },
         'waiting-checkpoint': { title: '', text: '' },
@@ -141,7 +143,7 @@ export function PlayTutorial({ step, run, selectedFrom, targetSquare, targetMove
         <span className="tutorial-eyebrow">Learn to play</span>
         <h2 id="play-tutorial-title" ref={heading} tabIndex={-1}>{copy[step].title}</h2>
         <p>{copy[step].text}</p>
-        {step === 'health' && <HealthExample damage={run.rules.damage.inaccuracy} />}
+        {step === 'health' && <HealthExample damage={run.rules.damage[damagingQualities[0] ?? 'inaccuracy']} />}
         <div className="tutorial-actions">
             <button className="text-button" onClick={onSkip}>Skip tutorial</button>
             {hasNext && <button className="primary-small" onClick={onNext}>

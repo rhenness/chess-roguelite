@@ -57,9 +57,14 @@ describe('Endless session', () => {
         expect(session.health).toBe(3);
         session = playMove(session, 'g1f3');
         expect(session.score).toBe(600);
-        expect(session.activeEffects).toEqual([]);
+        expect(session.activeEffects).toMatchObject([{ sourceItemId: 'kings-guard', remainingMoves: 1 }]);
         session = play(advanceReveal(session), 'Nc6', 'bad');
+        expect(session.health).toBe(3);
+        expect(session.lastResolution).toMatchObject({ damageTaken: 0, damagePrevented: 2, expiredItems: ['kings-guard'] });
+        expect(session.activeEffects).toEqual([]);
         session = play(advanceReveal(session), 'Bc4', 'bad');
+        expect(session.health).toBe(1);
+        session = play(advanceReveal(session), 'Nf6', 'bad');
         expect(session.phase).toBe('finished');
         expect(coinReward(session)).toBe(8);
     });

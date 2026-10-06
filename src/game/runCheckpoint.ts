@@ -1,6 +1,6 @@
 import type { GeneratedLevel } from '../types/level';
 import { activateItem, isItemId, LOADOUT_LIMIT, type ItemInventory, type ItemUse } from './items';
-import { advancePlayback, chooseCheckpointItem, chooseMove, nextLevel, startRun, type RunRules, type RunState } from './run';
+import { advancePlayback, chooseCheckpointItem, chooseMove, nextLevel, startRun, type RunOptions, type RunRules, type RunState } from './run';
 import { validCheckpointRewards, type CheckpointReward } from './checkpointRewards';
 
 export interface RunCheckpoint {
@@ -20,10 +20,10 @@ export const checkpointRun = (run: RunState): RunCheckpoint => ({
 
 /** Reconstruct gameplay from offered moves and item activations, never saved totals or tree nodes. */
 export function restoreRunCheckpoint(levels: readonly GeneratedLevel[], rules: RunRules,
-    items: ItemInventory, checkpoint: RunCheckpoint): RunState {
+    items: ItemInventory, checkpoint: RunCheckpoint, options: RunOptions = {}): RunState {
     const rewards = checkpoint.checkpointRewards ?? [];
     if (!validCheckpointRewards(rewards, levels.length)) throw new Error('Invalid saved rewards.');
-    let run = startRun(levels, rules, Math.random, items, rewards.map(reward => ({ ...reward, selected: null })));
+    let run = startRun(levels, rules, Math.random, items, rewards.map(reward => ({ ...reward, selected: null })), options);
     const moves = checkpoint.moves;
     const uses = checkpoint.itemUses ?? [];
     if (!Array.isArray(moves) || !Array.isArray(uses)

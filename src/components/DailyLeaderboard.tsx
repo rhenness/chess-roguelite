@@ -5,6 +5,7 @@ import type { LeaderboardEntry } from '../game/leaderboard';
 import type { PlayerProfile } from '../game/playerProfile';
 import { PlayerRow } from './PlayerRow';
 import { formatCountdown, formatDailyDate } from './PlayMenu';
+import { SKILL_TIER_LABELS } from '../config/difficulty';
 
 export function DailyLeaderboard({ dungeon, now, entries, profile, embedded = false, active = true }: {
     dungeon: DailyDungeon; now: number; entries: LeaderboardEntry[]; profile: PlayerProfile;
@@ -32,12 +33,13 @@ export function DailyLeaderboard({ dungeon, now, entries, profile, embedded = fa
             if (active) scrollPosition.current = list.current?.scrollTop ?? 0;
         }}>
             {entries.map(entry => <li key={entry.id} data-player-id={entry.id} className={entry.id === 'you' ? 'your-standing' : undefined}
-                aria-label={`Rank ${entry.rank}, ${entry.profile.displayName}${entry.id === 'you' ? ', you' : ''}, ${entry.score.toLocaleString()} points`}>
-                <PlayerRow profile={entry.profile} rank={entry.rank} score={entry.score} />
+                aria-label={`Rank ${entry.rank}, ${entry.profile.displayName}${entry.id === 'you' ? ', you' : ''}, ${entry.score.toLocaleString()} points, ${SKILL_TIER_LABELS[entry.skillTier ?? 'intermediate']}`}>
+                <PlayerRow profile={entry.profile} rank={entry.rank} score={entry.score} skillTier={entry.skillTier ?? 'intermediate'} />
             </li>)}
         </ol>
         <div className="leaderboard-footer"><div className="leaderboard-pinned" aria-label="Your standing">
             <PlayerRow profile={profile} rank={own?.rank} score={own?.score}
+                skillTier={dungeon.attempt?.skillTier ?? own?.skillTier}
                 status={status === 'active' ? 'In progress' : status === 'expired' ? 'Expired' : 'Not entered'} />
         </div>
             {own && <button className="leaderboard-jump" aria-label="Jump to me" title="Jump to me" onClick={jumpToMe}><LocateFixed size={18} aria-hidden="true" /></button>}

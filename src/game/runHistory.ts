@@ -1,5 +1,6 @@
 import type { PayoutResult } from './multipliers';
 import type { RunState } from './run';
+import { isSkillTier, type SkillTier } from '../config/difficulty';
 
 export const RUN_HISTORY_STORAGE_KEY = 'knightfall.run-history.v1';
 export type RunMode = 'regular' | 'daily';
@@ -9,6 +10,7 @@ export interface RunRecord {
     mode: RunMode;
     finishedAt: number;
     dailyDay?: string;
+    skillTier?: SkillTier;
     score: number;
     floorsCompleted: number;
     floorsTotal: number;
@@ -34,6 +36,7 @@ function isRunRecord(value: unknown): value is RunRecord {
         && nonnegative(record.floorsCompleted) && record.floorsCompleted <= record.floorsTotal
         && nonnegative(record.checkmates) && record.checkmates <= record.floorsCompleted
         && ['complete', 'defeat'].includes(record.result)
+        && (record.skillTier === undefined || isSkillTier(record.skillTier))
         && (record.mode !== 'daily' || validDay(record.dailyDay));
 }
 
@@ -55,7 +58,8 @@ export function loadRunHistory(): RunHistory {
     try {
         const value = JSON.parse(window.localStorage.getItem(RUN_HISTORY_STORAGE_KEY) ?? 'null');
         if (value?.version === 1 && Array.isArray(value.runs)) {
-            return mergeRunHistory(initialRunHistory(), { version: 1, runs: value.runs.filter(isRunRecord) });
+            return mergeRunHistory(initialRunHistory(), { version: 1, runs: value.runs.filter(isRunRecord)
+                .map((run: RunRecord) => ({ ...run, skillTier: run.skillTier ?? 'intermediate' })) });
         }
     } catch { /* Keep the profile available when storage is blocked or damaged. */ }
     return initialRunHistory();
@@ -87,6 +91,7 @@ export function recordRunResult(history: RunHistory, run: RunState, payout: Payo
     if (run.phase !== 'finished' || !run.result || payout.baseScore !== run.score) return history;
     const record: RunRecord = {
         id: run.id, mode: run.daily ? 'daily' : 'regular', finishedAt,
+        skillTier: run.skillTier,
         ...(run.daily ? { dailyDay: run.daily.day } : {}),
         score: payout.finalScore, floorsCompleted: run.levelsCompleted, floorsTotal: run.levels.length,
         checkmates: countCheckmates(run), result: run.result,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, Trophy } from 'lucide-react';
 import type { BoardNotice } from '../components/BoardNotification';
-import { RUN_LEVEL_COUNT, type RunState } from './run';
+import type { RunState } from './run';
 import type { PieceSetId } from './pieceSets';
 import { applyPaidUpgrades, type PaidUpgradeCounts } from './economy';
 import {
@@ -62,7 +62,7 @@ export function useBoardPayout(run: RunState | null, waitingForNotice: boolean, 
     useEffect(() => {
         if (paused || run?.phase !== 'finished' || waitingForNotice || sequence || started.current) return;
         started.current = true;
-        const completed = run.result === 'complete' && run.levelsCompleted === RUN_LEVEL_COUNT;
+        const completed = run.result === 'complete' && run.levelsCompleted === run.floorCount;
         setSequence(makeSequence(setId, finishedBoard.current!.board, run.score, completed, false, savedPayout));
     }, [run, waitingForNotice, sequence, effectiveBoard, setId, paused, savedPayout]);
 

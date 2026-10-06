@@ -1,0 +1,23 @@
+.skill-tier-picker { min-width: 0; margin: 0 0 18px; padding: 0; border: 0; }
+.skill-tier-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.skill-tier-options button { display: flex; align-items: center; justify-content: space-between; gap: 7px; min-width: 0; padding: 14px 12px; border: 1px solid #ccd4c8; border-radius: 12px; color: #234b40; background: #f5f5ee; text-align: left; cursor: pointer; }
+.skill-tier-options button[aria-pressed="true"] { border-color: #af873d; outline: 2px solid #af873d; outline-offset: 0; background: #fff6df; }
+.skill-tier-options button:focus-visible { outline: 3px solid #c58e12; outline-offset: 3px; }
+.skill-tier-badge { display: inline-block; padding: 3px 7px; border: 1px solid currentColor; border-radius: 20px; font-size: 10px; font-weight: 650; line-height: 1.2; white-space: nowrap; }
+.profile-preview-name .skill-tier-badge { margin-left: 7px; vertical-align: middle; }
+.skill-unavailable { margin: 0 0 16px; color: #715044; font-size: 13px; }
+.run-skill-level { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.skill-tier-picker-cards { margin: 0 6px 12px; }
+.skill-tier-picker-cards .skill-tier-options { gap: 12px; }
+.skill-tier-picker-cards .skill-tier-options button { min-height: 56px; padding: 12px 14px; border-color: #d1d5cb; border-radius: 8px; background: #fffdf8; }
+.skill-tier-picker-cards .skill-tier-options button[aria-pressed="true"] { border-color: #234b40; outline: none; box-shadow: inset 0 0 0 2px #234b40; background: #e7ece3; }
+.skill-tier-picker-cards .skill-tier-options button:focus-visible { outline: 3px solid #c58e12; outline-offset: 3px; }
+.skill-tier-picker-cards strong { font-size: 16px; }
+@media (max-width: 560px) {
+    .skill-tier-picker-cards .skill-tier-options { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .skill-tier-picker-cards .skill-tier-options button { min-height: 48px; padding: 12px; }
+}
+@media (max-width: 480px) {
+    .skill-tier-options { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .skill-tier-options button { gap: 4px; padding: 10px 12px; }
+}

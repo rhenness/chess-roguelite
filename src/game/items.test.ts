@@ -21,14 +21,33 @@ describe('run consumables', () => {
         const next = play(run, 'bad');
         expect(next).toMatchObject({ health: 1, phase: 'reveal', result: null, bestMoveStreak: 0, moveCounts: { bad: 1 } });
         expect(next.lastMoveResolution).toMatchObject({ incomingDamage: 2, damageTaken: 0, damagePrevented: 2, shieldSpent: true });
-        expect(next.activeEffects).toEqual([]);
+        expect(next.activeEffects).toMatchObject([{ sourceItemId: 'kings-guard', remainingMoves: 2 }]);
         expect(next.items['kings-guard']).toBe(0);
     });
-    it('spends a shield on a safe move and still allows the streak health reward', () => {
+    it('spends a shield charge on a safe move and still allows the streak health reward', () => {
         const next = play(activateItem({ ...begin(), bestMoveStreak: 3 }, 'kings-guard'));
         expect(next.health).toBe(4);
         expect(next.lastMoveResolution).toMatchObject({ damagePrevented: 0, healthBonus: 1, shieldSpent: true });
-        expect(next.activeEffects).toEqual([]);
+        expect(next.activeEffects).toMatchObject([{ sourceItemId: 'kings-guard', remainingMoves: 2 }]);
+    });
+    it('shields exactly three decisions across floors without spending charges during playback', () => {
+        let run = activateItem({ ...startRun(Array.from({ length: 4 }, (_, i) => makeLevel(`guard-floor-${i}`, i)),
+            DEFAULT_RULES, Math.random, { 'kings-guard': 2 }), health: 1 }, 'kings-guard');
+        expect(run.activeEffects[0]?.remainingMoves).toBe(3);
+        for (const [i, quality] of ['inaccuracy', 'best', 'bad', 'bad'].entries()) {
+            if (i < 3) expect(activateItem(run, 'kings-guard')).toBe(run);
+            const selected = play(run, quality);
+            expect(selected.health).toBe(i < 3 ? 1 : 0);
+            expect(selected.lastMoveResolution?.shieldSpent).toBe(i < 3);
+            expect(selected.lastMoveResolution?.expiredItems).toEqual(i === 2 ? ['kings-guard'] : []);
+            expect(selected.activeEffects.map(active => active.remainingMoves)).toEqual(i < 2 ? [2 - i] : []);
+            expect(chooseMove(selected, 'invalid')).toBe(selected);
+            run = settle(selected);
+            expect(run.activeEffects).toEqual(selected.activeEffects);
+            if (i < 3) run = continueToNextRound(run);
+        }
+        expect(run.phase).toBe('finished');
+        expect(run.result).toBe('defeat');
     });
     it('boosts exactly three decisions across floors without spending charges during playback', () => {
         let run = activateItem(startRun(Array.from({ length: 4 }, (_, i) => makeLevel(`floor-${i}`, i)), DEFAULT_RULES, Math.random,
@@ -48,8 +67,10 @@ describe('run consumables', () => {
     it('combines crown and shield, preventing damage while boosting Inaccuracy points', () => {
         const next = play(activateItem(activateItem(begin(), 'triple-crown'), 'kings-guard'), 'inaccuracy');
         expect(next).toMatchObject({ health: 3, score: 75, itemBonusPoints: 50 });
-        expect(next.activeEffects).toHaveLength(1);
-        expect(next.activeEffects[0]?.remainingMoves).toBe(2);
+        expect(next.activeEffects).toMatchObject([
+            { sourceItemId: 'triple-crown', remainingMoves: 2 },
+            { sourceItemId: 'kings-guard', remainingMoves: 2 },
+        ]);
     });
     it('blocks repeated timed effects and activations outside a decision, without consuming copies', () => {
         const run = activateItem(begin({ 'triple-crown': 2 }), 'triple-crown');

@@ -8,7 +8,7 @@ Generated level JSON files are created first with:
 
 `difficultyScore: -1`
 
-The scoring module processes those completed trees inside the single `npm run generate:levels` pipeline. Each FEN/tier job generates and scores sequentially with one Stockfish process. The standalone scoring CLI has been removed; the reusable `scoreLevel` and `scoreLevelFiles` APIs remain available.
+The scoring module processes those completed trees inside the single `npm run generate:levels` pipeline. Each FEN/profile job generates and scores sequentially with one Stockfish process. The standalone scoring CLI has been removed; the reusable `scoreLevel` and `scoreLevelFiles` APIs remain available.
 
 The scorer should use the existing precomputed decision tree together with additional Stockfish analysis to estimate the difficulty of each player decision and then aggregate those results into one overall level difficulty score.
 
@@ -31,7 +31,7 @@ This allows difficulty scoring to evolve independently from tree generation and 
 
 Each `DecisionNode` should receive an internal difficulty score from `0–100`.
 
-The score should estimate how difficult it is for a player to identify the best move from the available choices, which depend on skill tier and legal move count.
+The score should estimate how difficult it is for a player to identify the best move from the available choices, which depend on generation profile and legal move count.
 
 The initial implementation should use four signals.
 
@@ -255,7 +255,7 @@ Tree generation and difficulty scoring remain separate modules run by one public
 
 This separation should allow existing levels to be rescored whenever the scoring algorithm, weights, thresholds, or Stockfish configuration changes.
 
-The pipeline saves unscored trees in `src/levels/.staging/<tierFolder>`, then publishes scored levels in the tier's folder. Scoring failures retain the pending tree for `--resume`; retries preserve its UUID and every tree field. Resume uses the same input file, FEN line positions, output root, and skill-config version. Normal runs skip existing FEN/tier combinations. `--regenerate` rebuilds and scores the selected combinations, then deletes all older matching files after successful publication. Pending trees record regeneration so resume can finish replacement cleanup. Failures in one job do not stop the other jobs, and generation or scoring failures retain the old levels.
+The pipeline saves unscored trees in `src/levels/.staging/<options>-options-<depth>-depth`, then publishes scored levels in the option-count/depth folder. Scoring failures retain the pending tree for `--resume`; retries preserve its UUID and every tree field. Resume uses the same input file, FEN line positions, output root, and generation profile ID, profile version, and decision depth. Normal runs skip existing FEN/profile/depth combinations. `--regenerate` rebuilds and scores the selected combinations, then deletes all older matching files after successful publication. Pending trees record regeneration so resume can finish replacement cleanup. Failures in one job do not stop the other jobs, and generation or scoring failures retain the old levels.
 
 All Stockfish settings, scoring weights, branch probabilities, thresholds, mate handling, and normalization logic should be centralized and configurable.
 

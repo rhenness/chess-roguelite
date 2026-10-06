@@ -3,11 +3,13 @@ import { formatMultiplier, type PayoutResult } from '../game/multipliers';
 import { QUALITY_LABELS, QUALITY_ORDER, type RunState } from '../game/run';
 import { DailyRewardReceipt } from './DailyRewards';
 import { ShareRunButton } from './ShareRunButton';
+import { SkillTierBadge } from './SkillTierPicker';
 import { shareRegularRun, type ShareRunHandler } from '../game/shareRun';
 
 export function DailyResults({ run, payout, rank, onShare, finishedAt }: { run: RunState; payout: PayoutResult; rank: number; onShare?: ShareRunHandler; finishedAt?: number }) {
     const completed = run.result === 'complete' && run.levelsCompleted === run.levels.length;
     return <div className="daily-results">
+        <SkillTierBadge skillTier={run.skillTier} />
         {completed && <div className="daily-results-heading">
             <Trophy size={22} aria-hidden="true" /><h2>Dungeon complete</h2>
         </div>}

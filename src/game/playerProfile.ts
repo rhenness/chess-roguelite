@@ -1,3 +1,5 @@
+import { isSkillTier, type SkillTier } from '../config/difficulty';
+
 export const PLAYER_PROFILE_STORAGE_KEY = 'knightfall.player-profile.v1';
 export const DISPLAY_NAME_LIMIT = 24;
 export const DEFAULT_DISPLAY_NAME = 'Massive Pawn';
@@ -39,6 +41,7 @@ export interface PlayerProfile {
     avatarId: (typeof AVATARS)[number]['id'];
     avatarBackgroundColor: string;
     bannerId: (typeof BANNERS)[number]['id'];
+    preferredSkillTier?: SkillTier;
 }
 
 export const initialPlayerProfile = (): PlayerProfile => ({
@@ -81,6 +84,7 @@ export function loadPlayerProfile(): PlayerProfile {
         const value = saved as Record<string, unknown>;
         return {
             version: 1,
+            ...(isSkillTier(value.preferredSkillTier) ? { preferredSkillTier: value.preferredSkillTier } : {}),
             displayName:
                 typeof value.displayName === 'string' &&
                 !displayNameError(value.displayName)

@@ -1,5 +1,6 @@
 import type { ChessMove, GeneratedLevel, MoveQuality, PlayerChoice, TreeNode } from '../types/level';
-import { sampleRunLevels } from './levels';
+import { sampleRunLevels, selectSkillTierLevels } from './levels';
+import { isSkillTier, SKILL_TIER_CONFIG, type SkillTier } from '../config/difficulty';
 import { createCheckpointRewards, validCheckpointRewards, type CheckpointReward } from './checkpointRewards';
 import { isItemInventory, itemCount, LOADOUT_LIMIT, resolveItemEffects, type ActiveEffect, type ItemId, type ItemInventory, type ItemUse, type MoveResolution } from './items';
 
@@ -30,6 +31,8 @@ export interface LevelOutcome {
 
 export interface RunState {
     id: string;
+    skillTier: SkillTier;
+    floorCount: number;
     daily?: { day: string; expiresAt: number };
     levels: GeneratedLevel[];
     rules: RunRules;
@@ -62,8 +65,8 @@ function validateRules(rules: RunRules): void {
         throw new Error('Starting health must be a positive integer.');
     }
     for (const quality of QUALITY_ORDER) {
-        if (![rules.damage[quality], rules.points[quality]].every(value => Number.isInteger(value) && value >= 0)) {
-            throw new Error('Damage and points must be nonnegative integers for every move quality.');
+        if (!Number.isSafeInteger(rules.damage[quality]) || rules.damage[quality] < 0 || !Number.isSafeInteger(rules.points[quality])) {
+            throw new Error('Damage and points must be integers, with nonnegative damage for every move quality.');
         }
     }
 }
@@ -81,7 +84,7 @@ function settleNode(state: RunState): RunState {
     const lastLevel = state.levelIndex === state.levels.length - 1;
     return {
         ...state,
-        score: state.score + mateBonus,
+        score: Math.max(0, state.score + mateBonus),
         items: lastLevel ? {} : state.items,
         activeEffects: lastLevel ? [] : state.activeEffects,
         phase: lastLevel ? 'finished' : 'level-ended',
@@ -94,11 +97,27 @@ function settleNode(state: RunState): RunState {
 
 let nextRunId = 0;
 
-export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFAULT_RULES, random = Math.random,
-    items: ItemInventory = {}, rewards?: CheckpointReward[]): RunState {
+export interface RunOptions {
+    skillTier?: SkillTier;
+    /** Snapshot at entry; saved runs retain this limit if config changes later. */
+    floorCount?: number;
+}
+
+export function skillTierRules(skillTier: SkillTier): RunRules {
+    const rules = SKILL_TIER_CONFIG[skillTier].run.rules;
+    return { startingHealth: rules.startingHealth, damage: { ...rules.damage }, points: { ...rules.points } };
+}
+
+export function startRun(pool: readonly GeneratedLevel[], rules: RunRules | undefined = undefined, random = Math.random,
+    items: ItemInventory = {}, rewards?: CheckpointReward[], options: RunOptions = {}): RunState {
+    const skillTier = options.skillTier ?? 'intermediate';
+    if (!isSkillTier(skillTier)) throw new Error('Invalid skill tier.');
+    rules ??= options.skillTier ? skillTierRules(skillTier) : DEFAULT_RULES;
     validateRules(rules);
+    const floorCount = options.floorCount ?? (options.skillTier ? SKILL_TIER_CONFIG[skillTier].run.floorCount : RUN_LEVEL_COUNT);
+    if (!Number.isSafeInteger(floorCount) || floorCount <= 0) throw new Error('Invalid floor count.');
     if (!isItemInventory(items) || itemCount(items) > LOADOUT_LIMIT) throw new Error('Invalid item loadout.');
-    const levels = sampleRunLevels(pool, RUN_LEVEL_COUNT, random);
+    const levels = sampleRunLevels(options.skillTier ? selectSkillTierLevels(pool, skillTier) : pool, floorCount, random);
     const first = levels[0];
     if (!first) throw new Error('No scored floors are available.');
     const checkpointRewards = rewards ?? createCheckpointRewards(levels.length, random);
@@ -107,6 +126,7 @@ export function startRun(pool: readonly GeneratedLevel[], rules: RunRules = DEFA
     }
     return settleNode({
         id: globalThis.crypto?.randomUUID?.() ?? `run-${Date.now()}-${++nextRunId}`,
+        skillTier, floorCount,
         levels, rules: structuredClone(rules), levelIndex: 0, node: first.root, phase: 'decision', result: null,
         health: rules.startingHealth, score: 0, decisionsMade: 0, bestMoveStreak: 0, lastHealthBonus: 0,
         items: { ...items }, activeEffects: [], itemUses: [], itemBonusPoints: 0, lastMoveResolution: null,
@@ -125,10 +145,12 @@ export function chooseMove(state: RunState, uci: string): RunState {
     const lastHealthBonus = bestMoveStreak > 0 && bestMoveStreak % BEST_MOVE_STREAK_LENGTH === 0 ? 1 : 0;
     const { resolution, activeEffects } = resolveItemEffects(state.activeEffects, state.rules.points[choice.quality], state.rules.damage[choice.quality], lastHealthBonus);
     const health = Math.max(0, state.health - resolution.damageTaken + lastHealthBonus);
+    const score = Math.max(0, state.score + resolution.awardedPoints);
+    const unboostedScore = Math.max(0, state.score - state.itemBonusPoints + resolution.normalPoints);
     return {
-        ...state, health, bestMoveStreak, lastHealthBonus, score: state.score + resolution.awardedPoints,
+        ...state, health, bestMoveStreak, lastHealthBonus, score,
         activeEffects: health === 0 ? [] : activeEffects, items: health === 0 ? {} : state.items, lastMoveResolution: resolution,
-        itemBonusPoints: state.itemBonusPoints + resolution.awardedPoints - resolution.normalPoints,
+        itemBonusPoints: score - unboostedScore,
         decisionsMade: state.decisionsMade + 1,
         moveCounts: { ...state.moveCounts, [choice.quality]: state.moveCounts[choice.quality] + 1 },
         lastChoice: choice, phase: health === 0 ? 'finished' : 'reveal', result: health === 0 ? 'defeat' : null,

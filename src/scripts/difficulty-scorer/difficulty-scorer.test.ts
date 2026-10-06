@@ -167,7 +167,7 @@ test('scoring preserves reach probabilities across deeper decisions when the dep
 });
 
 test('expert inaccuracies share their category probability and each decision depth retains full probability mass', async () => {
-    const level = await generateTree({ fen: DEFAULT_POSITION, skillTier: 'expert', decisionDepth: 2,
+    const level = await generateTree({ fen: DEFAULT_POSITION, profileId: '4-options-4-depth-20', decisionDepth: 2,
         searchDepth: 2, random: () => 0 }, new LegalEngine());
     const result = await scoreLevel(level, { config }, new LegalEngine());
     const children = result.nodes.filter(node => node.decisionsTaken === 1);

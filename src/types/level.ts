@@ -5,15 +5,22 @@ export interface GeneratedLevel {
     /** Stable unique identifier, independent of the filename or difficulty order. */
     id: string;
     schemaVersion: 2;
-    /** Present on tier-generated levels; older levels use the standard rules. */
+    /** Legacy generation tag. New files store a profile in generation instead. */
     skillTier?: SkillTier;
     /** ISO 8601 UTC timestamp. */
     generatedAt: string;
     /** Fixed for the entire tree; inferred from the starting FEN's active color. */
     playerColor: Color;
     generation: {
-        /** Version of the tier settings used to generate this tree. */
+        /** Legacy config version; normalized to profileVersion when loaded. */
         configVersion?: number;
+        /** Recipe ID; its number orders intended difficulty within option count. */
+        profileId?: string;
+        profileVersion?: number;
+        /** Target count; forced positions can offer fewer choices. */
+        targetOptionCount?: 2 | 4;
+        /** Frozen quality recipe so later config edits cannot invalidate a tree. */
+        playerQualities?: readonly MoveQuality[];
         /** Generated as a replacement; pending retries must finish old-file cleanup. */
         regenerated?: boolean;
         /** Number of player decisions to generate, defaulting to 4. */

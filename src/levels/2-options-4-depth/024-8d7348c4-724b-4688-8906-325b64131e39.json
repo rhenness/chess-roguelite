@@ -1,0 +1,708 @@
+{
+  "id": "8d7348c4-724b-4688-8906-325b64131e39",
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-05T23:50:13.286Z",
+  "playerColor": "black",
+  "skillTier": "beginner",
+  "generation": {
+    "decisionDepth": 4,
+    "configVersion": 1,
+    "engine": {
+      "name": "Stockfish",
+      "version": "Stockfish 19 WASM",
+      "searchDepth": 10,
+      "multiPv": 256
+    }
+  },
+  "root": {
+    "kind": "decision",
+    "fen": "r5k1/pp4pp/4p1q1/4p3/3n4/P3Q1P1/1PP4P/2KR1R2 b - - 5 24",
+    "decisionsTaken": 0,
+    "bestEvaluation": {
+      "depth": 10,
+      "score": {
+        "type": "mate",
+        "value": 1
+      },
+      "pv": [
+        "g6c2"
+      ]
+    },
+    "choices": [
+      {
+        "quality": "best",
+        "playerMove": {
+          "uci": "g6c2",
+          "san": "Qxc2#"
+        },
+        "evaluation": {
+          "depth": 10,
+          "score": {
+            "type": "mate",
+            "value": 1
+          },
+          "pv": [
+            "g6c2"
+          ]
+        },
+        "fenAfterPlayerMove": "r5k1/pp4pp/4p3/4p3/3n4/P3Q1P1/1Pq4P/2KR1R2 w - - 0 25",
+        "opponentReply": null,
+        "next": {
+          "kind": "terminal",
+          "fen": "r5k1/pp4pp/4p3/4p3/3n4/P3Q1P1/1Pq4P/2KR1R2 w - - 0 25",
+          "decisionsTaken": 1,
+          "reason": "checkmate",
+          "result": "black"
+        }
+      },
+      {
+        "quality": "bad",
+        "playerMove": {
+          "uci": "g6e4",
+          "san": "Qe4"
+        },
+        "evaluation": {
+          "depth": 10,
+          "score": {
+            "type": "cp",
+            "value": -987
+          },
+          "pv": [
+            "g6e4",
+            "e3e4",
+            "d4c6",
+            "c1b1",
+            "a8c8",
+            "e4e1",
+            "h7h6",
+            "h2h4",
+            "c6d4"
+          ]
+        },
+        "fenAfterPlayerMove": "r5k1/pp4pp/4p3/4p3/3nq3/P3Q1P1/1PP4P/2KR1R2 w - - 6 25",
+        "opponentReply": {
+          "uci": "d1d3",
+          "san": "Rd3"
+        },
+        "next": {
+          "kind": "decision",
+          "fen": "r5k1/pp4pp/4p3/4p3/3nq3/P2RQ1P1/1PP4P/2K2R2 b - - 7 25",
+          "decisionsTaken": 1,
+          "bestEvaluation": {
+            "depth": 10,
+            "score": {
+              "type": "cp",
+              "value": -401
+            },
+            "pv": [
+              "e4c6",
+              "e3f2",
+              "b7b5",
+              "c1b1",
+              "a7a5",
+              "d3c3",
+              "c6b7",
+              "c3e3",
+              "a8c8"
+            ]
+          },
+          "choices": [
+            {
+              "quality": "best",
+              "playerMove": {
+                "uci": "e4c6",
+                "san": "Qc6"
+              },
+              "evaluation": {
+                "depth": 10,
+                "score": {
+                  "type": "cp",
+                  "value": -401
+                },
+                "pv": [
+                  "e4c6",
+                  "e3f2",
+                  "b7b5",
+                  "c1b1",
+                  "a7a5",
+                  "d3c3",
+                  "c6b7",
+                  "c3e3",
+                  "a8c8"
+                ]
+              },
+              "fenAfterPlayerMove": "r5k1/pp4pp/2q1p3/4p3/3n4/P2RQ1P1/1PP4P/2K2R2 w - - 8 26",
+              "opponentReply": {
+                "uci": "f1f2",
+                "san": "Rf2"
+              },
+              "next": {
+                "kind": "decision",
+                "fen": "r5k1/pp4pp/2q1p3/4p3/3n4/P2RQ1P1/1PP2R1P/2K5 b - - 9 26",
+                "decisionsTaken": 2,
+                "bestEvaluation": {
+                  "depth": 10,
+                  "score": {
+                    "type": "cp",
+                    "value": -364
+                  },
+                  "pv": [
+                    "a8f8",
+                    "f2f8",
+                    "g8f8",
+                    "e3d2",
+                    "f8e8",
+                    "c1b1"
+                  ]
+                },
+                "choices": [
+                  {
+                    "quality": "best",
+                    "playerMove": {
+                      "uci": "a8f8",
+                      "san": "Rf8"
+                    },
+                    "evaluation": {
+                      "depth": 10,
+                      "score": {
+                        "type": "cp",
+                        "value": -364
+                      },
+                      "pv": [
+                        "a8f8",
+                        "f2f8",
+                        "g8f8",
+                        "e3d2",
+                        "f8e8",
+                        "c1b1"
+                      ]
+                    },
+                    "fenAfterPlayerMove": "5rk1/pp4pp/2q1p3/4p3/3n4/P2RQ1P1/1PP2R1P/2K5 w - - 10 27",
+                    "opponentReply": {
+                      "uci": "e3e1",
+                      "san": "Qe1"
+                    },
+                    "next": {
+                      "kind": "decision",
+                      "fen": "5rk1/pp4pp/2q1p3/4p3/3n4/P2R2P1/1PP2R1P/2K1Q3 b - - 11 27",
+                      "decisionsTaken": 3,
+                      "bestEvaluation": {
+                        "depth": 10,
+                        "score": {
+                          "type": "cp",
+                          "value": -245
+                        },
+                        "pv": [
+                          "f8f2",
+                          "e1f2",
+                          "a7a5",
+                          "f2d2",
+                          "b7b5",
+                          "b2b4",
+                          "a5b4",
+                          "a3b4",
+                          "c6c4",
+                          "c1b2",
+                          "h7h6"
+                        ]
+                      },
+                      "choices": [
+                        {
+                          "quality": "best",
+                          "playerMove": {
+                            "uci": "f8f2",
+                            "san": "Rxf2"
+                          },
+                          "evaluation": {
+                            "depth": 10,
+                            "score": {
+                              "type": "cp",
+                              "value": -245
+                            },
+                            "pv": [
+                              "f8f2",
+                              "e1f2",
+                              "a7a5",
+                              "f2d2",
+                              "b7b5",
+                              "b2b4",
+                              "a5b4",
+                              "a3b4",
+                              "c6c4",
+                              "c1b2",
+                              "h7h6"
+                            ]
+                          },
+                          "fenAfterPlayerMove": "6k1/pp4pp/2q1p3/4p3/3n4/P2R2P1/1PP2r1P/2K1Q3 w - - 0 28",
+                          "opponentReply": {
+                            "uci": "e1d1",
+                            "san": "Qd1"
+                          },
+                          "next": {
+                            "kind": "depth-limit",
+                            "fen": "6k1/pp4pp/2q1p3/4p3/3n4/P2R2P1/1PP2r1P/2KQ4 b - - 1 28",
+                            "decisionsTaken": 4
+                          }
+                        },
+                        {
+                          "quality": "bad",
+                          "playerMove": {
+                            "uci": "g8h8",
+                            "san": "Kh8"
+                          },
+                          "evaluation": {
+                            "depth": 10,
+                            "score": {
+                              "type": "mate",
+                              "value": -1
+                            },
+                            "pv": [
+                              "g8h8",
+                              "f2f8"
+                            ]
+                          },
+                          "fenAfterPlayerMove": "5r1k/pp4pp/2q1p3/4p3/3n4/P2R2P1/1PP2R1P/2K1Q3 w - - 12 28",
+                          "opponentReply": {
+                            "uci": "d3d4",
+                            "san": "Rxd4"
+                          },
+                          "next": {
+                            "kind": "depth-limit",
+                            "fen": "5r1k/pp4pp/2q1p3/4p3/3R4/P5P1/1PP2R1P/2K1Q3 b - - 0 28",
+                            "decisionsTaken": 4
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "quality": "bad",
+                    "playerMove": {
+                      "uci": "g7g5",
+                      "san": "g5"
+                    },
+                    "evaluation": {
+                      "depth": 10,
+                      "score": {
+                        "type": "cp",
+                        "value": -1221
+                      },
+                      "pv": [
+                        "g7g5",
+                        "e3g5",
+                        "g8h8",
+                        "g5e5",
+                        "h8g8",
+                        "d3d4",
+                        "c6e8",
+                        "d4g4",
+                        "e8g6",
+                        "e5e6",
+                        "g8h8",
+                        "e6e5",
+                        "h8g8",
+                        "g4g6",
+                        "h7g6",
+                        "e5e6",
+                        "g8g7",
+                        "e6f6",
+                        "g7h6",
+                        "f6f4",
+                        "h6h7",
+                        "f4f7",
+                        "h7h6"
+                      ]
+                    },
+                    "fenAfterPlayerMove": "r5k1/pp5p/2q1p3/4p1p1/3n4/P2RQ1P1/1PP2R1P/2K5 w - - 0 27",
+                    "opponentReply": {
+                      "uci": "e3e5",
+                      "san": "Qxe5"
+                    },
+                    "next": {
+                      "kind": "decision",
+                      "fen": "r5k1/pp5p/2q1p3/4Q1p1/3n4/P2R2P1/1PP2R1P/2K5 b - - 0 27",
+                      "decisionsTaken": 3,
+                      "bestEvaluation": {
+                        "depth": 10,
+                        "score": {
+                          "type": "cp",
+                          "value": -666
+                        },
+                        "pv": [
+                          "d4f5",
+                          "f2f5",
+                          "e6f5",
+                          "e5f5",
+                          "c6h1",
+                          "d3d1",
+                          "h1h2",
+                          "f5g5",
+                          "g8h8"
+                        ]
+                      },
+                      "choices": [
+                        {
+                          "quality": "best",
+                          "playerMove": {
+                            "uci": "d4f5",
+                            "san": "Nf5"
+                          },
+                          "evaluation": {
+                            "depth": 10,
+                            "score": {
+                              "type": "cp",
+                              "value": -666
+                            },
+                            "pv": [
+                              "d4f5",
+                              "f2f5",
+                              "e6f5",
+                              "e5f5",
+                              "c6h1",
+                              "d3d1",
+                              "h1h2",
+                              "f5g5",
+                              "g8h8"
+                            ]
+                          },
+                          "fenAfterPlayerMove": "r5k1/pp5p/2q1p3/4Qnp1/8/P2R2P1/1PP2R1P/2K5 w - - 1 28",
+                          "opponentReply": {
+                            "uci": "b2b4",
+                            "san": "b4"
+                          },
+                          "next": {
+                            "kind": "depth-limit",
+                            "fen": "r5k1/pp5p/2q1p3/4Qnp1/1P6/P2R2P1/2P2R1P/2K5 b - - 0 28",
+                            "decisionsTaken": 4
+                          }
+                        },
+                        {
+                          "quality": "bad",
+                          "playerMove": {
+                            "uci": "a8f8",
+                            "san": "Rf8"
+                          },
+                          "evaluation": {
+                            "depth": 10,
+                            "score": {
+                              "type": "mate",
+                              "value": -2
+                            },
+                            "pv": [
+                              "a8f8",
+                              "e5g5",
+                              "g8h8",
+                              "f2f8"
+                            ]
+                          },
+                          "fenAfterPlayerMove": "5rk1/pp5p/2q1p3/4Q1p1/3n4/P2R2P1/1PP2R1P/2K5 w - - 1 28",
+                          "opponentReply": {
+                            "uci": "e5d4",
+                            "san": "Qxd4"
+                          },
+                          "next": {
+                            "kind": "depth-limit",
+                            "fen": "5rk1/pp5p/2q1p3/6p1/3Q4/P2R2P1/1PP2R1P/2K5 b - - 0 28",
+                            "decisionsTaken": 4
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "quality": "bad",
+              "playerMove": {
+                "uci": "b7b6",
+                "san": "b6"
+              },
+              "evaluation": {
+                "depth": 10,
+                "score": {
+                  "type": "cp",
+                  "value": -1076
+                },
+                "pv": [
+                  "b7b6",
+                  "e3e4",
+                  "a8e8",
+                  "f1d1",
+                  "h7h6",
+                  "e4e5",
+                  "d4c2",
+                  "c1c2",
+                  "e8c8",
+                  "c2b1"
+                ]
+              },
+              "fenAfterPlayerMove": "r5k1/p5pp/1p2p3/4p3/3nq3/P2RQ1P1/1PP4P/2K2R2 w - - 0 26",
+              "opponentReply": {
+                "uci": "f1f8",
+                "san": "Rf8+"
+              },
+              "next": {
+                "kind": "decision",
+                "fen": "r4Rk1/p5pp/1p2p3/4p3/3nq3/P2RQ1P1/1PP4P/2K5 b - - 1 26",
+                "decisionsTaken": 2,
+                "bestEvaluation": {
+                  "depth": 10,
+                  "score": {
+                    "type": "cp",
+                    "value": -647
+                  },
+                  "pv": [
+                    "a8f8",
+                    "e3e4",
+                    "f8f2",
+                    "d3d4",
+                    "e5d4",
+                    "b2b4",
+                    "f2f7",
+                    "e4e6",
+                    "g7g6",
+                    "e6b3"
+                  ]
+                },
+                "choices": [
+                  {
+                    "quality": "best",
+                    "playerMove": {
+                      "uci": "a8f8",
+                      "san": "Rxf8"
+                    },
+                    "evaluation": {
+                      "depth": 10,
+                      "score": {
+                        "type": "cp",
+                        "value": -647
+                      },
+                      "pv": [
+                        "a8f8",
+                        "e3e4",
+                        "f8f2",
+                        "d3d4",
+                        "e5d4",
+                        "b2b4",
+                        "f2f7",
+                        "e4e6",
+                        "g7g6",
+                        "e6b3"
+                      ]
+                    },
+                    "fenAfterPlayerMove": "5rk1/p5pp/1p2p3/4p3/3nq3/P2RQ1P1/1PP4P/2K5 w - - 0 27",
+                    "opponentReply": {
+                      "uci": "d3b3",
+                      "san": "Rb3"
+                    },
+                    "next": {
+                      "kind": "decision",
+                      "fen": "5rk1/p5pp/1p2p3/4p3/3nq3/PR2Q1P1/1PP4P/2K5 b - - 1 27",
+                      "decisionsTaken": 3,
+                      "bestEvaluation": {
+                        "depth": 10,
+                        "score": {
+                          "type": "mate",
+                          "value": 1
+                        },
+                        "pv": [
+                          "e4c2"
+                        ]
+                      },
+                      "choices": [
+                        {
+                          "quality": "best",
+                          "playerMove": {
+                            "uci": "e4c2",
+                            "san": "Qxc2#"
+                          },
+                          "evaluation": {
+                            "depth": 10,
+                            "score": {
+                              "type": "mate",
+                              "value": 1
+                            },
+                            "pv": [
+                              "e4c2"
+                            ]
+                          },
+                          "fenAfterPlayerMove": "5rk1/p5pp/1p2p3/4p3/3n4/PR2Q1P1/1Pq4P/2K5 w - - 0 28",
+                          "opponentReply": null,
+                          "next": {
+                            "kind": "terminal",
+                            "fen": "5rk1/p5pp/1p2p3/4p3/3n4/PR2Q1P1/1Pq4P/2K5 w - - 0 28",
+                            "decisionsTaken": 4,
+                            "reason": "checkmate",
+                            "result": "black"
+                          }
+                        },
+                        {
+                          "quality": "bad",
+                          "playerMove": {
+                            "uci": "d4c6",
+                            "san": "Nc6"
+                          },
+                          "evaluation": {
+                            "depth": 10,
+                            "score": {
+                              "type": "cp",
+                              "value": -732
+                            },
+                            "pv": [
+                              "d4c6",
+                              "e3e4",
+                              "c6d4",
+                              "b3d3",
+                              "g7g5",
+                              "d3d4",
+                              "f8f1",
+                              "c1d2",
+                              "e5d4",
+                              "e4e6",
+                              "g8g7"
+                            ]
+                          },
+                          "fenAfterPlayerMove": "5rk1/p5pp/1pn1p3/4p3/4q3/PR2Q1P1/1PP4P/2K5 w - - 2 28",
+                          "opponentReply": {
+                            "uci": "e3d3",
+                            "san": "Qd3"
+                          },
+                          "next": {
+                            "kind": "depth-limit",
+                            "fen": "5rk1/p5pp/1pn1p3/4p3/4q3/PR1Q2P1/1PP4P/2K5 b - - 3 28",
+                            "decisionsTaken": 4
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "quality": "bad",
+                    "playerMove": {
+                      "uci": "g8f8",
+                      "san": "Kxf8"
+                    },
+                    "evaluation": {
+                      "depth": 10,
+                      "score": {
+                        "type": "cp",
+                        "value": -810
+                      },
+                      "pv": [
+                        "g8f8",
+                        "e3e4",
+                        "f8e7",
+                        "e4h4",
+                        "e7e8",
+                        "h4h7",
+                        "d4e2",
+                        "c1d2",
+                        "e2c3",
+                        "b2c3"
+                      ]
+                    },
+                    "fenAfterPlayerMove": "r4k2/p5pp/1p2p3/4p3/3nq3/P2RQ1P1/1PP4P/2K5 w - - 0 27",
+                    "opponentReply": {
+                      "uci": "b2b4",
+                      "san": "b4"
+                    },
+                    "next": {
+                      "kind": "decision",
+                      "fen": "r4k2/p5pp/1p2p3/4p3/1P1nq3/P2RQ1P1/2P4P/2K5 b - - 0 27",
+                      "decisionsTaken": 3,
+                      "bestEvaluation": {
+                        "depth": 10,
+                        "score": {
+                          "type": "cp",
+                          "value": 732
+                        },
+                        "pv": [
+                          "e4g2",
+                          "d3d4",
+                          "e5d4",
+                          "e3d4",
+                          "f8g8",
+                          "c1b2",
+                          "g2d5"
+                        ]
+                      },
+                      "choices": [
+                        {
+                          "quality": "best",
+                          "playerMove": {
+                            "uci": "e4g2",
+                            "san": "Qg2"
+                          },
+                          "evaluation": {
+                            "depth": 10,
+                            "score": {
+                              "type": "cp",
+                              "value": 732
+                            },
+                            "pv": [
+                              "e4g2",
+                              "d3d4",
+                              "e5d4",
+                              "e3d4",
+                              "f8g8",
+                              "c1b2",
+                              "g2d5"
+                            ]
+                          },
+                          "fenAfterPlayerMove": "r4k2/p5pp/1p2p3/4p3/1P1n4/P2RQ1P1/2P3qP/2K5 w - - 1 28",
+                          "opponentReply": {
+                            "uci": "e3h6",
+                            "san": "Qh6"
+                          },
+                          "next": {
+                            "kind": "depth-limit",
+                            "fen": "r4k2/p5pp/1p2p2Q/4p3/1P1n4/P2R2P1/2P3qP/2K5 b - - 2 28",
+                            "decisionsTaken": 4
+                          }
+                        },
+                        {
+                          "quality": "bad",
+                          "playerMove": {
+                            "uci": "d4f5",
+                            "san": "Nf5"
+                          },
+                          "evaluation": {
+                            "depth": 10,
+                            "score": {
+                              "type": "cp",
+                              "value": -916
+                            },
+                            "pv": [
+                              "d4f5",
+                              "e3e4",
+                              "a8c8",
+                              "e4e5",
+                              "a7a5",
+                              "e5e2"
+                            ]
+                          },
+                          "fenAfterPlayerMove": "r4k2/p5pp/1p2p3/4pn2/1P2q3/P2RQ1P1/2P4P/2K5 w - - 1 28",
+                          "opponentReply": {
+                            "uci": "e3d2",
+                            "san": "Qd2"
+                          },
+                          "next": {
+                            "kind": "depth-limit",
+                            "fen": "r4k2/p5pp/1p2p3/4pn2/1P2q3/P2R2P1/2PQ3P/2K5 b - - 2 28",
+                            "decisionsTaken": 4
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "difficultyScore": 24
+}

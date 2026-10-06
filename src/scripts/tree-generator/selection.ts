@@ -1,5 +1,5 @@
 import type { EngineEvaluation, EvaluationScore, MoveQuality } from '../../types/level.js';
-import type { MoveOption, SkillTierConfig } from '../../config/difficulty.js';
+import type { MoveOption, GenerationProfileConfig } from '../../config/generation.js';
 
 function comparable(score: EvaluationScore): number {
     if (score.type === 'cp') return Math.max(-100_000_000, Math.min(100_000_000, score.value));
@@ -48,7 +48,7 @@ export function selectCandidates(candidates: EngineEvaluation[], options?: reado
 
 /** Opponent lines are ranked best-first, but their stored scores favor the player. */
 export function selectOpponentReply(candidates: EngineEvaluation[], random: () => number = Math.random,
-    settings?: SkillTierConfig['opponentMoves']): EngineEvaluation {
+    settings?: GenerationProfileConfig['opponentMoves']): EngineEvaluation {
     const opponentCandidates = candidates.map(candidate => ({
         ...candidate, score: { ...candidate.score, value: -candidate.score.value },
     }));
@@ -63,7 +63,7 @@ export function selectOpponentReply(candidates: EngineEvaluation[], random: () =
     const roll = random();
     if (!Number.isFinite(roll) || roll < 0 || roll >= 1) throw new Error('Random value must be between 0 (inclusive) and 1 (exclusive).');
     const total = selected.reduce((sum, candidate) => sum + weights[candidate.quality], 0);
-    // A forced move can have a quality excluded by the tier's normal reply mix.
+    // A forced move can have a quality excluded by the profile's normal reply mix.
     if (total === 0) return candidates[0]!;
     let remaining = roll * total;
     for (const candidate of selected) {
