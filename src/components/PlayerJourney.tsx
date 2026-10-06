@@ -7,6 +7,10 @@ import './PlayerJourney.css';
 
 type Progress = ReturnType<typeof playerLevelProgress>;
 const POSITIONS = [[96, 512], [167, 468], [238, 424], [309, 380], [238, 290], [309, 246], [380, 202], [451, 158]] as const;
+const SHOOTING_STARS = [
+    { x: 258, y: 62, duration: 16, delay: 2 },
+    { x: 432, y: 282, duration: 23, delay: 9 },
+] as const;
 
 function JourneyTile({ level, x, y, progress, profile, palette, selected, onSelect }: {
     level: number; x: number; y: number; progress: Progress; profile: PlayerProfile;
@@ -25,26 +29,28 @@ function JourneyTile({ level, x, y, progress, profile, palette, selected, onSele
         }} onFocus={event => event.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })}>
         <title>{`Level ${level} · ${status}`}</title>
         <rect x="-50" y="-30" width="100" height="110" fill="transparent" />
-        <ellipse cy="75" rx="28" ry="8" fill="#04181044" />
-        {current && <ellipse cy="12" rx="65" ry="56" fill={`url(#journey-pawn-glow-${progress.tierIndex})`} />}
-        <polygon points="-42 0,0 25,0 65,-28 29" fill={light} />
-        <polygon points="0 25,42 0,28 29,0 65" fill={mid} />
-        <polygon points="-42 0,-28 29,0 65,-12 24" fill={mid} opacity=".4" />
-        <polygon points="12 24,28 29,0 65" fill={dark} opacity=".5" />
-        <polygon className="journey-tile-top" points="0 -25,42 0,0 25,-42 0" fill={top}
-            stroke={selected ? '#f6dc9d' : gleam} strokeWidth={current || selected ? 2.5 : 1} />
-        <polygon points="0 -19,32 0,0 19,-32 0" fill={light} opacity=".35" />
-        {reached ? <path d="M -11 -1 l 7 7 l 16 -13" fill="none" stroke="#edf5dc" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-            : !current && <><ellipse cy="-2" rx="20" ry="14" fill="#254e4699" /><text y="4" textAnchor="middle" className="journey-number">{level}</text></>}
-        {current && <g className="journey-pawn" aria-hidden="true">
-            <ellipse cy="-5" rx="21" ry="7" fill="#3a633655" /><ellipse cy="-11" rx="20" ry="8" fill="#e3e8bc" />
-            <path d="M -15 -14 Q -8 -23 -8 -38 L 8 -38 Q 8 -23 15 -14Z" fill="#c7d991" />
-            <ellipse cy="-39" rx="11" ry="4" fill="#e5ecc7" /><circle cy="-52" r="11" fill="#d5e5aa" />
-            <circle cy="-95" r="20" fill="#e5e4c5" /><circle cy="-95" r="16" fill={profile.avatarBackgroundColor} />
-            <image href={profileAsset('avatars', profile.avatarId)} x="-13" y="-108" width="26" height="26" />
-            <path d="M -5 -74 l 5 6 l 5 -6" fill="#e5e4c5" />
-            <text x="23" y="17" textAnchor="middle" className="journey-current-number">{level}</text>
-        </g>}
+        <ellipse className={current ? 'journey-current-shadow' : undefined} cy="75" rx="28" ry="8" fill="#04181044" />
+        <g className={current ? 'journey-current-float' : undefined}>
+            {current && <ellipse cy="12" rx="65" ry="56" fill={`url(#journey-pawn-glow-${progress.tierIndex})`} />}
+            <polygon points="-42 0,0 25,0 65,-28 29" fill={light} />
+            <polygon points="0 25,42 0,28 29,0 65" fill={mid} />
+            <polygon points="-42 0,-28 29,0 65,-12 24" fill={mid} opacity=".4" />
+            <polygon points="12 24,28 29,0 65" fill={dark} opacity=".5" />
+            <polygon className="journey-tile-top" points="0 -25,42 0,0 25,-42 0" fill={top}
+                stroke={selected ? '#f6dc9d' : gleam} strokeWidth={current || selected ? 2.5 : 1} />
+            <polygon points="0 -19,32 0,0 19,-32 0" fill={light} opacity=".35" />
+            {reached ? <path d="M -11 -1 l 7 7 l 16 -13" fill="none" stroke="#edf5dc" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+                : !current && <><ellipse cy="-2" rx="20" ry="14" fill="#254e4699" /><text y="4" textAnchor="middle" className="journey-number">{level}</text></>}
+            {current && <g className="journey-pawn" aria-hidden="true">
+                <ellipse cy="-5" rx="21" ry="7" fill="#3a633655" /><ellipse cy="-11" rx="20" ry="8" fill="#e3e8bc" />
+                <path d="M -15 -14 Q -8 -23 -8 -38 L 8 -38 Q 8 -23 15 -14Z" fill="#c7d991" />
+                <ellipse cy="-39" rx="11" ry="4" fill="#e5ecc7" /><circle cy="-52" r="11" fill="#d5e5aa" />
+                <circle cy="-95" r="20" fill="#e5e4c5" /><circle cy="-95" r="16" fill={profile.avatarBackgroundColor} />
+                <image href={profileAsset('avatars', profile.avatarId)} x="-13" y="-108" width="26" height="26" />
+                <path d="M -5 -74 l 5 6 l 5 -6" fill="#e5e4c5" />
+                <text x="23" y="17" textAnchor="middle" className="journey-current-number">{level}</text>
+            </g>}
+        </g>
     </g>;
 }
 
@@ -112,8 +118,20 @@ export const PlayerJourney = memo(function PlayerJourney({ progress, profile }: 
                         <defs>
                             <radialGradient id={`journey-ambient-${tierIndex}`}><stop stopColor="#adc892" stopOpacity=".12" /><stop offset="1" stopColor="#adc892" stopOpacity="0" /></radialGradient>
                             <radialGradient id={`journey-pawn-glow-${tierIndex}`}><stop stopColor="#d3dd8e" stopOpacity=".35" /><stop offset="1" stopColor="#d3dd8e" stopOpacity="0" /></radialGradient>
+                            <linearGradient id={`journey-star-trail-${tierIndex}`} x1="-28" y1="-14" x2="0" y2="0" gradientUnits="userSpaceOnUse">
+                                <stop stopColor="#d7e1b8" stopOpacity="0" /><stop offset="1" stopColor="#e8edce" stopOpacity=".8" />
+                            </linearGradient>
                         </defs>
                         <ellipse aria-hidden="true" cx="321" cy="304" rx="292" ry="270" fill={`url(#journey-ambient-${tierIndex})`} />
+                        <g className="journey-shooting-stars" aria-hidden="true">
+                            {SHOOTING_STARS.map(({ x, y, duration, delay }, i) => <g key={i} transform={`translate(${x} ${y})`}>
+                                <g className="journey-shooting-star" style={{ animationDuration: `${duration}s`, animationDelay: `${delay + tierIndex * .7}s` }}>
+                                    <path d="M -28 -14 L 0 0" fill="none" stroke={`url(#journey-star-trail-${tierIndex})`} strokeWidth="1.6" strokeLinecap="round" />
+                                    <circle r="1.5" fill="#edf2d6" />
+                                    <path d="M -3 0 H 3 M 0 -3 V 3" stroke="#edf2d6" strokeWidth=".8" />
+                                </g>
+                            </g>)}
+                        </g>
                         <g aria-hidden="true" dangerouslySetInnerHTML={{ __html: journeyScenery(palette, next) }} />
                         <g aria-hidden="true">
                             <path d="M 96 512 L 167 468 L 238 424 L 309 380 L 238 290 L 309 246 L 380 202 L 451 158 L 522 114" fill="none" stroke="#aebc9028" strokeWidth="2" strokeDasharray="2 12" />

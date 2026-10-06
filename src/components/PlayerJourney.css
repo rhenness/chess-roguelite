@@ -6,6 +6,32 @@
 .journey-area > svg { display: block; width: 100%; height: auto; }
 .journey-tile { cursor: pointer; outline: none; }
 .journey-tile:hover .journey-tile-top, .journey-tile:focus-visible .journey-tile-top { stroke: #f4e3b3; stroke-width: 4; }
+.journey-current-float { animation: journey-float 4s ease-in-out infinite; }
+.journey-current-shadow { animation: journey-shadow 4s ease-in-out infinite; }
+.journey-twinkle { opacity: .22; animation: journey-twinkle ease-in-out infinite; pointer-events: none; }
+.journey-shooting-stars { pointer-events: none; }
+.journey-shooting-star { opacity: 0; animation: journey-shooting-star linear infinite; }
+@keyframes journey-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-7px); }
+}
+@keyframes journey-shadow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .7; }
+}
+@keyframes journey-twinkle {
+    0%, 40%, 80%, 100% { opacity: .16; }
+    60% { opacity: .8; }
+}
+@keyframes journey-shooting-star {
+    0% { opacity: 0; transform: translate(0, 0); }
+    1.5% { opacity: .8; }
+    8%, 100% { opacity: 0; transform: translate(100px, 50px); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .journey-current-float, .journey-current-shadow, .journey-twinkle { animation: none; }
+    .journey-shooting-star { animation: none; display: none; }
+}
 .journey-number { fill: #f4f3e1; font: 650 17px system-ui, sans-serif; }
 .journey-current-number { fill: #f4f7e5; font: 700 11px system-ui, sans-serif; }
 .journey-gate-label { font: 18px Georgia, serif; }

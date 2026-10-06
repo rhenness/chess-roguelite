@@ -36,5 +36,5 @@ export function journeyScenery(palette: JourneyPalette, next: JourneyPalette): s
         + foliage(37, 430, .76) + foliage(360, 535, .42)
         + crystal(490, 489, 47, 17, palette) + crystal(520, 497, 29, 11, palette)
         + crystal(51, 345, 36, 13, palette) + crystal(557, 262, 24, 9, next)
-        + lights.map(([x = 0, y = 0]) => '<path d="M ' + (x - 2) + ' ' + y + ' h 4 M ' + x + ' ' + (y - 2) + ' v 4" stroke="#d7e1b8" stroke-width="1" opacity=".45"/>').join('');
+        + lights.map(([x = 0, y = 0], i) => `<path class="journey-twinkle" d="M ${x - 3} ${y} h 6 M ${x} ${y - 3} v 6" stroke="#d7e1b8" stroke-width="1.4" style="animation-duration:${8 + i * .5}s;animation-delay:${-i * 1.7}s"/>`).join('');
 }
