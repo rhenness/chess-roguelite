@@ -3,6 +3,7 @@ import { DAILY_COIN_MULTIPLIER } from '../game/daily';
 import { normalRunCoinReward, RUN_COMPLETION_COINS, runCoinReward } from '../game/economy';
 import type { PayoutResult } from '../game/multipliers';
 import type { RunState } from '../game/run';
+import { dungeonRunXp } from '../game/playerLeveling';
 
 export function DailyRewardReceipt({ run, payout }: { run: RunState; payout: PayoutResult }) {
     const normal = normalRunCoinReward(run);
@@ -12,6 +13,7 @@ export function DailyRewardReceipt({ run, payout }: { run: RunState; payout: Pay
             <div><dt>Normal earnings</dt><dd>{normal.toLocaleString()} coins</dd></div>
             <div><dt>Daily bonus</dt><dd>+{(total - normal).toLocaleString()} coins</dd></div>
             <div><dt>Total coins</dt><dd className="coin-balance" aria-label={`Earned ${total} coins`}><Coins size={16} aria-hidden="true" /><strong>+{total.toLocaleString()}</strong></dd></div>
+            <div><dt>Player XP</dt><dd aria-label={`Earned ${dungeonRunXp(run)} XP`}>+{dungeonRunXp(run)} XP</dd></div>
         </dl>
         {payout.upgrade && <div className="daily-earned-rewards"><span className="earned-upgrade" aria-label={`Completion upgrade: +0.1x on ${payout.upgrade.square.toUpperCase()}`}><Sparkles size={16} aria-hidden="true" />+0.1x on {payout.upgrade.square.toUpperCase()}</span></div>}
     </div>;

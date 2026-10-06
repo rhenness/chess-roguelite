@@ -1,0 +1,22 @@
+.player-journey { position: relative; min-width: 0; height: 100%; overflow: hidden; isolation: isolate; }
+.journey-scroll { position: relative; height: 100%; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; mask-image: linear-gradient(to bottom, transparent, #000 7%, #000 91%, transparent); -webkit-mask-image: linear-gradient(to bottom, transparent, #000 7%, #000 91%, transparent); }
+.journey-scroll::-webkit-scrollbar { display: none; }
+.journey-scroll:focus-visible { outline-offset: -4px; }
+.journey-area { width: 100%; }
+.journey-area > svg { display: block; width: 100%; height: auto; }
+.journey-tile { cursor: pointer; outline: none; }
+.journey-tile:hover .journey-tile-top, .journey-tile:focus-visible .journey-tile-top { stroke: #f4e3b3; stroke-width: 4; }
+.journey-number { fill: #f4f3e1; font: 650 17px system-ui, sans-serif; }
+.journey-current-number { fill: #f4f7e5; font: 700 11px system-ui, sans-serif; }
+.journey-gate-label { font: 18px Georgia, serif; }
+.journey-gate-level { fill: #c8d3b3; font: 10px system-ui, sans-serif; }
+.journey-tier-name { fill: #8aa18a; font: 10px system-ui, sans-serif; letter-spacing: 1.3px; }
+.journey-return { position: absolute; left: 50%; transform: translateX(-50%); display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 1px solid #96b19b55; border-radius: 50%; color: #d4ddc7; background: #183b2ef5; box-shadow: 0 4px 18px #06150c66; }
+.journey-return-up { top: 12px; }
+.journey-return-down { bottom: 12px; }
+.journey-return:hover { color: #f4e3b3; border-color: #c5ba82; background: #294e3b; }
+.journey-detail { position: absolute; left: 8%; bottom: 8%; display: grid; gap: 5px; min-width: 150px; padding: 14px 32px 14px 14px; border: 1px solid #a9c09d44; border-radius: 8px; color: #f4efdf; background: #16352ff5; box-shadow: 0 8px 30px #06150c66; }
+.journey-detail strong { font: 20px Georgia, serif; }
+.journey-detail span { color: #b8cbb7; font-size: 11px; }
+.journey-detail button { position: absolute; right: 5px; top: 5px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 5px; color: #b8cbb7; background: transparent; }
+.journey-detail button:hover { background: #385347; }

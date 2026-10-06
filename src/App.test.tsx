@@ -18,6 +18,7 @@ import { initialPlayerProfile, loadPlayerProfile, PLAYER_PROFILE_STORAGE_KEY, sa
 import { loadRunHistory, RUN_HISTORY_STORAGE_KEY, saveRunHistory, type RunRecord } from './game/runHistory';
 import { ENDLESS_STORAGE_KEY, saveState } from './features/endless/storage';
 import { REGULAR_STORAGE_KEY } from './game/regular';
+import { loadPlayerLeveling, PLAYER_LEVELING_STORAGE_KEY, totalPlayerXp } from './game/playerLeveling';
 import { createDailyDungeon, DAILY_STORAGE_KEY, enterDailyDungeon, initialDailyArchive, loadDailyArchive, recordDailyRun, saveDailyArchive, storeDailyDungeon } from './game/daily';
 
 // Assert the FEN/orientation sent to the board without depending on drag animations.
@@ -49,6 +50,7 @@ beforeEach(() => {
     window.localStorage.removeItem(RUN_HISTORY_STORAGE_KEY);
     window.localStorage.removeItem(ENDLESS_STORAGE_KEY);
     window.localStorage.removeItem(REGULAR_STORAGE_KEY);
+    window.localStorage.removeItem(PLAYER_LEVELING_STORAGE_KEY);
     PIECE_SET_IDS.forEach(id => window.localStorage.removeItem(PIECE_SETS[id].storageKey));
     // Existing gameplay scenarios exercise all sets after they have been unlocked.
     saveUserProgression({ ...initialUserProgression(), finishedRuns: 8 });
@@ -56,7 +58,7 @@ beforeEach(() => {
 
 function renderSetup(element: ReactElement) {
     const view = render(element);
-    if (screen.queryByRole('heading', { name: 'Knightfall', level: 1 })) {
+    if (screen.queryByRole('heading', { name: /^(Knightfall|Home)$/, level: 1 })) {
         const regular = screen.getByRole('button', { name: 'Regular run' });
         if (!regular.hasAttribute('disabled')) fireEvent.click(regular);
     }
@@ -167,8 +169,8 @@ describe('skill selection', () => {
         const pool = tierPool();
         const view = render(<App levels={pool} />);
         const home = screen.getByRole('region', { name: 'Knightfall' });
-        const choices = within(home).getByRole('group', { name: 'Choose your skill level' });
-        expect(within(home).getByText('Choose your skill level')).toBeInTheDocument();
+        const choices = within(home).getByRole('group', { name: 'How well do you know chess?' });
+        expect(within(home).getByText('How well do you know chess?')).toBeInTheDocument();
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(within(home).getByRole('button', { name: 'Continue' })).toBeDisabled();
         expect(screen.queryByRole('button', { name: 'Regular run' })).not.toBeInTheDocument();
@@ -178,7 +180,7 @@ describe('skill selection', () => {
         expect(within(choices).getByRole('button', { name: 'Beginner' })).toHaveAttribute('aria-pressed', 'true');
         fireEvent.click(within(home).getByRole('button', { name: 'Continue' }));
         expect(loadPlayerProfile().preferredSkillTier).toBe('beginner');
-        expect(screen.getByRole('heading', { name: 'Knightfall', level: 1 })).toHaveFocus();
+        expect(screen.getByRole('heading', { name: 'Home', level: 1 })).toHaveFocus();
         fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
         expect(screen.getByRole('heading', { name: 'Your first run' })).toBeInTheDocument();
         const saved = JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!);
@@ -189,7 +191,7 @@ describe('skill selection', () => {
         view.unmount();
         window.history.replaceState(null, '', '#/play');
         render(<App levels={pool} />);
-        expect(screen.queryByRole('group', { name: 'Choose your skill level' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('group', { name: 'How well do you know chess?' })).not.toBeInTheDocument();
     });
 
     it('opens first-time selection on Home even when arriving through a direct link', () => {
@@ -197,7 +199,7 @@ describe('skill selection', () => {
         window.history.replaceState(null, '', '#/daily');
         render(<App levels={tierPool()} />);
         expect(window.location.hash).toBe('#/play');
-        expect(screen.getByRole('region', { name: 'Knightfall' })).toContainElement(screen.getByRole('group', { name: 'Choose your skill level' }));
+        expect(screen.getByRole('region', { name: 'Knightfall' })).toContainElement(screen.getByRole('group', { name: 'How well do you know chess?' }));
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Expert' }));
         fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
@@ -342,9 +344,10 @@ describe('first play tutorial', () => {
             for (const name of ['Daily dungeon', 'Endless']) {
                 const button = screen.getByRole('button', { name });
                 expect(button).toBeDisabled();
-                expect(button).toHaveAccessibleDescription(/Finish your first regular run/);
+                expect(button).not.toHaveAttribute('aria-describedby', 'menu-unlock-hint');
                 fireEvent.click(button);
             }
+            expect(screen.queryByText(/Finish your first regular run/)).not.toBeInTheDocument();
             const navigation = screen.getByRole('navigation', { name: 'Main navigation' });
             expect(within(navigation).getByRole('link', { name: 'Home' })).toHaveAttribute('href', '#/play');
             for (const name of ['Dungeon', 'Leaderboards', 'Profile']) {
@@ -381,6 +384,9 @@ describe('first play tutorial', () => {
         finishPlayback();
         finishPayout();
         expect(loadUserProgression().finishedRuns).toBe(1);
+        const earnedXp = 100;
+        expect(totalPlayerXp(loadPlayerLeveling()!)).toBe(earnedXp);
+        expect(screen.getByLabelText(`Earned ${earnedXp} XP`)).toBeInTheDocument();
         fireEvent.click(screen.getByRole('link', { name: 'Home' }));
         function expectUnlockedHome() {
             expect(screen.getByRole('button', { name: 'Daily dungeon' })).toBeEnabled();
@@ -850,7 +856,7 @@ describe('welcome help tip', () => {
         const tip = screen.getByRole('complementary', { name: 'Need help?' });
         expect(tip).toHaveTextContent('This Help menu explains whatever page you’re viewing.');
         expect(tip.parentElement).toBe(document.body);
-        expect(screen.getByRole('heading', { name: 'Knightfall', level: 1 })).toHaveFocus();
+        expect(screen.getByRole('heading', { name: 'Home', level: 1 })).toHaveFocus();
         expect(within(tip).getByRole('button', { name: 'OK' })).toBeVisible();
         expect(within(tip).getAllByRole('button')).toHaveLength(1);
     });
@@ -896,7 +902,7 @@ describe('welcome help tip', () => {
         expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
         view.unmount();
         render(<App levels={[makeLevel()]} />);
-        fireEvent.pointerDown(screen.getByRole('heading', { name: 'Knightfall', level: 1 }));
+        fireEvent.pointerDown(screen.getByRole('heading', { name: 'Home', level: 1 }));
         expect(screen.queryByRole('complementary', { name: 'Need help?' })).not.toBeInTheDocument();
         expect(window.localStorage.getItem(HELP_WELCOME_STORAGE_KEY)).toBeNull();
     });
@@ -1288,7 +1294,7 @@ describe('player profile interface', () => {
         expect(screen.queryByRole('textbox', { name: 'Display name' })).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('link', { name: 'Home' }));
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-        expect(screen.getByRole('heading', { name: 'Knightfall', level: 1 })).toHaveFocus();
+        expect(screen.getByRole('heading', { name: 'Home', level: 1 })).toHaveFocus();
         expect(window.location.hash).toBe('#/play');
     });
 
@@ -1297,7 +1303,7 @@ describe('player profile interface', () => {
         fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
         fireEvent.click(screen.getByRole('button', { name: 'Play' }));
         expect(window.location.hash).toBe('#/play');
-        expect(screen.getByRole('heading', { name: 'Knightfall', level: 1 })).toHaveFocus();
+        expect(screen.getByRole('heading', { name: 'Home', level: 1 })).toHaveFocus();
     });
 
     it.each([0, 3, 8])('keeps the player card free of unlock explanations after %i finished runs', finishedRuns => {
@@ -1313,7 +1319,7 @@ describe('player profile interface', () => {
         expect(within(card).getByRole('link', { name: 'Knightfall home' })).toBeInTheDocument();
         expect(within(card).queryByRole('heading', { name: 'Your profile' })).not.toBeInTheDocument();
         expect(screen.queryByText(/unlocked|Collection complete|Last adventure/)).not.toBeInTheDocument();
-        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+        expect(within(card).queryByRole('progressbar')).not.toBeInTheDocument();
         expect(loadUserProgression().finishedRuns).toBe(finishedRuns);
     });
 
@@ -1501,16 +1507,20 @@ describe('player profile interface', () => {
 describe('page navigation', () => {
     it('starts on the main menu with a wallet and uses the logo as home', () => {
         render(<App levels={[makeLevel()]} />);
-        expect(screen.getByRole('heading', { name: 'Knightfall', level: 1 })).toHaveFocus();
+        expect(screen.getByRole('heading', { name: 'Home', level: 1 })).toHaveFocus();
         expect(screen.queryByTestId('board')).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Default' })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
         expect(screen.getByLabelText('Coins: 0')).toBeInTheDocument();
+        const home = screen.getByRole('region', { name: 'Overall player progression' });
+        expect(home.querySelector('.menu-xp-label > span')).toHaveTextContent('Lv. 9');
+        expect(screen.getByRole('heading', { name: 'Home', level: 1 })).toHaveClass('visually-hidden');
+        expect(document.querySelector('.header-player-level, .journey-controls, .journey-return')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
         expect(window.location.hash).toBe('#/regular');
         fireEvent.click(screen.getByRole('link', { name: 'Knightfall home' }));
         expect(window.location.hash).toBe('#/play');
-        expect(screen.getByRole('heading', { name: 'Knightfall', level: 1 })).toHaveFocus();
+        expect(screen.getByRole('heading', { name: 'Home', level: 1 })).toHaveFocus();
     });
 
     it('pauses browsing, preserves both runs, and requires explicit daily entry', () => {

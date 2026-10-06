@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import {
     ChevronRight,
     Clock3,
@@ -12,23 +12,11 @@ import {
 import type { DailyDungeon } from '../game/daily';
 import type { SkillTier } from '../config/difficulty';
 import { SkillTierPicker } from './SkillTierPicker';
+import type { PlayerProfile } from '../game/playerProfile';
+import type { playerLevelProgress } from '../game/playerLeveling';
+import { PlayerJourney } from './PlayerJourney';
 import './DailyDungeon.css';
 import './PlayMenu.css';
-
-const MENU_SUBTITLES = [
-    'One more floor. One more fork.',
-    'Trust your knight. Mostly.',
-    'Every pawn has a dark side.',
-    'Check yourself before you wreck yourself.',
-    'The dungeon plays for keeps.',
-    'Good knights. Bad decisions.',
-    'Your next blunder awaits.',
-    'Small board. Big consequences.',
-    'Fortune favors the fork.',
-    'Keep calm and castle on.',
-    'No pressure. Just your entire run.',
-    'A horse walks into a dungeon...',
-];
 
 export const formatDailyDate = (day: string) =>
     new Intl.DateTimeFormat('en-US', {
@@ -61,6 +49,9 @@ export function PlayMenu({
     available,
     locked = false,
     skillSelection,
+    progress,
+    profile,
+    levelingPersisted,
 }: {
     daily: DailyDungeon | undefined;
     now: number;
@@ -79,10 +70,10 @@ export function PlayMenu({
         onContinue: () => void;
         available: boolean;
     };
+    progress: ReturnType<typeof playerLevelProgress>;
+    profile: PlayerProfile;
+    levelingPersisted: boolean;
 }) {
-    const [subtitle] = useState(
-        () => MENU_SUBTITLES[Math.floor(Math.random() * MENU_SUBTITLES.length)],
-    );
     const title = useRef<HTMLHeadingElement>(null);
     const choosingSkill = !!skillSelection;
     useEffect(() => {
@@ -91,8 +82,8 @@ export function PlayMenu({
     const status = daily?.attempt?.status;
     const score = daily?.attempt?.payout?.finalScore;
     return (
-        <section className="play-page main-menu" aria-labelledby="play-title">
-            <div className="menu-identity">
+        <section className={`play-page main-menu${choosingSkill ? ' choosing-skill' : ' journey-home'}`} aria-labelledby="play-title">
+            {choosingSkill ? <div className="menu-identity">
                 <img
                     src={`${import.meta.env.BASE_URL}knight.svg`}
                     alt=""
@@ -103,9 +94,21 @@ export function PlayMenu({
                     Knightfall
                 </h1>
                 <p id="play-subtitle" className="menu-subtitle">
-                    {choosingSkill ? 'How well do you know chess?' : subtitle}
+                    How well do you know chess?
                 </p>
-            </div>
+            </div> : <section className="menu-progression" aria-label="Overall player progression">
+                <div className="menu-player-tier"><span className="menu-tier-emblem" aria-hidden="true">♜</span>{progress.tier}</div>
+                <h1 id="play-title" ref={title} className="visually-hidden" tabIndex={-1} data-page-focus>Home</h1>
+                <div className="menu-xp-label"><span>Lv. {progress.level}</span>
+                    <span>{progress.atMaxLevel ? `${progress.totalXp.toLocaleString()} XP` : `${progress.earned.toLocaleString()} / ${progress.cost.toLocaleString()} XP`}</span></div>
+                <div className="menu-xp-track" role="progressbar" aria-label="Player level progress" aria-valuemin={0}
+                    aria-valuemax={progress.cost || 1} aria-valuenow={progress.cost ? progress.earned : 1}
+                    aria-valuetext={progress.atMaxLevel ? `Level 64, ${progress.totalXp.toLocaleString()} lifetime XP` : `${progress.earned} of ${progress.cost} XP toward level ${progress.level + 1}`}>
+                    <span style={{ width: `${progress.fraction * 100}%` }} />
+                </div>
+                {!levelingPersisted && <p className="menu-save-warning" role="status">Level progress could not be saved.</p>}
+            </section>}
+            {!choosingSkill && <PlayerJourney progress={progress} profile={profile} />}
             {skillSelection ? (
                 <div className="menu-skill-selection">
                     <SkillTierPicker
@@ -158,11 +161,7 @@ export function PlayMenu({
                         <button
                             className="menu-daily menu-action"
                             aria-label="Daily dungeon"
-                            aria-describedby={
-                                locked
-                                    ? 'menu-unlock-hint'
-                                    : 'menu-daily-summary'
-                            }
+                            aria-describedby="menu-daily-summary"
                             disabled={locked || !daily}
                             onClick={onDaily}>
                             <DoorOpen size={24} aria-hidden="true" />
@@ -233,11 +232,9 @@ export function PlayMenu({
                             className="menu-action menu-endless"
                             aria-label="Endless"
                             aria-describedby={
-                                locked
-                                    ? 'menu-unlock-hint'
-                                    : endlessMove !== undefined
-                                      ? 'menu-endless-status'
-                                      : undefined
+                                endlessMove !== undefined
+                                    ? 'menu-endless-status'
+                                    : undefined
                             }
                             disabled={locked}
                             onClick={onEndless}>
@@ -259,12 +256,6 @@ export function PlayMenu({
                             )}
                         </button>
                     </div>
-                    {locked && (
-                        <p id="menu-unlock-hint" className="menu-unlock-hint">
-                            Finish your first regular run to unlock more modes
-                            and navigation.
-                        </p>
-                    )}
                     {!available && (
                         <p className="empty-state" role="status">
                             No scored, playable floors.

@@ -9,6 +9,7 @@ import { initialUserProgression, loadUserProgression, PROGRESSION_STORAGE_KEY, s
 import { DAILY_STORAGE_KEY } from '../../game/daily';
 import { initialPlayerProfile, PLAYER_PROFILE_STORAGE_KEY, savePlayerProfile } from '../../game/playerProfile';
 import { RUN_HISTORY_STORAGE_KEY } from '../../game/runHistory';
+import { loadPlayerLeveling, totalPlayerXp } from '../../game/playerLeveling';
 import { PIECE_SETS, PIECE_SET_IDS } from '../../game/pieceSets';
 import { moveToUci } from './chess';
 import { startSession } from './session';
@@ -157,9 +158,12 @@ describe('Endless integration', () => {
         expect(credited.coins).toBe(103);
         expect(credited.finishedRuns).toBe(8);
         expect(credited.paidUpgrades).toEqual({});
+        expect(totalPlayerXp(loadPlayerLeveling()!)).toBe(805);
+        expect(screen.getByLabelText('Earned 5 XP')).toBeInTheDocument();
         view.unmount(); render(<App levels={[makeLevel()]} />);
         expect(screen.getByRole('heading', { name: 'Endless over' })).toBeInTheDocument();
         expect(loadUserProgression()).toEqual(credited);
+        expect(totalPlayerXp(loadPlayerLeveling()!)).toBe(805);
         fireEvent.click(screen.getByRole('link', { name: 'Profile' }));
         const highScores = screen.getByLabelText('High scores');
         expect(highScores.children).toHaveLength(4);

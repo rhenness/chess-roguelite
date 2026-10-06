@@ -42,6 +42,8 @@ import { createDeathNotice, createHealthNotice, installNotificationConsole } fro
 import { BOARD_SQUARES, formatMultiplier, type PayoutResult } from './game/multipliers';
 import { useBoardPayout } from './game/useBoardPayout';
 import { useUserProgression } from './game/useUserProgression';
+import { usePlayerLeveling } from './game/usePlayerLeveling';
+import { dungeonRunXp } from './game/playerLeveling';
 import { useRunHistory } from './game/useRunHistory';
 import { isPieceSetUnlocked } from './game/progression';
 import { runCoinReward } from './game/economy';
@@ -160,6 +162,7 @@ function RunSummary({ run, payout, restart, onShare, finishedAt }: {
             <Coins size={17} aria-hidden="true" /><strong>+{runCoinReward(run).toLocaleString()}</strong>
             <span>Coins earned</span>
         </span>
+        <span className="summary-xp" aria-label={`Earned ${dungeonRunXp(run)} XP`}>+{dungeonRunXp(run)} XP</span>
         <div className="summary-details" aria-label="Run details"><dl className="summary-stats">
             <div><dt>Floors completed</dt><dd>{run.levelsCompleted} / {run.levels.length}</dd></div>
             <div><dt>Total decisions</dt><dd>{run.decisionsMade}</dd></div>
@@ -307,6 +310,7 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
         ?? (run?.phase === 'finished' && payout.result && !payout.sequence && !showRules ? unlockNotice : null);
     const endlessActive = page === 'endless-game' && !showRules && !showProfile && !showLeaderboard && !upgradeSet;
     const endless = useEndlessSession(endlessActive, progression.claimCoins);
+    const leveling = usePlayerLeveling(run, endless.session);
     const openRunShare: ShareRunHandler = (result, trigger) => {
         shareReturnFocus.current = trigger;
         setSharedRun({ result: { ...result, personalBest: isSharePersonalBest(result, runHistory.history.runs, endless.records) },
@@ -378,10 +382,11 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
             const completed = restoreDailyRun(dungeon);
             if (!completed) continue;
             progression.recordRun(completed);
+            leveling.recordRun(completed);
             payout.claimDailyUpgrade(dungeon.attempt.setId, dungeon.attempt.payout, dungeon.day);
             runHistory.recordRun(completed, dungeon.attempt.payout, dungeon.attempt.finishedAt ?? Date.now());
         }
-    }, [daily.archive, progression.recordRun, payout.claimDailyUpgrade, runHistory.recordRun]);
+    }, [daily.archive, progression.recordRun, leveling.recordRun, payout.claimDailyUpgrade, runHistory.recordRun]);
 
     // The final score is known as soon as the actual payout starts, even if its animation is interrupted.
     const finishedPayout = payout.result ?? (payout.sequence?.preview ? null : payout.sequence?.outcome);
@@ -783,10 +788,10 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
     const activeDestination = page === 'game' ? 'play' : page;
     const hasRunItems = page === 'endless-game' ? !!endless.session && (itemCount(endless.session.items) > 0 || endless.session.activeEffects.length > 0)
         : !!run && (itemCount(run.items) > 0 || run.activeEffects.length > 0);
-    return <main className={`app-shell${page === 'play' ? ' main-menu-shell' : ''}${showNavigation ? ' has-navigation' : ''}${hasRunItems ? ' has-run-items' : ''}`}
+    return <main className={`app-shell${page === 'play' ? ` main-menu-shell${needsSkillSelection ? '' : ' journey-home-shell'}` : ''}${showNavigation ? ' has-navigation' : ''}${hasRunItems ? ' has-run-items' : ''}`}
         onPointerDownCapture={() => { keyboardOption.current = null; }}>
         <header className={`topbar${page === 'play' ? ' main-menu-topbar' : ''}`}>
-            {page !== 'play' && <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); openMenu(); }}>
+            {(page !== 'play' || !needsSkillSelection) && <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); openMenu(); }}>
                 <img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="38" height="42" /><strong>Knightfall</strong>
             </a>}
             {showNavigation && <PrimaryNavigation active={activeDestination} onNavigate={navigate} locked={firstPlayLocked} />}
@@ -842,6 +847,7 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
         </Modal>}
         <div className={`page-content${(page === 'game' && !showingResult) || (page === 'endless-game' && endless.session?.phase !== 'finished') ? ' game-content' : page === 'daily' || page === 'leaderboards' ? ' daily-content' : page === 'regular' || page === 'regular-items' || page === 'endless' || page === 'endless-items' ? ' regular-content' : page === 'profile' ? ' profile-content' : ''}`} ref={content}>
         {page === 'play' && <PlayMenu daily={daily.today} now={daily.now} available={!!pool.length} locked={firstPlayLocked}
+            progress={leveling.progress} profile={playerProfile} levelingPersisted={leveling.persisted}
             skillSelection={needsSkillSelection ? {
                 value: firstSkillTier, onChange: setFirstSkillTier,
                 available: !!firstSkillTier && !!filterSkillTierLevels(pool, firstSkillTier).length,

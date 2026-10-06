@@ -81,11 +81,16 @@ The daily card shows the countdown and coin bonus, or your final score and rank
 after finishing. The header **Home** link or logo returns here while pausing gameplay.
 The menu fits a phone screen and adapts to landscape. The three mode cards stay
 in the same order as runs are started, paused, and finished.
-The home page uses a torchlit chess-hall background, with a portrait companion
-for phones, ivory lettering, and green controls. Artwork and generation prompts
-are documented in [`docs/main-menu-artwork.md`](docs/main-menu-artwork.md).
-A random chess or dungeon quip appears beneath the title on each visit and stays
-the same until you leave the menu.
+After skill selection, Home shows a permanent isometric player journey, the
+current material tier, and an XP bar labeled with the player's current level.
+Scroll within the map to explore earlier or later tiers; faded edges contain the
+scenery, and a directional arrow returns to the pawn when it leaves view.
+Regular and Daily award 100 XP for reaching the end and partial credit on defeat.
+Both Endless modes bank 5 XP per two player decisions. Existing saves receive
+credit for historical play. Rules, the level curve, and save migration are in
+[`docs/leveling-system.md`](docs/leveling-system.md).
+First-time skill selection retains the chess-hall artwork documented in
+[`docs/main-menu-artwork.md`](docs/main-menu-artwork.md).
 
 Navigation has four destinations: **Home**, **Dungeon**, **Leaderboards**, and
 **Profile**. Phones and tablets use a bottom bar with safe-area padding; desktop

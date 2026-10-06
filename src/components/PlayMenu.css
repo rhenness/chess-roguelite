@@ -22,7 +22,6 @@
 .menu-action:hover:enabled { border-color: #b9b08b; background: #234b40; box-shadow: 0 6px 24px rgba(4, 12, 10, .3); }
 .menu-action:disabled { opacity: 1; cursor: not-allowed; color: #aeb8b0; background: #20342d; border-color: #47594d; }
 .menu-action:disabled .menu-daily-meta, .menu-action:disabled .daily-reward-badge { color: #98a69a; }
-.menu-unlock-hint { margin: 0; max-width: 36ch; color: #e9e3d4; font-size: 12px; line-height: 1.5; text-align: center; }
 .menu-action > svg { flex-shrink: 0; }
 .menu-action > svg:last-child { margin-left: auto; }
 .menu-action strong { font-size: 18px; font-weight: 650; }
@@ -71,3 +70,48 @@
     .menu-daily { min-height: 68px; }
     .menu-action { padding: 12px 16px; }
 }
+
+.journey-home-shell::before { background: radial-gradient(ellipse at 67% 43%, #25433a66, transparent 49%), radial-gradient(ellipse at 15% 80%, #1b3b3155, transparent 40%), #0c211d; }
+.journey-home-shell .brand { color: #f3ecd8; }
+.journey-home-shell .brand strong { display: inline; }
+.journey-home-shell .topbar { border-bottom: 1px solid #a5bda11a; }
+.play-page.main-menu.journey-home { display: grid; grid-template-columns: 310px minmax(0, 720px); grid-template-areas: 'identity map' 'actions map'; grid-template-rows: max-content max-content; align-content: center; align-items: center; column-gap: clamp(32px, 6vw, 90px); row-gap: 38px; width: min(1130px, 100%); max-width: 1130px; min-height: 590px; padding: 30px 10px; }
+.menu-progression { grid-area: identity; align-self: end; width: 100%; }
+.journey-home .menu-actions { grid-area: actions; align-self: start; }
+.journey-home .player-journey { grid-area: map; height: clamp(460px, 68dvh, 680px); width: 100%; }
+.menu-player-tier { display: flex; align-items: center; gap: 8px; color: #b7c8bd; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.menu-tier-emblem { display: grid; place-items: center; width: 22px; height: 25px; background: linear-gradient(140deg, #d0e5df, #83a8a4); color: #193a32; clip-path: polygon(10% 0, 90% 0, 100% 65%, 50% 100%, 0 65%); font: 700 13px Georgia, serif; }
+.menu-progression .menu-player-tier { margin-bottom: 14px; }
+.menu-xp-label { display: flex; justify-content: space-between; gap: 12px; color: #d9e2d7; font-size: 12px; font-variant-numeric: tabular-nums; }
+.menu-xp-label > span:last-child { color: #a7b9ab; }
+.menu-xp-track { height: 5px; border-radius: 4px; margin-top: 10px; background: #78908032; overflow: hidden; }
+.menu-xp-track > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #b99c62, #ebd296); transition: width 450ms ease; }
+.menu-save-warning { margin-top: 8px; color: #efd38c; font-size: 11px; }
+.journey-home > .empty-state { grid-column: 1; }
+.journey-home .menu-action { min-height: 70px; padding: 16px 18px; border-radius: 9px; }
+.journey-home .menu-action strong { font-size: 16px; }
+.journey-home .menu-daily { min-height: 80px; }
+.journey-home .menu-daily-content { gap: 7px; }
+.journey-home .menu-daily-meta { font-size: 11px; }
+.summary-xp { color: #c8df9f; font-size: 13px; font-weight: 650; }
+@media (max-width: 900px) {
+    .play-page.main-menu.journey-home { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'identity' 'map' 'actions'; grid-template-rows: max-content minmax(180px, 1fr) max-content; align-content: stretch; align-items: stretch; max-width: 440px; min-height: 565px; gap: 10px; padding: 16px 6px 20px; }
+    .journey-home .player-journey { height: 100%; min-height: 0; max-height: 390px; align-self: center; }
+    .menu-player-tier { font-size: 10px; }
+    .menu-tier-emblem { width: 17px; height: 20px; font-size: 11px; }
+    .menu-progression .menu-player-tier { margin-bottom: 10px; }
+    .menu-xp-label { font-size: 11px; }
+    .menu-xp-track { height: 4px; margin-top: 7px; }
+    .journey-home .menu-action { min-height: 58px; padding: 13px 16px; border-radius: 7px; }
+    .journey-home .menu-daily { min-height: 66px; }
+    .journey-home .menu-action strong { font-size: 15px; }
+    .journey-home .menu-daily-meta { font-size: 10px; }
+    .journey-home .menu-daily-content { gap: 5px; }
+}
+@media (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
+    .play-page.main-menu.journey-home { grid-template-columns: 240px minmax(0, 1fr); grid-template-areas: 'identity map' 'actions map'; grid-template-rows: max-content max-content; min-height: 266px; max-width: 780px; align-content: center; padding: 8px 10px; gap: 10px 28px; }
+    .journey-home .player-journey { height: min(250px, calc(100dvh - 140px)); }
+    .journey-home .menu-action { min-height: 44px; padding: 9px 12px; }
+    .journey-home .menu-daily { min-height: 54px; }
+}
+@media (prefers-reduced-motion: reduce) { .menu-xp-track > span { transition: none; } }

@@ -7,6 +7,7 @@ import { RunItems } from '../../components/RunItems';
 import { PIECE_RENDERERS } from '../../components/pieces/pieceRenderers';
 import { BoardNotification } from '../../components/BoardNotification';
 import { QUALITY_LABELS } from '../../game/run';
+import { endlessMoveXp } from '../../game/playerLeveling';
 import { ShareRunButton } from '../../components/ShareRunButton';
 import { shareEndlessRun, type ShareRunHandler } from '../../game/shareRun';
 import type { PageLocation } from '../../game/usePageNavigation';
@@ -77,6 +78,7 @@ export function EndlessGame({ controller, active, navigate, onShare }: {
         <span className="summary-score-label">{session.mode === 'hardcore' ? 'Hardcore streak' : 'Standard score'}</span>
         <strong className="summary-score">{session.score.toLocaleString()}</strong>
         <span className="coin-balance summary-coins" aria-label={`Earned ${coinReward(session)} coins`}><Coins size={17} aria-hidden="true" />+{coinReward(session)}</span>
+        <span className="summary-xp" aria-label={`Earned ${endlessMoveXp(session.moves)} XP`}>+{endlessMoveXp(session.moves)} XP</span>
         <dl className="summary-stats">
             <div><dt>Longest streak</dt><dd>{session.longestStreak}</dd></div>
             <div><dt>Moves played</dt><dd>{session.moves}</dd></div>
