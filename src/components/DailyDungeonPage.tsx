@@ -26,7 +26,10 @@ export function DailyDungeonPage({ dungeon, today, now, progression, defaultStar
     const closed = now >= dungeon.expiresAt;
     return <section className="daily-page" aria-labelledby="daily-page-title">
         <header className="page-heading">
-            <h1 id="daily-page-title" tabIndex={-1} data-page-focus>Daily dungeon</h1>
+            <div className="daily-page-title">
+                <h1 id="daily-page-title" tabIndex={-1} data-page-focus>Daily dungeon</h1>
+                {attempt?.status === 'finished' && <SkillTierBadge skillTier={attempt.skillTier ?? 'intermediate'} />}
+            </div>
             <div className="daily-page-meta"><span>{formatDailyDate(dungeon.day)}</span>
                 <span className="daily-countdown" aria-label="Time until daily dungeon resets"><Clock3 size={15} aria-hidden="true" />{formatCountdown(dungeon.expiresAt, now)}</span></div>
         </header>
@@ -43,7 +46,10 @@ export function DailyDungeonPage({ dungeon, today, now, progression, defaultStar
                         progression={progression} defaultStartingHealth={defaultStartingHealth} />
                 </> : attempt?.status === 'active' && restored && !closed ? <>
                     <div className="daily-run-card">
-                    <div className="daily-attempt-status"><Flag size={24} aria-hidden="true" /><h2>Dungeon in progress</h2><span>{PIECE_SETS[attempt.setId].name}</span><SkillTierBadge skillTier={attempt.skillTier ?? 'intermediate'} /></div>
+                    <div className="daily-attempt-status">
+                        <Flag size={24} aria-hidden="true" /><h2>Dungeon in progress</h2>
+                        <div className="daily-attempt-meta"><span>{PIECE_SETS[attempt.setId].name}</span><SkillTierBadge skillTier={attempt.skillTier ?? 'intermediate'} /></div>
+                    </div>
                     <dl className="daily-progress-stats"><div><dt>Floor</dt><dd>{restored.levelIndex + 1} / {restored.levels.length}</dd></div><div><dt>Health</dt><dd><Heart size={15} aria-hidden="true" />{restored.health}</dd></div><div><dt>Score</dt><dd>{restored.score.toLocaleString()}</dd></div></dl>
                     <div className="daily-run-progress" role="progressbar" aria-label="Dungeon progress" aria-valuemin={1} aria-valuemax={restored.levels.length} aria-valuenow={restored.levelIndex + 1}>
                         {restored.levels.map((level, index) => <span key={level.id} className={index < restored.levelIndex ? 'past' : index === restored.levelIndex ? 'current' : 'future'} />)}

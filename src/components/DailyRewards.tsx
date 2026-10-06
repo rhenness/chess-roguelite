@@ -8,14 +8,12 @@ export function DailyRewardReceipt({ run, payout }: { run: RunState; payout: Pay
     const normal = normalRunCoinReward(run);
     const total = runCoinReward(run);
     return <div className="daily-reward-receipt">
-        <div className="daily-earned-rewards">
-            <span className="coin-balance earned-coins" aria-label={`Earned ${total} coins`}><Coins size={19} aria-hidden="true" /><strong>+{total.toLocaleString()}</strong></span>
-            {payout.upgrade && <span className="earned-upgrade" aria-label={`Completion upgrade: +0.1x on ${payout.upgrade.square.toUpperCase()}`}><Sparkles size={16} aria-hidden="true" />+0.1x on {payout.upgrade.square.toUpperCase()}</span>}
-        </div>
         <dl className="daily-earnings-breakdown" aria-label="Earnings breakdown">
             <div><dt>Normal earnings</dt><dd>{normal.toLocaleString()} coins</dd></div>
             <div><dt>Daily bonus</dt><dd>+{(total - normal).toLocaleString()} coins</dd></div>
+            <div><dt>Total coins</dt><dd className="coin-balance" aria-label={`Earned ${total} coins`}><Coins size={16} aria-hidden="true" /><strong>+{total.toLocaleString()}</strong></dd></div>
         </dl>
+        {payout.upgrade && <div className="daily-earned-rewards"><span className="earned-upgrade" aria-label={`Completion upgrade: +0.1x on ${payout.upgrade.square.toUpperCase()}`}><Sparkles size={16} aria-hidden="true" />+0.1x on {payout.upgrade.square.toUpperCase()}</span></div>}
     </div>;
 }
 

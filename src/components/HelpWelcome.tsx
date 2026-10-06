@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import './HelpWelcome.css';
 
 export const HELP_WELCOME_STORAGE_KEY = 'knightfall.help-welcome.dismissed.v1';
@@ -40,12 +41,17 @@ export function HelpWelcome({ home, blocked, anchor }: {
             const width = bubble.getBoundingClientRect().width;
             const center = bounds.left + bounds.width / 2;
             const left = Math.max(16, Math.min(center - width / 2, window.innerWidth - width - 16));
-            bubble.style.setProperty('--help-tip-left', `${left - bounds.left}px`);
+            bubble.style.setProperty('--help-tip-left', `${left}px`);
+            bubble.style.setProperty('--help-tip-top', `${bounds.bottom + 12}px`);
             bubble.style.setProperty('--help-tip-arrow', `${center - left}px`);
         };
         position();
         window.addEventListener('resize', position);
-        return () => window.removeEventListener('resize', position);
+        window.addEventListener('scroll', position, true);
+        return () => {
+            window.removeEventListener('resize', position);
+            window.removeEventListener('scroll', position, true);
+        };
     }, [visible, anchor]);
 
     useEffect(() => {
@@ -63,10 +69,10 @@ export function HelpWelcome({ home, blocked, anchor }: {
     }, [visible, anchor, dismiss]);
 
     if (!visible) return null;
-    return <aside ref={tip} className="help-welcome" aria-labelledby="help-welcome-title">
+    return createPortal(<aside ref={tip} className="help-welcome" aria-labelledby="help-welcome-title">
         <p role="status"><strong id="help-welcome-title">Need help?</strong> This Help menu explains whatever page you’re viewing.</p>
         <div className="help-welcome-actions">
             <button className="primary-small" onClick={() => dismiss(true)}>OK</button>
         </div>
-    </aside>;
+    </aside>, document.body);
 }

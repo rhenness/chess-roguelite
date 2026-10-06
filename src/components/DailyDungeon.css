@@ -10,6 +10,7 @@
 .daily-content { display: flex; flex-direction: column; overflow: hidden; }
 .daily-page { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; max-width: 860px; padding-bottom: 0; }
 .daily-page .page-heading { flex-shrink: 0; flex-direction: column; align-items: stretch; gap: 8px; margin-bottom: 16px; }
+.daily-page-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .daily-page-meta { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 16px; color: #58645d; font-size: 12px; }
 .page-content h1 { margin: 0; color: #234b40; font: 600 32px/1.2 Georgia, serif; }
 .page-content [data-page-focus]:focus { outline: none; }
@@ -41,6 +42,7 @@
 .daily-progress-stats dd { display: flex; align-items: center; gap: 5px; margin: 0; font-size: 20px; font-weight: 650; }
 .daily-storage-warning { padding-top: 14px; color: #8b591c; font-size: 12px; line-height: 1.5; }
 .daily-run-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; height: 28px; margin-bottom: 10px; font-size: 12px; }
+.daily-run-heading { display: flex; align-items: center; gap: 6px; height: 100%; }
 .daily-run-banner { display: inline-flex; align-items: center; gap: 7px; height: 100%; padding: 0 16px; color: #f0cc69; background: linear-gradient(110deg, #234b40, #183a31); clip-path: polygon(0 0, 100% 0, calc(100% - 7px) 50%, 100% 100%, 0 100%, 7px 50%); font-size: 11px; font-weight: 750; letter-spacing: 0.12em; white-space: nowrap; }
 .daily-run-banner svg { flex-shrink: 0; }
 .daily-run-label time { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: #8b591c; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -67,7 +69,6 @@
 .daily-reward-lines dt { color: #58645d; }
 .daily-reward-lines dd { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0; text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
 .daily-earned-rewards { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px 24px; margin: 16px 0; }
-.earned-coins { font-size: 24px; }
 .earned-upgrade { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #58645d; }
 .daily-reward-condition { color: #58645d; font-size: 12px; line-height: 1.6; }
 .daily-results-heading { display: flex; align-items: center; gap: 10px; color: #234b40; }
@@ -77,11 +78,10 @@
 .daily-result-score > span { color: #58645d; font-size: 12px; }
 .daily-result-score > strong { color: #234b40; font: 700 48px/1 Georgia, serif; }
 .daily-result-placement { display: flex; align-items: center; justify-content: center; gap: 8px; color: #976f20; font-size: 18px; }
-.daily-score-calculation { margin-top: 12px; color: #58645d; }
-.daily-result-stats { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 18px 0 0; font-size: 12px; }
-.daily-result-stats > div { display: flex; gap: 8px; }
-.daily-result-stats dt { color: #58645d; }
-.daily-result-stats dd { margin: 0; font-weight: 650; }
+.daily-result-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 18px 0 0; text-align: center; }
+.daily-result-stats dt { display: flex; flex-direction: column; align-items: center; gap: 8px; color: #648276; }
+.daily-result-stats dt span { color: #58645d; font-size: 11px; }
+.daily-result-stats dd { margin: 8px 0 0; color: #234b40; font: 600 25px/1.2 Georgia, serif; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .daily-results .quality-counts { width: 100%; text-align: center; }
 .daily-results .quality-counts strong { color: #976f20; }
 .daily-results .quality-counts span { color: #58645d; }
@@ -91,7 +91,7 @@
     .game-content { display: flex; flex-direction: column; }
     .daily-board-column { --daily-banner-height: 30px; }
     .daily-run-label { height: 24px; margin-bottom: 6px; font-size: 10px; }
-    .daily-run-banner { gap: 5px; padding-inline: 12px; font-size: 10px; letter-spacing: 0.08em; }
+    .daily-run-banner { gap: 5px; padding-inline: 10px; font-size: 9px; letter-spacing: 0.08em; }
 }
 @media (max-width: 560px) {
     .brand strong { display: none; }

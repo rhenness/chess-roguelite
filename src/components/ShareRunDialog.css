@@ -77,5 +77,10 @@
 .share-run-actions button svg, .share-run-button svg { display: block; flex-shrink: 0; }
 .share-run-status { margin-top: 12px; color: #58645d; font-size: 13px; text-align: center; }
 .share-run-copy { display: block; width: 100%; min-height: 180px; margin-top: 12px; padding: 12px; border: 1px solid #d9ddd7; border-radius: 5px; color: #234b40; background: #fff; font: 13px/1.5 inherit; resize: vertical; }
-.daily-results > .share-run-button { justify-content: center; width: 100%; margin-top: 16px; color: #234b40; }
+.share-profile-dialog h2 { margin-bottom: 18px; }
+.share-profile-dialog .share-run-actions { margin-top: 16px; }
+.profile-share-card .profile-highlights { flex: 1; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: center; gap: 32px 24px; padding: 28px; }
+.profile-share-card .profile-highlights dd { margin: 10px 0 6px; font-size: 36px; }
+.profile-share-card .profile-highlights > div > span { font-size: 13px; }
+.profile-share-card .profile-highlights dt svg { width: 26px; height: 26px; }
 @media (max-width: 560px) { .modal.share-run-modal { width: calc(100% - 24px); max-height: calc(100dvh - 24px); border-radius: 10px; padding: 24px 16px 16px; } }

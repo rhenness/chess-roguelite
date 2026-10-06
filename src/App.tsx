@@ -30,6 +30,8 @@ import { ProfileEditor } from './components/ProfileEditor';
 import { ProfileOverview } from './components/ProfileOverview';
 import { ShareRunButton } from './components/ShareRunButton';
 import { ShareRunDialog } from './components/ShareRunDialog';
+import { ShareProfileDialog } from './components/ShareProfileDialog';
+import { profileHighScores, type ProfileHighScore } from './game/shareProfile';
 import { isSharePersonalBest, shareRegularRun, type ShareRunData, type ShareRunHandler } from './game/shareRun';
 import { DailyLeaderboard } from './components/DailyLeaderboard';
 import { dailyLeaderboard } from './game/leaderboard';
@@ -216,6 +218,8 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
     const regularRun = useRef<{ run: RunState; set: PieceSetId } | null>(savedRegular);
     const [sharedRun, setSharedRun] = useState<{ result: ShareRunData; profile: PlayerProfile } | null>(null);
     const shareReturnFocus = useRef<HTMLButtonElement | null>(null);
+    const [sharedProfile, setSharedProfile] = useState<{ profile: PlayerProfile; highScores: ProfileHighScore[] } | null>(null);
+    const profileShareReturnFocus = useRef<HTMLButtonElement | null>(null);
     const [showProfile, setShowProfile] = useState(false);
     const [editingProfile, setEditingProfile] = useState(false);
     const [profileSaveMessage, setProfileSaveMessage] = useState<string | null>(null);
@@ -308,7 +312,11 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
         setSharedRun({ result: { ...result, personalBest: isSharePersonalBest(result, runHistory.history.runs, endless.records) },
             profile: { ...playerProfile } });
     };
-    useEffect(() => { setSharedRun(null); }, [location.page, location.day]);
+    const openProfileShare = (trigger: HTMLButtonElement) => {
+        profileShareReturnFocus.current = trigger;
+        setSharedProfile({ profile: { ...playerProfile }, highScores: profileHighScores(runHistory.history, endless.records) });
+    };
+    useEffect(() => { setSharedRun(null); setSharedProfile(null); }, [location.page, location.day]);
     const endlessPage = page === 'endless' || page === 'endless-items' || page === 'endless-game';
 
     const resetDailyDungeon = useCallback(() => {
@@ -778,7 +786,7 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
     return <main className={`app-shell${page === 'play' ? ' main-menu-shell' : ''}${showNavigation ? ' has-navigation' : ''}${hasRunItems ? ' has-run-items' : ''}`}
         onPointerDownCapture={() => { keyboardOption.current = null; }}>
         <header className={`topbar${page === 'play' ? ' main-menu-topbar' : ''}`}>
-            {page !== 'play' && (page !== 'profile' || editingProfile) && <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); openMenu(); }}>
+            {page !== 'play' && <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); openMenu(); }}>
                 <img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="38" height="42" /><strong>Knightfall</strong>
             </a>}
             {showNavigation && <PrimaryNavigation active={activeDestination} onNavigate={navigate} locked={firstPlayLocked} />}
@@ -787,7 +795,7 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
                     aria-label="Daily leaderboard" title="Daily leaderboard" onClick={openLeaderboard}><Trophy size={20} aria-hidden="true" /></button>}
                 <div className="help-anchor">
                     <button ref={helpButton} disabled={!!payout.sequence} className="text-button help-button" aria-label="Help for this page" aria-expanded={showRules} aria-controls="game-rules" onClick={() => setShowRules(value => !value)}>?</button>
-                    <HelpWelcome home={page === 'play'} blocked={needsSkillSelection || showRules || showProfile || showLeaderboard || !!sharedRun || !!upgradeSet || !!payout.sequence} anchor={helpButton} />
+                    <HelpWelcome home={page === 'play'} blocked={needsSkillSelection || showRules || showProfile || showLeaderboard || !!sharedRun || !!sharedProfile || !!upgradeSet || !!payout.sequence} anchor={helpButton} />
                 </div>
                 <span className="coin-balance" aria-label={`Coins: ${progression.profile.coins}`} title={`${progression.profile.coins.toLocaleString()} coins`}>
                     <Coins size={20} aria-hidden="true" />
@@ -812,7 +820,10 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
         {showProfile && <Modal className={`profile-modal${editingProfile ? '' : ' profile-overview-modal'}`} titleId="profile-title" onClose={closeProfile} returnFocus={profileReturnFocus}>
             {editingProfile ? <ProfileEditor profile={playerProfile} onSave={updateProfile} onCancel={() => setEditingProfile(false)} />
                 : <ProfileOverview profile={playerProfile} history={runHistory.history} endlessRecords={endless.records}
-                    onEdit={() => setEditingProfile(true)} onPlay={() => { setShowProfile(false); openMenu(); }} />}
+                    onEdit={() => setEditingProfile(true)} onPlay={() => { setShowProfile(false); openMenu(); }} onShare={openProfileShare} />}
+        </Modal>}
+        {sharedProfile && <Modal className="share-run-modal" titleId="share-profile-title" onClose={() => setSharedProfile(null)} returnFocus={profileShareReturnFocus}>
+            <ShareProfileDialog profile={sharedProfile.profile} highScores={sharedProfile.highScores} />
         </Modal>}
         {showRules && !payout.sequence && !showProfile && <Modal className="rules-panel" titleId="game-rules" onClose={() => setShowRules(false)} returnFocus={helpButton}>
             <PageHelp key={`${page}/${showingResult}/${endless.session?.mode}/${endless.session?.phase === 'finished'}`} page={page}
@@ -886,12 +897,13 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
         {page === 'profile' && <section className="profile-page" aria-labelledby="profile-page-title">
             {editingProfile ? <ProfileEditor asPage profile={playerProfile} onSave={updateProfile} onCancel={() => setEditingProfile(false)} />
                 : <ProfileOverview asPage profile={playerProfile} history={runHistory.history} endlessRecords={endless.records}
-                    onEdit={() => setEditingProfile(true)} onPlay={openMenu} />}
+                    onEdit={() => setEditingProfile(true)} onPlay={openMenu} onShare={openProfileShare} />}
         </section>}
         {page === 'game' && (!showingResult || run?.daily) && <section id="game" className={`game-layout${tutorialStep ? ` tutorial-focus-${tutorialStep}` : ''}`} aria-label={run?.daily ? 'Daily game' : 'Regular game'} tabIndex={-1} data-page-focus>
             <div className={`board-column${run?.daily ? ' daily-board-column' : ''}`}>
-                {run && <div className="run-skill-level"><SkillTierBadge skillTier={run.skillTier} /></div>}
-                {run?.daily && <div className="daily-run-label"><span className="daily-run-banner"><DoorOpen size={14} aria-hidden="true" />DAILY DUNGEON</span>
+                {run && !run.daily && <div className="run-skill-level"><SkillTierBadge skillTier={run.skillTier} /></div>}
+                {run?.daily && <div className="daily-run-label"><div className="daily-run-heading"><span className="daily-run-banner"><DoorOpen size={14} aria-hidden="true" />DAILY DUNGEON</span>
+                    <SkillTierBadge skillTier={run.skillTier} /></div>
                     <time aria-label="Time until dungeon resets"><Clock3 size={14} aria-hidden="true" />{formatCountdown(run.daily.expiresAt, daily.now)}</time></div>}
                 <div className="board-wrap">
                     {fen && level ? <Chessboard options={boardOptions} /> : <div className="empty-board">No playable floors</div>}

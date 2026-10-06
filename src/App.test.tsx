@@ -849,7 +849,7 @@ describe('welcome help tip', () => {
         render(<App levels={[makeLevel()]} />);
         const tip = screen.getByRole('complementary', { name: 'Need help?' });
         expect(tip).toHaveTextContent('This Help menu explains whatever page you’re viewing.');
-        expect(tip.parentElement).toContainElement(screen.getByRole('button', { name: 'Help for this page' }));
+        expect(tip.parentElement).toBe(document.body);
         expect(screen.getByRole('heading', { name: 'Knightfall', level: 1 })).toHaveFocus();
         expect(within(tip).getByRole('button', { name: 'OK' })).toBeVisible();
         expect(within(tip).getAllByRole('button')).toHaveLength(1);
@@ -1245,6 +1245,31 @@ describe('main navigation', () => {
 });
 
 describe('player profile interface', () => {
+    it.each([false, true])('shares the profile from the page or an in-game overlay (in-game: %s) and restores focus on close', async inGame => {
+        vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+        const view = inGame ? renderGame(<App levels={[makeLevel()]} />) : render(<App levels={[makeLevel()]} />);
+        try {
+            fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
+            const trigger = screen.getByRole('button', { name: 'Share profile' });
+            fireEvent.click(trigger);
+            const dialog = screen.getByRole('dialog', { name: 'Share your profile' });
+            expect(within(dialog).getByText('Massive Pawn')).toBeInTheDocument();
+            expect(within(dialog).getByLabelText('High scores').children).toHaveLength(4);
+            expect(within(dialog).queryByRole('button', { name: 'Edit profile' })).not.toBeInTheDocument();
+            await act(async () => {});
+            fireEvent(dialog, new Event('cancel', { bubbles: false, cancelable: true }));
+            expect(screen.queryByRole('dialog', { name: 'Share your profile' })).not.toBeInTheDocument();
+            expect(trigger).toHaveFocus();
+            if (inGame) {
+                const profile = screen.getByRole('dialog', { name: 'Your profile' });
+                fireEvent.click(within(profile).getByRole('button', { name: 'Close dialog' }));
+                expect(screen.getByTestId('board')).toBeInTheDocument();
+            } else {
+                expect(window.location.hash).toBe('#/profile');
+            }
+        } finally { view.unmount(); vi.unstubAllGlobals(); }
+    });
+
     it('opens the profile page from the main menu and returns through Home', () => {
         render(<App levels={[makeLevel()]} />);
         const avatar = screen.getByRole('button', { name: 'View profile' });

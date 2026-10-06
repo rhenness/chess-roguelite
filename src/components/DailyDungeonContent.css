@@ -30,6 +30,7 @@
 .daily-run-card { padding: 20px; border: 1px solid #d0d7cb; border-radius: 14px; background: #fffdf8; }
 .daily-run-card .daily-attempt-status { padding: 0 0 18px; color: #234b40; }
 .daily-run-card .daily-attempt-status h2 { font: 650 20px/1.3 ui-sans-serif, system-ui, sans-serif; }
+.daily-attempt-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: #58645d; font-size: 12px; }
 .daily-run-card .daily-progress-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
 .daily-run-card .daily-progress-stats > div { gap: 6px; padding: 12px 8px; border-radius: 9px; background: #edf1e8; }
 .daily-run-card .daily-progress-stats dt { font-size: 11px; }
@@ -44,14 +45,17 @@
 .daily-page .daily-result-score > span { color: #e1e8dc; }
 .daily-page .daily-result-score > strong { color: #f2d693; font-family: ui-sans-serif, system-ui, sans-serif; font-variant-numeric: tabular-nums; }
 .daily-page .daily-result-placement { padding: 10px 12px; border-radius: 9px; color: #f2d693; background: rgba(233, 227, 212, .09); }
+.daily-result-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; }
+.daily-page .daily-result-actions .share-run-button { justify-content: center; min-height: 44px; padding: 10px 14px; border: 1px solid rgba(233, 227, 212, .3); border-radius: 9px; color: #fff8e6; }
+.daily-page .daily-result-actions .share-run-button:hover { background: rgba(233, 227, 212, .12); }
+.daily-result-actions .share-run-button svg { display: block; flex-shrink: 0; }
 .daily-page .daily-earned-rewards { gap: 10px 20px; margin: 16px 0 12px; }
-.daily-earnings-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.daily-earnings-breakdown { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 16px 0 0; }
 .daily-earnings-breakdown > div { display: grid; gap: 5px; padding: 12px; border-radius: 9px; background: #e9ede3; }
 .daily-earnings-breakdown dt { color: #58645d; font-size: 11px; }
 .daily-earnings-breakdown dd { margin: 0; color: #234b40; font-size: 15px; font-weight: 650; }
 .daily-run-details { margin-top: 16px; padding-top: 14px; border-top: 1px solid #d0d7cf; }
-.daily-run-details .daily-score-calculation { margin: 0; font-size: 12px; text-align: center; }
-.daily-run-details .daily-result-stats { margin: 14px 0; }
+.daily-run-details .daily-result-stats { margin: 0 0 14px; }
 .daily-results .quality-counts.daily-move-counts { gap: 6px; margin: 0; }
 .daily-move-counts > div { min-width: 0; padding: 10px 3px; border-radius: 9px; background: #e9ede3; }
 .daily-results .daily-move-counts strong { font-size: 20px; }
