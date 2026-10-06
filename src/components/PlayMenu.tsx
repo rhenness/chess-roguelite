@@ -15,6 +15,7 @@ import { SkillTierPicker } from './SkillTierPicker';
 import type { PlayerProfile } from '../game/playerProfile';
 import type { playerLevelProgress } from '../game/playerLeveling';
 import { PlayerJourney } from './PlayerJourney';
+import { JOURNEY_PALETTES } from './playerJourneyArt';
 import './DailyDungeon.css';
 import './PlayMenu.css';
 
@@ -81,6 +82,7 @@ export function PlayMenu({
     }, [choosingSkill]);
     const status = daily?.attempt?.status;
     const score = daily?.attempt?.payout?.finalScore;
+    const tierPalette = JOURNEY_PALETTES[progress.tierIndex]!;
     return (
         <section className={`play-page main-menu${choosingSkill ? ' choosing-skill' : ' journey-home'}`} aria-labelledby="play-title">
             {choosingSkill ? <div className="menu-identity">
@@ -97,14 +99,24 @@ export function PlayMenu({
                     How well do you know chess?
                 </p>
             </div> : <section className="menu-progression" aria-label="Overall player progression">
-                <div className="menu-player-tier"><span className="menu-tier-emblem" aria-hidden="true">♜</span>{progress.tier}</div>
                 <h1 id="play-title" ref={title} className="visually-hidden" tabIndex={-1} data-page-focus>Home</h1>
-                <div className="menu-xp-label"><span>Lv. {progress.level}</span>
-                    <span>{progress.atMaxLevel ? `${progress.totalXp.toLocaleString()} XP` : `${progress.earned.toLocaleString()} / ${progress.cost.toLocaleString()} XP`}</span></div>
+                <div className="menu-player-tier">
+                    <span className="menu-tier-emblem" aria-hidden="true" style={{
+                        backgroundImage: `linear-gradient(140deg, ${tierPalette[0]}, ${tierPalette[1]})`,
+                    }}>♜</span>
+                    {progress.tier}
+                </div>
+                <div className="menu-progression-heading">
+                    <span className="menu-player-level"><span className="menu-mobile-tier">{progress.tier} · </span>Lv. {progress.level}</span>
+                    <span className="menu-player-xp">{progress.atMaxLevel ? `${progress.totalXp.toLocaleString()} XP` : `${progress.earned.toLocaleString()} / ${progress.cost.toLocaleString()} XP`}</span>
+                </div>
                 <div className="menu-xp-track" role="progressbar" aria-label="Player level progress" aria-valuemin={0}
                     aria-valuemax={progress.cost || 1} aria-valuenow={progress.cost ? progress.earned : 1}
                     aria-valuetext={progress.atMaxLevel ? `Level 64, ${progress.totalXp.toLocaleString()} lifetime XP` : `${progress.earned} of ${progress.cost} XP toward level ${progress.level + 1}`}>
-                    <span style={{ width: `${progress.fraction * 100}%` }} />
+                    <span style={{
+                        width: `${progress.fraction * 100}%`,
+                        backgroundImage: `linear-gradient(90deg, ${tierPalette[1]}, ${tierPalette[0]})`,
+                    }} />
                 </div>
                 {!levelingPersisted && <p className="menu-save-warning" role="status">Level progress could not be saved.</p>}
             </section>}

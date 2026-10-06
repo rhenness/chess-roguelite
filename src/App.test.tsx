@@ -1513,7 +1513,9 @@ describe('page navigation', () => {
         expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
         expect(screen.getByLabelText('Coins: 0')).toBeInTheDocument();
         const home = screen.getByRole('region', { name: 'Overall player progression' });
-        expect(home.querySelector('.menu-xp-label > span')).toHaveTextContent('Lv. 9');
+        expect(within(home).getByText('Lv. 9')).toHaveTextContent('Silver · Lv. 9');
+        expect(within(home).getByText('100 / 200 XP')).toBeInTheDocument();
+        expect(within(home).getByRole('progressbar')).toHaveAttribute('aria-valuetext', expect.stringContaining('XP toward level'));
         expect(screen.getByRole('heading', { name: 'Home', level: 1 })).toHaveClass('visually-hidden');
         expect(document.querySelector('.header-player-level, .journey-controls, .journey-return')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Regular run' }));
