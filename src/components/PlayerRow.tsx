@@ -12,7 +12,8 @@ export function PlayerRow({ profile, rank, score, status, label, showRank = true
         style={{ backgroundImage: `url("${profileAsset('banners', profile.bannerId)}")` }}>
         {showRank && <span className="profile-preview-rank" aria-hidden="true">{rank ? `#${rank}` : '-'}</span>}
         <PlayerAvatar profile={profile} />
-        <strong className="profile-preview-name">{profile.displayName}{skillTier && <SkillTierBadge skillTier={skillTier} />}</strong>
+        <strong className="profile-preview-name">{profile.displayName}</strong>
+        {skillTier && <span className="profile-preview-skill"><SkillTierBadge skillTier={skillTier} /></span>}
         {(score !== undefined || status !== undefined) && <span className="profile-preview-score">{score === undefined ? status : score.toLocaleString()}</span>}
         {actions}
     </div>;

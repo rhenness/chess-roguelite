@@ -1,6 +1,6 @@
 import { dailyRandom } from './daily';
 import { AVATARS, AVATAR_COLORS, BANNERS, type PlayerProfile } from './playerProfile';
-import { SKILL_TIERS, type SkillTier } from '../config/difficulty';
+import { SKILL_TIERS, SKILL_TIER_CONFIG, type SkillTier } from '../config/difficulty';
 
 export interface LeaderboardEntry {
     id: string;
@@ -13,6 +13,18 @@ export interface LeaderboardEntry {
 const MOCK_NAMES = ['Quiet Gambit', 'Open File', 'Castle Keeper', 'Fork Finder', 'Endgame Study', 'Tempo',
     'Passed Pawn', 'Royal Guard', 'Check Again', 'The Outpost', 'Counterplay', 'Pin & Win',
     'Last Rank', 'Silver Rook', 'Square One', 'Minor Threat', 'Double Check', 'Center Control'];
+
+function mockScore(skillTier: SkillTier, random: () => number): number {
+    const { floorCount, rules } = SKILL_TIER_CONFIG[skillTier].run;
+    // Bundled floors have four decisions. Short attempts are more common than full clears.
+    const decisions = 1 + Math.floor(random() ** 1.6 * floorCount * 4);
+    const bestMoves = Math.round(decisions * (0.65 + random() * 0.3));
+    const baseScore = bestMoves * rules.points.best + (decisions - bestMoves) * rules.points.good;
+    // Most payout squares are unboosted; larger starting bonuses are less common.
+    const landing = random();
+    const multiplier = landing < 0.7 ? 10 : landing < 0.9 ? 11 : landing < 0.98 ? 13 : 15;
+    return Math.round(baseScore * multiplier / 10);
+}
 
 export function rankLeaderboard(entries: Omit<LeaderboardEntry, 'rank'>[]): LeaderboardEntry[] {
     const sorted = [...entries].sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
@@ -30,7 +42,7 @@ export function dailyLeaderboard(day: string, player: PlayerProfile, score: numb
         profile: { version: 1, displayName: name, avatarId: AVATARS[index % AVATARS.length]!.id,
             avatarBackgroundColor: AVATAR_COLORS[(index * 3) % AVATAR_COLORS.length]!.color,
             bannerId: BANNERS[index % BANNERS.length]!.id },
-        score: Math.round((1200 + random() * 7800) / 25) * 25,
+        score: mockScore(SKILL_TIERS[index % SKILL_TIERS.length]!, random),
         skillTier: SKILL_TIERS[index % SKILL_TIERS.length]!,
     }));
     if (score !== null) entries.push({ id: 'you', profile: player, score, skillTier });
