@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Chessboard, type ChessboardOptions } from 'react-chessboard';
-import { Coins, Flame, Heart, RotateCw, Trophy } from 'lucide-react';
+import { Coins, Flame, RotateCw, Trophy } from 'lucide-react';
 import { MoveOptions, OPTION_COLORS, CONFIRM_COLOR } from '../../components/MoveOptions';
 import { BOARD_APPEARANCE } from '../../components/boardAppearance';
+import { RunBoardFrame, RunGate, RunHearts, RunScenery, RunScorePlaque, TERRAIN_BOARD_APPEARANCE } from '../../components/RunEnvironment';
 import { RunItems } from '../../components/RunItems';
 import { PIECE_RENDERERS } from '../../components/pieces/pieceRenderers';
 import { BoardNotification } from '../../components/BoardNotification';
@@ -116,6 +117,7 @@ export function EndlessGame({ controller, active, navigate, onShare }: {
     };
     const boardOptions: ChessboardOptions = {
         ...BOARD_APPEARANCE,
+        ...TERRAIN_BOARD_APPEARANCE,
         id: 'endless-board', position: chess.fen(), boardOrientation: orientation,
         pieces: PIECE_RENDERERS[session.set], squareStyles, onSquareClick: ({ square }) => onSquareClick(square),
         squareStyle: ready ? { cursor: 'pointer' } : undefined,
@@ -123,24 +125,32 @@ export function EndlessGame({ controller, active, navigate, onShare }: {
             color: pending === option.uci ? CONFIRM_COLOR : OPTION_COLORS[index]! })) : [],
     };
     const history = chess.history();
-    return <section className="game-layout endless-game" aria-label={`${session.mode === 'hardcore' ? 'Hardcore' : 'Standard'} Endless game`} tabIndex={-1} data-page-focus>
+    return <section className="game-layout endless-game run-stage" aria-label={`${session.mode === 'hardcore' ? 'Hardcore' : 'Standard'} Endless game`} tabIndex={-1} data-page-focus>
+        <RunScenery />
         <div className="board-column">
-            <div className="endless-game-controls">
-                <button className="text-button" aria-label="Flip board" onClick={() => setOrientation(value => value === 'white' ? 'black' : 'white')}><RotateCw size={16} aria-hidden="true" /></button></div>
-            <div className="board-wrap"><Chessboard options={boardOptions} />
+            <div className="endless-gate">
+                <RunGate heading="Endless" subtitle={`${session.mode === 'hardcore' ? 'Hardcore' : 'Standard'} · Game ${session.gamesCompleted + 1}`} />
+                <div className="endless-game-controls">
+                    <button className="text-button" aria-label="Flip board" onClick={() => setOrientation(value => value === 'white' ? 'black' : 'white')}><RotateCw size={16} aria-hidden="true" /></button></div>
+            </div>
+            <div className="board-wrap"><RunBoardFrame /><Chessboard options={boardOptions} />
                 {session.phase === 'between-games' && <BoardNotification key={`${session.id}-${session.gamesCompleted}`} onComplete={completeNotice}
                     notice={{ id: `${session.id}-${session.gamesCompleted}`, visual: <Trophy />, label: session.boardResult?.startsWith('Checkmate') ? 'Checkmate' : 'Draw',
                         caption: `Game ${session.gamesCompleted + 1} starting`, announcement: `${session.boardResult}. Game ${session.gamesCompleted + 1} starting.`, durationMs: 1500 }} />}
             </div>
-            <div className="run-stats" aria-label="Endless statistics"><div className="health-stats">
-                {session.mode === 'standard' && <span className="health-count" aria-label={`Health: ${session.health}`}><Heart size={15} fill="currentColor" aria-hidden="true" /><strong>{session.health}</strong></span>}
-                <span className="streak-count" aria-label={`Streak: ${session.streak}`}><Flame size={15} aria-hidden="true" /><strong>{session.streak}</strong></span>
-            </div><span className="move-count" aria-label={`Score: ${session.score}`}><span>{session.mode === 'hardcore' ? 'Streak' : 'Score'}</span><strong>{session.score.toLocaleString()}</strong></span></div>
-            {session.mode === 'standard' && <RunItems items={session.items} activeEffects={session.activeEffects} enabled={!!ready}
-                canUse={id => canUseItem(session, id)} onUse={id => { controller.use(id); setPending(null); setSource(null); setDestination(null); setPreview(null); }} />}
+            <div className="endless-progress"><span>Move {session.moves + 1}</span></div>
         </div>
-        <aside className="play-panel"><div className="options-area">
-            {ready && <MoveOptions groupRef={group} pending={pending} onPreview={setPreview}
+        <aside className="play-panel">
+            <div className="run-details">
+                <div className="run-stats" aria-label="Endless statistics"><div className="health-stats">
+                    {session.mode === 'standard' && <RunHearts health={session.health} maxHealth={session.rules.startingHealth} />}
+                    <span className="streak-count" aria-label={`Streak: ${session.streak}`}><Flame size={15} aria-hidden="true" /><strong>{session.streak}</strong></span>
+                </div><span className="move-count" aria-label={`Score: ${session.score}`}><RunScorePlaque /><span>{session.mode === 'hardcore' ? 'Streak' : 'Score'}</span><strong>{session.score.toLocaleString()}</strong></span></div>
+                {session.mode === 'standard' && <RunItems items={session.items} activeEffects={session.activeEffects} enabled={!!ready}
+                    canUse={id => canUseItem(session, id)} onUse={id => { controller.use(id); setPending(null); setSource(null); setDestination(null); setPreview(null); }} />}
+            </div>
+        <div className="options-area">
+            {ready && <MoveOptions immersive groupRef={group} pending={pending} onPreview={setPreview}
                 onSelect={uci => destination && uci.slice(0, 2) === source && uci.slice(2, 4) === destination ? commit(uci) : select(uci)}
                 options={session.options.map((option, index) => {
                     const choosingPromotion = !!option.promotion && source === option.from && destination === option.to;

@@ -20,6 +20,7 @@ import { ItemIcon, ItemLoadout, RunItems } from './components/RunItems';
 import { RunCheckpointReward } from './components/RunCheckpointReward';
 import { activateItem, canActivateItem, ITEMS, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemId, type ItemInventory } from './game/items';
 import { MoveOptions, OPTION_COLORS, CONFIRM_COLOR } from './components/MoveOptions';
+import { RunBoardFrame, RunGate, RunHearts, RunScenery, RunScorePlaque, TERRAIN_BOARD_APPEARANCE } from './components/RunEnvironment';
 import { BOARD_APPEARANCE } from './components/boardAppearance';
 import { EndlessPage } from './features/endless/EndlessPage';
 import { useEndlessSession } from './features/endless/useEndlessSession';
@@ -755,8 +756,12 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
             squareStyles[square] = { ...squareStyles[square], backgroundColor: '#e8c87380' };
         }
     }
+    const immersiveRun = page === 'game' && !showingResult;
+    const immersiveEndless = page === 'endless-game' && !!endless.session && endless.session.phase !== 'finished';
+    const immersiveGame = immersiveRun || immersiveEndless;
     const boardOptions: ChessboardOptions = {
         ...BOARD_APPEARANCE,
+        ...(immersiveRun ? TERRAIN_BOARD_APPEARANCE : {}),
         id: 'knightfall-board', position: showBonusBoard || checkpointReward ? EMPTY_BOARD_POSITION : fen, boardOrientation: orientation,
         showAnimations: !showBonusBoard && !checkpointReward,
         squareStyles,
@@ -788,11 +793,14 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
     const activeDestination = page === 'game' ? 'play' : page;
     const hasRunItems = page === 'endless-game' ? !!endless.session && (itemCount(endless.session.items) > 0 || endless.session.activeEffects.length > 0)
         : !!run && (itemCount(run.items) > 0 || run.activeEffects.length > 0);
-    return <main className={`app-shell${page === 'play' ? ` main-menu-shell${needsSkillSelection ? '' : ' journey-home-shell'}` : ''}${showNavigation ? ' has-navigation' : ''}${hasRunItems ? ' has-run-items' : ''}`}
+    return <main className={`app-shell${page === 'play' ? ` main-menu-shell${needsSkillSelection ? '' : ' journey-home-shell'}` : ''}${immersiveGame ? ` run-environment${immersiveRun && run?.daily ? ' run-daily' : ''}${immersiveEndless ? ' endless-environment' : ''}` : ''}${showNavigation ? ' has-navigation' : ''}${hasRunItems ? ' has-run-items' : ''}`}
         onPointerDownCapture={() => { keyboardOption.current = null; }}>
         <header className={`topbar${page === 'play' ? ' main-menu-topbar' : ''}`}>
+            {immersiveGame && <a className="run-home" href="#/play" aria-label={immersiveEndless ? 'Pause Endless and return home' : 'Pause run and return home'} title="Home" onClick={event => { event.preventDefault(); openMenu(); }}>
+                <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M11 3H37L45 11V37L37 45H11L3 37V11Z" fill="#17382f" stroke="#6a8976" strokeWidth="2" /><path d="M28 15 19 24 28 33" fill="none" stroke="#ece5c9" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </a>}
             {(page !== 'play' || !needsSkillSelection) && <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); openMenu(); }}>
-                <img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="38" height="42" /><strong>Knightfall</strong>
+                <img src={`${import.meta.env.BASE_URL}${immersiveRun && run?.daily ? 'knight-dungeon.svg' : 'knight.svg'}`} alt="" width="38" height="42" /><strong>Knightfall</strong>
             </a>}
             {showNavigation && <PrimaryNavigation active={activeDestination} onNavigate={navigate} locked={firstPlayLocked} />}
             <div className="top-actions">
@@ -905,13 +913,16 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
                 : <ProfileOverview asPage profile={playerProfile} history={runHistory.history} endlessRecords={endless.records}
                     onEdit={() => setEditingProfile(true)} onPlay={openMenu} onShare={openProfileShare} />}
         </section>}
-        {page === 'game' && (!showingResult || run?.daily) && <section id="game" className={`game-layout${tutorialStep ? ` tutorial-focus-${tutorialStep}` : ''}`} aria-label={run?.daily ? 'Daily game' : 'Regular game'} tabIndex={-1} data-page-focus>
+        {page === 'game' && (!showingResult || run?.daily) && <section id="game" className={`game-layout${immersiveRun ? ' run-stage' : ''}${tutorialStep ? ` tutorial-focus-${tutorialStep}` : ''}`} aria-label={run?.daily ? 'Daily game' : 'Regular game'} tabIndex={-1} data-page-focus>
+            {immersiveRun && <RunScenery dungeon={!!run?.daily} />}
             <div className={`board-column${run?.daily ? ' daily-board-column' : ''}`}>
-                {run && !run.daily && <div className="run-skill-level"><SkillTierBadge skillTier={run.skillTier} /></div>}
+                {immersiveRun && run && <RunGate floor={run.levelIndex + 1} skillTier={run.skillTier} dungeon={!!run.daily} />}
+                {!immersiveRun && run && !run.daily && <div className="run-skill-level"><SkillTierBadge skillTier={run.skillTier} /></div>}
                 {run?.daily && <div className="daily-run-label"><div className="daily-run-heading"><span className="daily-run-banner"><DoorOpen size={14} aria-hidden="true" />DAILY DUNGEON</span>
-                    <SkillTierBadge skillTier={run.skillTier} /></div>
+                    {!immersiveRun && <SkillTierBadge skillTier={run.skillTier} />}</div>
                     <time aria-label="Time until dungeon resets"><Clock3 size={14} aria-hidden="true" />{formatCountdown(run.daily.expiresAt, daily.now)}</time></div>}
                 <div className="board-wrap">
+                    {immersiveRun && <RunBoardFrame />}
                     {fen && level ? <Chessboard options={boardOptions} /> : <div className="empty-board">No playable floors</div>}
                     {checkpointReward && run && <RunCheckpointReward key={`${run.id}-${checkpointReward.afterRound}`}
                         reward={checkpointReward} enabled={!paused}
@@ -934,20 +945,23 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
                             className={`checkpoint-dot ${reward.selected !== null ? 'past' : checkpointReward?.afterRound === reward.afterRound ? 'current' : 'future'}`} />] : [floor];
                     })}
                 </div>
-                <div className="run-stats" aria-label="Run statistics">
-                    <div className="health-stats">
-                        <span className="health-count" aria-label={`Health: ${run?.health ?? rules.startingHealth}`}><Heart size={15} fill="currentColor" aria-hidden="true" /><strong>{run?.health ?? rules.startingHealth}</strong></span>
-                        {run && run.bestMoveStreak > 0 && <span className="streak-count" aria-label={`Best streak: ${run.bestMoveStreak}`}><Flame size={15} fill="currentColor" aria-hidden="true" /><strong>{run.bestMoveStreak}</strong></span>}
-                    </div>
-                    <span className="move-count" aria-label={`Score: ${displayScore}`}><span>Score</span><strong>{displayScore.toLocaleString()}</strong></span>
-                </div>
-                {run && hasRunItems && !showBonusBoard && <RunItems key={run.id} items={run.items} activeEffects={run.activeEffects}
-                    canUse={id => canActivateItem(run, id)} enabled={itemInteraction} onUse={useRunItem} />}
             </div>
-            {!checkpointReward && <aside className="play-panel">
-                <div className="options-area">
+            <aside className="play-panel">
+                <div className="run-details">
+                    <div className="run-stats" aria-label="Run statistics">
+                        <div className="health-stats">
+                            {immersiveRun ? <RunHearts health={run?.health ?? rules.startingHealth} maxHealth={activeRules.startingHealth} />
+                                : <span className="health-count" aria-label={`Health: ${run?.health ?? rules.startingHealth}`}><Heart size={15} fill="currentColor" aria-hidden="true" /><strong>{run?.health ?? rules.startingHealth}</strong></span>}
+                            {run && run.bestMoveStreak > 0 && <span className="streak-count" aria-label={`Best streak: ${run.bestMoveStreak}`}><Flame size={15} fill="currentColor" aria-hidden="true" /><strong>{run.bestMoveStreak}</strong></span>}
+                        </div>
+                        <span className="move-count" aria-label={`Score: ${displayScore}`}>{immersiveRun && <RunScorePlaque />}<span>Score</span><strong>{displayScore.toLocaleString()}</strong></span>
+                    </div>
+                    {run && hasRunItems && !showBonusBoard && <RunItems key={run.id} items={run.items} activeEffects={run.activeEffects}
+                        canUse={id => canActivateItem(run, id)} enabled={itemInteraction} onUse={useRunItem} />}
+                </div>
+                {!checkpointReward && <div className="options-area">
                     {!pool.length && <div className="empty-state" role="status">No scored, playable floors.</div>}
-                    {playing && <MoveOptions groupRef={moveOptions} pending={pendingChoice} onPreview={setPreview}
+                    {playing && <MoveOptions immersive={immersiveRun} groupRef={moveOptions} pending={pendingChoice} onPreview={setPreview}
                         onSelect={uci => !!uci[4] && boardSelection?.from === uci.slice(0, 2) && boardSelection?.to === uci.slice(2, 4)
                             ? commitMove(uci) : selectMove(uci)}
                         options={choices.map((choice, index) => {
@@ -969,14 +983,14 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
                     </div>}
                     {!payout.sequence && run && (run.phase === 'reveal' || run.phase === 'reply') && <Feedback run={run} />}
                     {!payout.sequence && run?.phase === 'level-ended' && <div className="finished-card"><h2>{currentOutcome?.status === 'completed' ? 'Floor completed' : 'Floor lost'}</h2></div>}
-                </div>
-                <section className="history-section">
+                </div>}
+                {!checkpointReward && <section className="history-section">
                     <div className="section-title">Move history</div>
                     <div className="history-list" tabIndex={0} aria-label="Move history">
                         {rows.map(row => <div className="history-row" key={row.number}><span>{row.number}.</span><strong>{row.white}</strong><strong>{row.black}</strong></div>)}
                     </div>
-                </section>
-            </aside>}
+                </section>}
+            </aside>
         </section>}
         {showingResult && !run!.daily && <RunSummary run={run!} payout={payout.result!} restart={() => navigate({ page: 'regular' })}
             onShare={openRunShare} finishedAt={runHistory.history.runs.find(record => record.id === run!.id)?.finishedAt} />}

@@ -2466,7 +2466,7 @@ describe('gameplay interface', () => {
         expect(progress.children[0]).toHaveClass('current');
         expect(progress.children[1]).toHaveClass('future');
         expect(screen.getByTestId('board').parentElement?.nextElementSibling).toBe(progress);
-        expect(progress.nextElementSibling).toBe(screen.getByLabelText('Run statistics'));
+        expect(screen.getByLabelText('Run statistics').closest('.play-panel')).toBe(progress.parentElement?.nextElementSibling);
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
     });
 

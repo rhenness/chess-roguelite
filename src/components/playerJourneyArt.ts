@@ -12,7 +12,7 @@ export const JOURNEY_PALETTES = [
     ] as const;
 
 const polygon = (points: string, fill: string, extra = '') => `<polygon points="${points}" fill="${fill}" ${extra}/>`;
-    function foliage(x: number, y: number, size: number, color = '#527c56') {
+    export function foliage(x: number, y: number, size: number, color = '#527c56') {
       return `<g transform="translate(${x} ${y}) scale(${size})" aria-hidden="true"><ellipse cy="8" rx="22" ry="7" fill="#061a1433"/><path d="M 0 -52 L -21 -17 L -11 -17 L -27 4 L 0 12 Z" fill="${color}"/><path d="M 0 -52 L 21 -17 L 11 -17 L 27 4 L 0 12 Z" fill="#345e47"/><path d="M 0 -28 V 17" stroke="#78946a" stroke-width="3"/></g>`;
     }
     function crystal(x: number, y: number, height: number, width: number, palette: JourneyPalette) {

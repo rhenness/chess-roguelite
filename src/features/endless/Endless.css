@@ -13,13 +13,6 @@
 .endless-engine-error { color: #a95843; }
 .endless-error, .endless-storage-message { padding: 12px; color: #8b591c; font-size: 12px; }
 .endless-final-move { margin-top: 18px; color: #58645d; }
-@media (min-width: 901px) {
-    .endless-game .board-column { width: min(100%, 660px, calc(100dvh - 262px)); }
-    .has-run-items .endless-game .board-column { width: min(100%, 660px, calc(100dvh - 346px)); }
-}
-@media (max-width: 900px) {
-    .endless-game .board-column { --daily-banner-height: 36px; --board-footer-height: 48px; }
-}
 @media (max-width: 560px) {
     .endless-modes { gap: 8px; }
     .endless-modes button { padding: 12px 12px 8px; }
