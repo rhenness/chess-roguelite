@@ -12,7 +12,7 @@ export const JOURNEY_PALETTES = [
     ] as const;
 
 const polygon = (points: string, fill: string, extra = '') => `<polygon points="${points}" fill="${fill}" ${extra}/>`;
-    function foliage(x: number, y: number, size: number, color = '#527c56') {
+    export function foliage(x: number, y: number, size: number, color = '#527c56') {
       return `<g transform="translate(${x} ${y}) scale(${size})" aria-hidden="true"><ellipse cy="8" rx="22" ry="7" fill="#061a1433"/><path d="M 0 -52 L -21 -17 L -11 -17 L -27 4 L 0 12 Z" fill="${color}"/><path d="M 0 -52 L 21 -17 L 11 -17 L 27 4 L 0 12 Z" fill="#345e47"/><path d="M 0 -28 V 17" stroke="#78946a" stroke-width="3"/></g>`;
     }
     function crystal(x: number, y: number, height: number, width: number, palette: JourneyPalette) {
@@ -23,7 +23,7 @@ const polygon = (points: string, fill: string, extra = '') => `<polygon points="
       const [top, light, mid, dark, gleam] = palette;
       return `<g transform="translate(${x} ${y})">${polygon(`-16 ${-height},0 ${-height + 8},0 0,-16 -8`, light)}${polygon(`0 ${-height + 8},16 ${-height},16 -8,0 0`, mid)}${polygon(`-19 ${-height - 7},0 ${-height - 17},19 ${-height - 7},0 ${-height + 4}`, top)}${polygon(`-19 ${-height - 7},0 ${-height + 4},0 ${-height + 15},-19 ${-height + 4}`, light)}${polygon(`0 ${-height + 4},19 ${-height - 7},19 ${-height + 4},0 ${-height + 15}`, mid)}<path d="M -13 ${-height - 10} v -12 M -2 ${-height - 15} v -12 M 11 ${-height - 12} v -12" stroke="${gleam}" stroke-width="8"/><path d="M -9 ${-height + 28} v 16 M 8 ${-height + 36} v 14" stroke="${dark}" stroke-width="4"/><path d="M 0 ${-height - 25} v -30" stroke="#bbc8ad" stroke-width="1.5"/><path d="M 1 ${-height - 55} l 24 4 l -6 12 l -18 -4Z" fill="#bda573"/><path d="M 9 ${-height - 49} l 4 2 l -1 6 l -4 -2Z" fill="#f4e6b8"/></g>`;
     }
-    function castle(x: number, y: number, palette: JourneyPalette) {
+    export function castle(x: number, y: number, palette: JourneyPalette) {
       const [top, light, mid, dark, gleam] = palette;
       return `<g transform="translate(${x} ${y})" aria-hidden="true"><ellipse cy="34" rx="83" ry="17" fill="#04191050"/>${polygon('-74 0,0 -42,74 0,0 42', '#527460')}${polygon('-74 0,0 42,0 77,-56 31', '#244d3d')}${polygon('0 42,74 0,56 31,0 77', '#1b4136')}${polygon('-49 5,0 -23,49 5,0 33', dark)}${tower(-42, -1, 68, palette)}${polygon('-30 -76,4 -96,43 -73,7 -53', top)}${polygon('-30 -76,7 -53,7 12,-30 -9', light)}${polygon('7 -53,43 -73,43 -7,7 12', mid)}<path d="M 15 5 v -22 q 11 -17 20 -11 v 22Z" fill="${dark}"/><path d="M -20 -52 l 0 13 m 15 -5 v 13 M 17 -50 v 14 M 33 -58 v 13" stroke="${dark}" stroke-width="4"/><path d="M -24 -25 l 27 15 M -24 -9 l 27 15 M 14 -9 l 25 -14" stroke="${gleam}" opacity=".23"/>${tower(42, 17, 83, palette)}${tower(-10, -32, 103, palette)}<g class="flame"><ellipse cx="-28" cy="4" rx="5" ry="9" fill="#e3bc6c"/><ellipse cx="-28" cy="4" rx="2" ry="5" fill="#fff0b8"/></g><path d="M -28 12 v 9" stroke="#9b895a" stroke-width="2"/><path d="M -11 40 l 17 -9 l 12 7 l -17 10" fill="#8ba28b"/><path d="M -6 50 l 17 -9 l 12 7 l -17 10" fill="#718f79"/></g>`;
     }

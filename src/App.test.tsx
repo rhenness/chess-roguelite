@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChessboardOptions } from 'react-chessboard';
 import type { GeneratedLevel, MoveQuality } from './types/level';
 import { continueToNextRound, decision, makeLevel, makeSkillLevel } from './test/levels';
+import { mockGamepad } from './test/gamepad';
 import { advancePlayback, chooseMove, DEFAULT_RULES } from './game/run';
 import { ITEMS } from './game/items';
 import { BOARD_SQUARES, formatMultiplier, initialMultiplierProfile, loadMultiplierProfile, MULTIPLIER_STORAGE_KEY } from './game/multipliers';
@@ -17,7 +18,7 @@ import { finishPlayTutorial, initialPlayTutorial, PLAY_TUTORIAL_STORAGE_KEY, sav
 import { initialPlayerProfile, loadPlayerProfile, PLAYER_PROFILE_STORAGE_KEY, savePlayerProfile } from './game/playerProfile';
 import { loadRunHistory, RUN_HISTORY_STORAGE_KEY, saveRunHistory, type RunRecord } from './game/runHistory';
 import { ENDLESS_STORAGE_KEY, saveState } from './features/endless/storage';
-import { REGULAR_STORAGE_KEY } from './game/regular';
+import { loadRegularRun, REGULAR_STORAGE_KEY } from './game/regular';
 import { loadPlayerLeveling, PLAYER_LEVELING_STORAGE_KEY, totalPlayerXp } from './game/playerLeveling';
 import { createDailyDungeon, DAILY_STORAGE_KEY, enterDailyDungeon, initialDailyArchive, loadDailyArchive, recordDailyRun, saveDailyArchive, storeDailyDungeon } from './game/daily';
 
@@ -138,6 +139,142 @@ function openProfileEditor() {
     }
     fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
 }
+
+describe('run gamepad controls', () => {
+    beforeEach(() => {
+        if (!navigator.getGamepads) vi.stubGlobal('navigator', Object.assign(Object.create(navigator), { getGamepads: () => [] }));
+    });
+    afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+    it.each(['regular', 'daily'] as const)('navigates and confirms %s moves only on separate presses', mode => {
+        const pad = mockGamepad();
+        const level = makeLevel();
+        renderSetup(<App levels={[level]} />);
+        if (mode === 'regular') startRegular();
+        else { openDaily(); fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' })); }
+        const buttons = within(screen.getByRole('group', { name: 'Available moves' })).getAllByRole('button');
+        pad.tap(15);
+        expect(buttons[0]).toHaveFocus();
+        expect(buttons[0]!.closest('#game')).toHaveAttribute('data-gamepad-active', 'true');
+        pad.tap(15);
+        expect(buttons[1]).toHaveFocus();
+        const choice = decision(level).choices.find(choice => choice.playerMove.uci === buttons[1]!.getAttribute('data-move'))!;
+        pad.button(0, true);
+        expect(buttons[1]).toHaveAttribute('aria-pressed', 'true');
+        pad.frame(5000);
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', level.root.fen);
+        pad.button(0, false);
+        pad.tap(0);
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
+        pad.tap(0);
+        expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
+    });
+
+    it('wraps navigation, clears pending moves, cancels with B, and restores focus after playback', () => {
+        vi.useFakeTimers();
+        const pad = mockGamepad();
+        renderGame(<App levels={[makeLevel('gamepad', 50, 2)]} rules={{ ...DEFAULT_RULES, startingHealth: 100 }} />);
+        const buttons = within(screen.getByRole('group', { name: 'Available moves' })).getAllByRole('button');
+        pad.tap(14);
+        expect(buttons.at(-1)).toHaveFocus();
+        pad.tap(15);
+        expect(buttons[0]).toHaveFocus();
+        pad.tap(0);
+        pad.tap(1);
+        expect(buttons[0]).toHaveAttribute('aria-pressed', 'false');
+        pad.tap(0);
+        pad.tap(15);
+        expect(buttons[0]).toHaveAttribute('aria-pressed', 'false');
+        expect(buttons[1]).toHaveFocus();
+        pad.tap(0);
+        pad.tap(0);
+        act(() => { vi.advanceTimersByTime(1400); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        const next = within(screen.getByRole('group', { name: 'Available moves' })).getAllByRole('button');
+        expect(next[1]).toHaveFocus();
+        expect(next[1]).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('navigates to items, cancels or confirms their use, and returns to moves', () => {
+        const pad = mockGamepad();
+        saveUserProgression({ ...initialUserProgression(), finishedRuns: 8, coins: 100 });
+        renderSetup(<App levels={[makeLevel('items', 50, 3)]} />);
+        openRegularItems();
+        fireEvent.click(screen.getByRole('button', { name: `Bring Triple Crown for ${ITEMS['triple-crown'].price} coins` }));
+        fireEvent.click(screen.getByRole('button', { name: /^Start run/ }));
+        pad.tap(15);
+        pad.tap(12);
+        const item = screen.getByRole('button', { name: 'Triple Crown, 1 remaining' });
+        expect(item).toHaveFocus();
+        pad.tap(0);
+        expect(screen.getByRole('button', { name: 'Confirm use of Triple Crown' })).toBeInTheDocument();
+        pad.tap(1);
+        expect(item).toHaveFocus();
+        expect(screen.queryByRole('button', { name: 'Confirm use of Triple Crown' })).not.toBeInTheDocument();
+        pad.tap(0);
+        pad.tap(0);
+        expect(screen.queryByRole('button', { name: 'Triple Crown, 1 remaining' })).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Active item effects')).toHaveTextContent('3 moves');
+        pad.tap(0);
+        expect(within(screen.getByRole('group', { name: 'Available moves' })).getAllByRole('button')[0]).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('lets the controller choose a checkpoint reward and continue playing', () => {
+        vi.useFakeTimers();
+        const pad = mockGamepad();
+        const levels = Array.from({ length: 4 }, (_, index) => makeLevel(`pad-checkpoint-${index}`, 50 + index));
+        renderGame(<App levels={levels} />);
+        for (let index = 0; index < 3; index++) {
+            selectQuality(levels[index]!, 'best');
+            act(() => { vi.advanceTimersByTime(1400); });
+            act(() => { vi.advanceTimersByTime(1000); });
+            act(() => { vi.advanceTimersByTime(1500); });
+        }
+        const offers = within(screen.getByRole('group', { name: 'Checkpoint items' })).getAllByRole('button');
+        pad.tap(15);
+        pad.tap(15);
+        expect(offers[1]).toHaveFocus();
+        pad.tap(0);
+        expect(screen.queryByRole('group', { name: 'Checkpoint items' })).not.toBeInTheDocument();
+        const moves = within(screen.getByRole('group', { name: 'Available moves' })).getAllByRole('button');
+        expect(moves[0]).toHaveFocus();
+        pad.tap(0);
+        expect(moves[0]).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('does not act through dialogs or carry a held confirm out of a dialog', () => {
+        const pad = mockGamepad();
+        renderGame(<App levels={[makeLevel()]} />);
+        pad.tap(15);
+        fireEvent.click(screen.getByRole('button', { name: 'View profile' }));
+        const dialog = screen.getByRole('dialog', { name: 'Your profile' });
+        pad.tap(15);
+        pad.button(0, true);
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Close dialog' }));
+        pad.frame(5000);
+        const moves = within(screen.getByRole('group', { name: 'Available moves' })).getAllByRole('button');
+        expect(moves.every(button => button.getAttribute('aria-pressed') === 'false')).toBe(true);
+        pad.button(0, false);
+        pad.tap(0);
+        expect(moves[0]).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('clears controller highlighting for pointer input and reconnects after unplugging', () => {
+        const pad = mockGamepad();
+        renderGame(<App levels={[makeLevel()]} />);
+        pad.tap(15);
+        const game = screen.getByRole('region', { name: 'Regular game' });
+        fireEvent.pointerDown(screen.getByTestId('board'));
+        expect(game).not.toHaveAttribute('data-gamepad-active');
+        pad.tap(15);
+        expect(game).toHaveAttribute('data-gamepad-active');
+        pad.connect(false);
+        expect(game).not.toHaveAttribute('data-gamepad-active');
+        pad.connect(true);
+        pad.tap(14);
+        expect(game).toHaveAttribute('data-gamepad-active');
+    });
+});
 
 describe('skill selection', () => {
     const tierPool = () => [makeSkillLevel('beginner'), makeSkillLevel('intermediate'), makeSkillLevel('expert')];
@@ -2180,7 +2317,7 @@ describe('gameplay interface', () => {
         tap(from);
         tap(to);
         expect(screen.getByLabelText('Score: 25')).toBeInTheDocument();
-        expect(screen.getByLabelText('Move history').querySelectorAll('.history-row')).toHaveLength(1);
+        expect(loadRegularRun([level])?.run.history).toHaveLength(1);
     });
 
     it('can switch or deselect board pieces and interchange board taps with colored options', () => {
@@ -2302,7 +2439,7 @@ describe('gameplay interface', () => {
         }
         expect(buttons.every(button => button.getAttribute('aria-pressed') === 'false')).toBe(true);
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
-        expect(screen.getByLabelText('Move history')).toBeEmptyDOMElement();
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).checkpoint.moves).toHaveLength(0);
     });
 
     it.each(['Enter', ' '])('selects and confirms a colored option with two separate %j presses', key => {
@@ -2317,13 +2454,13 @@ describe('gameplay interface', () => {
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', level.root.fen);
         fireEvent.keyDown(button, { key, repeat: true });
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
-        expect(screen.getByLabelText('Move history')).toBeEmptyDOMElement();
+        expect(loadRegularRun([level])?.run.history).toHaveLength(0);
         fireEvent.keyDown(button, { key });
         fireEvent.keyUp(button, { key });
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
         expect(screen.queryByRole('group', { name: 'Available moves' })).not.toBeInTheDocument();
         fireEvent.keyDown(document.body, { key });
-        expect(screen.getByLabelText('Move history').querySelectorAll('.history-row')).toHaveLength(1);
+        expect(loadRegularRun([level])?.run.history).toHaveLength(1);
     });
 
     it('clears confirmation when navigating to another colored option', () => {
@@ -2340,7 +2477,7 @@ describe('gameplay interface', () => {
         fireEvent.keyDown(buttons[1]!, { key: 'ArrowLeft' });
         fireEvent.keyDown(buttons[0]!, { key: 'Enter' });
         expect(buttons[0]).toHaveAttribute('aria-pressed', 'true');
-        expect(screen.getByLabelText('Move history')).toBeEmptyDOMElement();
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).checkpoint.moves).toHaveLength(0);
     });
 
     it.each([
@@ -2417,7 +2554,7 @@ describe('gameplay interface', () => {
         const dialog = screen.getByRole('dialog', { name: 'Your profile' });
         for (const key of ['ArrowRight', 'Enter', ' ']) fireEvent.keyDown(dialog, { key });
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
-        expect(screen.getByLabelText('Move history')).toBeEmptyDOMElement();
+        expect(JSON.parse(window.localStorage.getItem(REGULAR_STORAGE_KEY)!).checkpoint.moves).toHaveLength(0);
         fireEvent.click(within(dialog).getByRole('button', { name: 'Close dialog' }));
         expect(within(screen.getByRole('group', { name: 'Available moves' })).getAllByRole('button')
             .every(button => button.getAttribute('aria-pressed') === 'false')).toBe(true);
@@ -2434,7 +2571,7 @@ describe('gameplay interface', () => {
         expect(firstButton).toHaveAccessibleName(`Confirm ${best.playerMove.san}. Tap again to play this move.`);
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', level.root.fen);
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
-        expect(screen.getByLabelText('Move history')).toBeEmptyDOMElement();
+        expect(loadRegularRun([level])?.run.history).toHaveLength(0);
         const arrows = JSON.parse(screen.getByTestId('board').getAttribute('data-arrows')!) as { startSquare: string; endSquare: string; color: string }[];
         expect(arrows.find(arrow => arrow.startSquare + arrow.endSquare === best.playerMove.uci)?.color).toBe('#2f8a5c');
         const secondButton = screen.getByRole('button', { name: name => name.includes(`: ${good.playerMove.san},`) });
@@ -2460,29 +2597,16 @@ describe('gameplay interface', () => {
         expect(screen.queryByText('White', { exact: true })).not.toBeInTheDocument();
         expect(screen.queryByText('Black', { exact: true })).not.toBeInTheDocument();
         expect(screen.queryByText(/Floor \d+ \/ \d+/)).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Move history')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Show move history')).not.toBeInTheDocument();
         const progress = screen.getByRole('progressbar', { name: 'Run progress' });
         expect(progress).toHaveAttribute('aria-valuenow', '1');
         expect(progress).toHaveAttribute('aria-valuemax', '2');
         expect(progress.children[0]).toHaveClass('current');
         expect(progress.children[1]).toHaveClass('future');
         expect(screen.getByTestId('board').parentElement?.nextElementSibling).toBe(progress);
-        expect(progress.nextElementSibling).toBe(screen.getByLabelText('Run statistics'));
+        expect(screen.getByLabelText('Run statistics').closest('.play-panel')).toBeInTheDocument();
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
-    });
-
-    it('puts black player moves and white replies in the correct history columns', () => {
-        vi.useFakeTimers();
-        const level = makeLevel('black', 50, 1, 'black');
-        renderGame(<App levels={[level]} />);
-        const choice = selectQuality(level, 'best');
-        const history = screen.getByLabelText('Move history');
-        expect(history.children[0]?.children[0]).toHaveTextContent('1.');
-        expect(history.children[0]?.children[1]).toBeEmptyDOMElement();
-        expect(history.children[0]?.children[2]).toHaveTextContent(choice.playerMove.san);
-        act(() => { vi.advanceTimersByTime(1400); });
-        expect(history.children[1]?.children[0]).toHaveTextContent('2.');
-        expect(history.children[1]?.children[1]).toHaveTextContent(choice.opponentReply!.san);
-        expect(history.children[1]?.children[2]).toBeEmptyDOMElement();
     });
 
     it('starts the easiest scored level, respects black orientation, and hides qualities before selection', () => {
@@ -2522,13 +2646,16 @@ describe('gameplay interface', () => {
         expect(screen.getByRole('status', { name: '−1 health' })).toHaveTextContent('−1');
         expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Available moves')).not.toBeInTheDocument();
-        expect(screen.getByLabelText('Move history')).toHaveTextContent(choice.playerMove.san);
-        expect(screen.getByLabelText('Move history')).not.toHaveTextContent(choice.opponentReply!.san);
+        expect(loadRegularRun([level])?.run.history).toEqual([
+            { levelId: level.id, playerMove: choice.playerMove, opponentReply: null },
+        ]);
         act(() => { vi.advanceTimersByTime(1400); });
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.next.fen);
         expect(screen.getByRole('status', { name: 'Move quality' })).not.toHaveTextContent('Reply');
         expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent('+25 points');
-        expect(screen.getByLabelText('Move history')).toHaveTextContent(choice.opponentReply!.san);
+        expect(loadRegularRun([level])?.run.history).toEqual([
+            { levelId: level.id, playerMove: choice.playerMove, opponentReply: choice.opponentReply },
+        ]);
         act(() => { vi.advanceTimersByTime(1000); });
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
         if (choice.next.kind !== 'decision') throw new Error('Expected branch decision.');
@@ -2562,7 +2689,7 @@ describe('gameplay interface', () => {
         const stats = screen.getByLabelText('Run statistics');
         expect(within(stats).getByText('25')).toBeInTheDocument();
         expect(within(stats).getByLabelText('Health: 2')).toBeInTheDocument();
-        expect(screen.getByLabelText('Move history')).toBeEmptyDOMElement();
+        expect(loadRegularRun([easy, hard])?.run.history.filter(entry => entry.levelId === hard.id)).toHaveLength(0);
         act(() => { vi.runOnlyPendingTimers(); });
         expect(screen.queryByRole('status', { name: 'Floor 2' })).not.toBeInTheDocument();
         expect(screen.getByLabelText('Available moves')).toBeInTheDocument();

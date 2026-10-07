@@ -16,10 +16,12 @@ import { SkillTierPicker, SkillTierBadge } from './components/SkillTierPicker';
 import { SKILL_TIER_CONFIG, type SkillTier } from './config/difficulty';
 import { PlayTutorial } from './components/PlayTutorial';
 import { usePlayTutorial } from './game/usePlayTutorial';
+import { useGamepadControls } from './game/useGamepadControls';
 import { ItemIcon, ItemLoadout, RunItems } from './components/RunItems';
 import { RunCheckpointReward } from './components/RunCheckpointReward';
 import { activateItem, canActivateItem, ITEMS, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemId, type ItemInventory } from './game/items';
 import { MoveOptions, OPTION_COLORS, CONFIRM_COLOR } from './components/MoveOptions';
+import { RunBoardFrame, RunGate, RunHearts, RunScenery, RunScorePlaque } from './components/RunEnvironment';
 import { BOARD_APPEARANCE } from './components/boardAppearance';
 import { EndlessPage } from './features/endless/EndlessPage';
 import { useEndlessSession } from './features/endless/useEndlessSession';
@@ -176,26 +178,6 @@ function RunSummary({ run, payout, restart, onShare, finishedAt }: {
     </section>;
 }
 
-function historyRows(run: RunState | null, level: GeneratedLevel | undefined) {
-    const rows: { number: number; white: string; black: string }[] = [];
-    if (!run || !level) return rows;
-    let number = Number(level.root.fen.split(' ')[5]);
-    function add(san: string, color: 'white' | 'black') {
-        let row = rows.at(-1);
-        if (!row || row.number !== number) {
-            row = { number, white: '', black: '' };
-            rows.push(row);
-        }
-        row[color] = san;
-        if (color === 'black') number++;
-    }
-    for (const entry of run.history.filter(move => move.levelId === level.id)) {
-        add(entry.playerMove.san, level.playerColor);
-        if (entry.opponentReply) add(entry.opponentReply.san, level.playerColor === 'white' ? 'black' : 'white');
-    }
-    return rows;
-}
-
 export default function App({ levels, levelWarnings = [], rules: rulesOverride }: AppProps) {
     const [playerProfile, setPlayerProfile] = useState(loadPlayerProfile);
     const skillTier = playerProfile.preferredSkillTier ?? 'intermediate';
@@ -236,6 +218,7 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
     const [pendingChoice, setPendingChoice] = useState<string | null>(null);
     const moveOptions = useRef<HTMLDivElement>(null);
     const keyboardOption = useRef<number | null>(null);
+    const [gamepadActive, setGamepadActive] = useState(false);
     const [boardSelection, setBoardSelection] = useState<{ from: string; to: string | null } | null>(null);
     const [showRules, setShowRules] = useState(false);
     const [boardNotice, setBoardNoticeState] = useState<BoardNotice | null>(null);
@@ -296,7 +279,6 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
         ? run.checkpointRewards.find(reward => reward.afterRound === run.levelIndex + 1) : undefined;
     const activeRules = run?.rules ?? rules;
     const orientation = level?.playerColor ?? 'white';
-    const rows = historyRows(run, level);
     const currentOutcome = run?.outcomes.find(outcome => outcome.id === level?.id);
     const unlockedSet = progression.pendingUnlocks[0];
     const unlockNotice = useMemo<BoardNotice | null>(() => unlockedSet ? {
@@ -601,6 +583,54 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
         commitMove(uci);
     }
 
+    useGamepadControls(page === 'game', action => {
+        if (paused || tutorial.paused || document.querySelector('dialog[open]')) return;
+        const game = content.current?.querySelector<HTMLElement>('#game');
+        if (!game) return;
+        const buttonsIn = (selector: string) => Array.from(game.querySelectorAll<HTMLButtonElement>(`${selector}:not(:disabled)`));
+        const confirmation = buttonsIn('.item-confirmation button');
+        const moves = buttonsIn('.move-option');
+        const items = buttonsIn('.item-button');
+        const rewards = buttonsIn('.checkpoint-item');
+        const rows = (confirmation.length ? [confirmation] : rewards.length ? [rewards] : [moves, items]).filter(row => row.length);
+        if (!rows.length) return;
+        setGamepadActive(true);
+        if (action === 'cancel') {
+            const item = game.querySelector<HTMLButtonElement>('.item-button[aria-expanded="true"]');
+            game.querySelector<HTMLButtonElement>('.item-cancel')?.click();
+            item?.focus({ preventScroll: true });
+            setPendingChoice(null);
+            setBoardSelection(null);
+            setPreview(null);
+            return;
+        }
+        let rowIndex = rows.findIndex(row => row.includes(document.activeElement as HTMLButtonElement));
+        let index = rowIndex < 0 ? -1 : rows[rowIndex]!.indexOf(document.activeElement as HTMLButtonElement);
+        if (rowIndex < 0) rowIndex = 0;
+        if (action === 'confirm') {
+            const button = rows[rowIndex]![index < 0 ? confirmation.length ? confirmation.length - 1 : 0 : index]!;
+            if (moves.includes(button)) keyboardOption.current = moves.indexOf(button);
+            else if (rewards.includes(button)) keyboardOption.current = 0;
+            button.focus({ preventScroll: true });
+            button.click();
+            return;
+        }
+        setPendingChoice(null);
+        setBoardSelection(null);
+        const forward = action === 'right' || action === 'down';
+        if (index >= 0 && rows.length > 1 && (action === 'up' || action === 'down')) {
+            rowIndex = (rowIndex + (forward ? 1 : -1) + rows.length) % rows.length;
+            index = Math.min(index, rows[rowIndex]!.length - 1);
+        } else {
+            const row = rows[rowIndex]!;
+            index = index < 0 ? forward ? 0 : row.length - 1 : (index + (forward ? 1 : -1) + row.length) % row.length;
+        }
+        const button = rows[rowIndex]![index]!;
+        keyboardOption.current = moves.includes(button) ? moves.indexOf(button) : null;
+        if (!moves.includes(button)) setPreview(null);
+        button.focus({ preventScroll: true });
+    }, () => { setGamepadActive(false); keyboardOption.current = null; });
+
     useEffect(() => {
         if (!playing || keyboardOption.current === null) return;
         const active = document.activeElement;
@@ -755,8 +785,11 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
             squareStyles[square] = { ...squareStyles[square], backgroundColor: '#e8c87380' };
         }
     }
+    const immersiveRun = page === 'game' && !showingResult;
     const boardOptions: ChessboardOptions = {
         ...BOARD_APPEARANCE,
+        lightSquareStyle: immersiveRun ? { backgroundColor: '#d7d9b2' } : BOARD_APPEARANCE.lightSquareStyle,
+        boardStyle: immersiveRun ? { borderRadius: '12px', boxShadow: '0 0 0 1px #9cae86, 0 2px 8px #203e3022' } : BOARD_APPEARANCE.boardStyle,
         id: 'knightfall-board', position: showBonusBoard || checkpointReward ? EMPTY_BOARD_POSITION : fen, boardOrientation: orientation,
         showAnimations: !showBonusBoard && !checkpointReward,
         squareStyles,
@@ -788,9 +821,13 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
     const activeDestination = page === 'game' ? 'play' : page;
     const hasRunItems = page === 'endless-game' ? !!endless.session && (itemCount(endless.session.items) > 0 || endless.session.activeEffects.length > 0)
         : !!run && (itemCount(run.items) > 0 || run.activeEffects.length > 0);
-    return <main className={`app-shell${page === 'play' ? ` main-menu-shell${needsSkillSelection ? '' : ' journey-home-shell'}` : ''}${showNavigation ? ' has-navigation' : ''}${hasRunItems ? ' has-run-items' : ''}`}
-        onPointerDownCapture={() => { keyboardOption.current = null; }}>
+    return <main className={`app-shell${page === 'play' ? ` main-menu-shell${needsSkillSelection ? '' : ' journey-home-shell'}` : ''}${immersiveRun ? ` run-environment${run?.daily ? ' run-daily' : ''}` : ''}${showNavigation ? ' has-navigation' : ''}${hasRunItems ? ' has-run-items' : ''}`}
+        onPointerDownCapture={() => { keyboardOption.current = null; setGamepadActive(false); }}
+        onKeyDownCapture={() => setGamepadActive(false)}>
         <header className={`topbar${page === 'play' ? ' main-menu-topbar' : ''}`}>
+            {immersiveRun && <a className="run-home" href="#/play" aria-label="Pause run and return home" title="Home" onClick={event => { event.preventDefault(); openMenu(); }}>
+                <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M11 3H37L45 11V37L37 45H11L3 37V11Z" fill="#17382f" stroke="#6a8976" strokeWidth="2" /><path d="M28 15 19 24 28 33" fill="none" stroke="#ece5c9" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </a>}
             {(page !== 'play' || !needsSkillSelection) && <a className="brand" href="#/play" aria-label="Knightfall home" onClick={event => { event.preventDefault(); openMenu(); }}>
                 <img src={`${import.meta.env.BASE_URL}knight.svg`} alt="" width="38" height="42" /><strong>Knightfall</strong>
             </a>}
@@ -905,13 +942,16 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
                 : <ProfileOverview asPage profile={playerProfile} history={runHistory.history} endlessRecords={endless.records}
                     onEdit={() => setEditingProfile(true)} onPlay={openMenu} onShare={openProfileShare} />}
         </section>}
-        {page === 'game' && (!showingResult || run?.daily) && <section id="game" className={`game-layout${tutorialStep ? ` tutorial-focus-${tutorialStep}` : ''}`} aria-label={run?.daily ? 'Daily game' : 'Regular game'} tabIndex={-1} data-page-focus>
+        {page === 'game' && (!showingResult || run?.daily) && <section id="game" className={`game-layout${immersiveRun ? ' run-stage' : ''}${tutorialStep ? ` tutorial-focus-${tutorialStep}` : ''}`} aria-label={run?.daily ? 'Daily game' : 'Regular game'} tabIndex={-1} data-page-focus data-gamepad-active={gamepadActive || undefined}>
+            {immersiveRun && <RunScenery />}
             <div className={`board-column${run?.daily ? ' daily-board-column' : ''}`}>
-                {run && !run.daily && <div className="run-skill-level"><SkillTierBadge skillTier={run.skillTier} /></div>}
+                {immersiveRun && run && <RunGate floor={run.levelIndex + 1} skillTier={run.skillTier} />}
+                {!immersiveRun && run && !run.daily && <div className="run-skill-level"><SkillTierBadge skillTier={run.skillTier} /></div>}
                 {run?.daily && <div className="daily-run-label"><div className="daily-run-heading"><span className="daily-run-banner"><DoorOpen size={14} aria-hidden="true" />DAILY DUNGEON</span>
-                    <SkillTierBadge skillTier={run.skillTier} /></div>
+                    {!immersiveRun && <SkillTierBadge skillTier={run.skillTier} />}</div>
                     <time aria-label="Time until dungeon resets"><Clock3 size={14} aria-hidden="true" />{formatCountdown(run.daily.expiresAt, daily.now)}</time></div>}
                 <div className="board-wrap">
+                    {immersiveRun && <RunBoardFrame />}
                     {fen && level ? <Chessboard options={boardOptions} /> : <div className="empty-board">No playable floors</div>}
                     {checkpointReward && run && <RunCheckpointReward key={`${run.id}-${checkpointReward.afterRound}`}
                         reward={checkpointReward} enabled={!paused}
@@ -934,20 +974,23 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
                             className={`checkpoint-dot ${reward.selected !== null ? 'past' : checkpointReward?.afterRound === reward.afterRound ? 'current' : 'future'}`} />] : [floor];
                     })}
                 </div>
-                <div className="run-stats" aria-label="Run statistics">
-                    <div className="health-stats">
-                        <span className="health-count" aria-label={`Health: ${run?.health ?? rules.startingHealth}`}><Heart size={15} fill="currentColor" aria-hidden="true" /><strong>{run?.health ?? rules.startingHealth}</strong></span>
-                        {run && run.bestMoveStreak > 0 && <span className="streak-count" aria-label={`Best streak: ${run.bestMoveStreak}`}><Flame size={15} fill="currentColor" aria-hidden="true" /><strong>{run.bestMoveStreak}</strong></span>}
-                    </div>
-                    <span className="move-count" aria-label={`Score: ${displayScore}`}><span>Score</span><strong>{displayScore.toLocaleString()}</strong></span>
-                </div>
-                {run && hasRunItems && !showBonusBoard && <RunItems key={run.id} items={run.items} activeEffects={run.activeEffects}
-                    canUse={id => canActivateItem(run, id)} enabled={itemInteraction} onUse={useRunItem} />}
             </div>
-            {!checkpointReward && <aside className="play-panel">
-                <div className="options-area">
+            <aside className="play-panel">
+                <div className="run-details">
+                    <div className="run-stats" aria-label="Run statistics">
+                        <div className="health-stats">
+                            {immersiveRun ? <RunHearts health={run?.health ?? rules.startingHealth} maxHealth={activeRules.startingHealth} />
+                                : <span className="health-count" aria-label={`Health: ${run?.health ?? rules.startingHealth}`}><Heart size={15} fill="currentColor" aria-hidden="true" /><strong>{run?.health ?? rules.startingHealth}</strong></span>}
+                            {run && run.bestMoveStreak > 0 && <span className="streak-count" aria-label={`Best streak: ${run.bestMoveStreak}`}><Flame size={15} fill="currentColor" aria-hidden="true" /><strong>{run.bestMoveStreak}</strong></span>}
+                        </div>
+                        <span className="move-count" aria-label={`Score: ${displayScore}`}>{immersiveRun && <RunScorePlaque />}<span>Score</span><strong>{displayScore.toLocaleString()}</strong></span>
+                    </div>
+                    {run && hasRunItems && !showBonusBoard && <RunItems key={run.id} items={run.items} activeEffects={run.activeEffects}
+                        canUse={id => canActivateItem(run, id)} enabled={itemInteraction} onUse={useRunItem} />}
+                </div>
+                {!checkpointReward && <div className="options-area">
                     {!pool.length && <div className="empty-state" role="status">No scored, playable floors.</div>}
-                    {playing && <MoveOptions groupRef={moveOptions} pending={pendingChoice} onPreview={setPreview}
+                    {playing && <MoveOptions immersive={immersiveRun} groupRef={moveOptions} pending={pendingChoice} onPreview={setPreview}
                         onSelect={uci => !!uci[4] && boardSelection?.from === uci.slice(0, 2) && boardSelection?.to === uci.slice(2, 4)
                             ? commitMove(uci) : selectMove(uci)}
                         options={choices.map((choice, index) => {
@@ -969,14 +1012,8 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
                     </div>}
                     {!payout.sequence && run && (run.phase === 'reveal' || run.phase === 'reply') && <Feedback run={run} />}
                     {!payout.sequence && run?.phase === 'level-ended' && <div className="finished-card"><h2>{currentOutcome?.status === 'completed' ? 'Floor completed' : 'Floor lost'}</h2></div>}
-                </div>
-                <section className="history-section">
-                    <div className="section-title">Move history</div>
-                    <div className="history-list" tabIndex={0} aria-label="Move history">
-                        {rows.map(row => <div className="history-row" key={row.number}><span>{row.number}.</span><strong>{row.white}</strong><strong>{row.black}</strong></div>)}
-                    </div>
-                </section>
-            </aside>}
+                </div>}
+            </aside>
         </section>}
         {showingResult && !run!.daily && <RunSummary run={run!} payout={payout.result!} restart={() => navigate({ page: 'regular' })}
             onShare={openRunShare} finishedAt={runHistory.history.runs.find(record => record.id === run!.id)?.finishedAt} />}
