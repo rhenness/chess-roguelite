@@ -12,6 +12,8 @@ export const TERRAIN_BOARD_APPEARANCE = {
     boardStyle: {
         // Size from the playable width without relying on the padded stand's percentage height.
         height: 'auto', aspectRatio: '1 / 1', gridTemplateRows: 'repeat(8, minmax(0, 1fr))',
+        // Whole-pixel squares keep the animated and settled SVGs on the same pixel grid.
+        width: 'round(down, 100%, 8px)', margin: 'calc((100% - round(down, 100%, 8px)) / 2) auto',
         borderRadius: '12px', boxShadow: '0 0 0 1px var(--terrain-rim-shadow, #9cae86), 0 2px 8px #203e3022',
     },
 } satisfies Pick<ChessboardOptions, 'darkSquareStyle' | 'lightSquareStyle' | 'boardStyle'>;

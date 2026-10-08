@@ -27,6 +27,8 @@ h2, p { margin: 0; }
 .board-wrap { position: relative; isolation: isolate; container-type: inline-size; width: 100%; aspect-ratio: 1; }
 /* Older WebKit needs the rounded board itself to isolate animated pieces for clipping. */
 .board-wrap > [id$="-board"] { isolation: isolate; }
+/* Keep SVG rasterization consistent when WebKit replaces a translated piece after a move. */
+.board-wrap [data-piece] > svg { transform: translateZ(0); }
 .payout-square { position: relative; width: 100%; height: 100%; display: grid; place-items: center; }
 .payout-square-label { position: relative; z-index: 1; padding: 3px 4px; border-radius: 4px; color: #e9e3d4; background: rgba(23, 43, 35, 0.86); font-size: clamp(9px, 2.8cqw, 20px); font-weight: 750; line-height: 1; font-variant-numeric: tabular-nums; pointer-events: none; }
 .payout-square.boosted .payout-square-label { color: #f0cc69; }
