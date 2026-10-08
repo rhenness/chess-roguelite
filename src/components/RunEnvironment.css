@@ -107,6 +107,9 @@
 .run-gate-skill { display: flex; align-items: center; gap: 7px; color: #dec48c; font: 600 16px/1.2 Georgia, serif; white-space: nowrap; }
 .run-gate-skill svg { width: 17px; height: 17px; flex-shrink: 0; }
 .run-stage .board-wrap { z-index: 1; padding: clamp(10px, 4%, 20px); margin-bottom: 34px; border-radius: 18px; background: transparent; filter: drop-shadow(0 12px 20px #02171066); }
+/* Give arrows the grid's exact viewport and keep inline SVG baselines out of row sizing. */
+.run-stage .board-wrap > [id$="-board"] > svg { display: block; width: 100%; height: 100%; }
+.run-stage .board-wrap [data-piece] > svg { display: block; }
 /* The square deck and board share a center; support depth extends beyond the SVG. */
 .run-board-frame, .run-board-moss { position: absolute; inset: -2.5%; width: 105%; height: 105%; overflow: visible; pointer-events: none; }
 .run-board-frame { z-index: -1; }

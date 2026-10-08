@@ -2485,21 +2485,24 @@ describe('gameplay interface', () => {
         expect(history.children[1]?.children[2]).toBeEmptyDOMElement();
     });
 
-    it('starts the easiest scored level, respects black orientation, and hides qualities before selection', () => {
-        const easy = makeLevel('easy', 50, 1, 'black');
+    it.each(['white', 'black'] as const)('starts the easiest scored level, orders arrows from the %s perspective, and hides qualities before selection', orientation => {
+        const easy = makeLevel('easy', 50, 1, orientation);
         renderGame(<App levels={[makeLevel('hard', 80), makeLevel('unscored', -1), easy]} />);
         expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument();
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
         expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', easy.root.fen);
-        expect(screen.getByTestId('board')).toHaveAttribute('data-orientation', 'black');
+        expect(screen.getByTestId('board')).toHaveAttribute('data-orientation', orientation);
         const offered = screen.getByLabelText('Available moves');
         expect(within(offered).getAllByRole('button')).toHaveLength(4);
         expect(offered).toHaveTextContent('');
         const arrows = JSON.parse(screen.getByTestId('board').getAttribute('data-arrows')!) as { startSquare: string; endSquare: string; color: string }[];
         expect(arrows).toHaveLength(4);
+        expect(arrows.map(arrow => arrow.startSquare)).toEqual(orientation === 'white' ? ['a2', 'a2', 'b2', 'b2'] : ['g8', 'g8', 'b8', 'b8']);
+        expect(arrows.map(arrow => arrow.color)).toEqual(['#c28b26', '#477c9e', '#a95843', '#785b96']);
         within(offered).getAllByRole('button').forEach((button, index) => {
             expect(button).toHaveStyle({ '--option-color': arrows[index]!.color });
+            expect(button).toHaveAttribute('data-move', arrows[index]!.startSquare + arrows[index]!.endSquare);
         });
         const move = decision(easy).choices[2]!;
         const button = within(offered).getByRole('button', { name: name => name.includes(`: ${move.playerMove.san},`) });

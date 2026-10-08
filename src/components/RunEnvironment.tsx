@@ -9,7 +9,11 @@ import './RunEnvironment.css';
 export const TERRAIN_BOARD_APPEARANCE = {
     darkSquareStyle: { backgroundColor: 'var(--terrain-board-dark, #41665b)' },
     lightSquareStyle: { backgroundColor: 'var(--terrain-board-light, #d7d9b2)' },
-    boardStyle: { borderRadius: '12px', boxShadow: '0 0 0 1px var(--terrain-rim-shadow, #9cae86), 0 2px 8px #203e3022' },
+    boardStyle: {
+        // Size from the playable width without relying on the padded stand's percentage height.
+        height: 'auto', aspectRatio: '1 / 1', gridTemplateRows: 'repeat(8, minmax(0, 1fr))',
+        borderRadius: '12px', boxShadow: '0 0 0 1px var(--terrain-rim-shadow, #9cae86), 0 2px 8px #203e3022',
+    },
 } satisfies Pick<ChessboardOptions, 'darkSquareStyle' | 'lightSquareStyle' | 'boardStyle'>;
 
 const SCENERY = island(154, 142, 1.28, false, true, 'point', 'near',

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Chessboard, type ChessboardOptions } from 'react-chessboard';
 import { Coins, Flame, RotateCw, Trophy } from 'lucide-react';
 import { MoveOptions, OPTION_COLORS, CONFIRM_COLOR } from '../../components/MoveOptions';
+import { orderMovesLeftToRight } from '../../game/moveOptionOrder';
 import { BOARD_APPEARANCE } from '../../components/boardAppearance';
 import { RunBoardFrame, RunGate, RunHearts, RunScenery, RunScorePlaque, TERRAIN_BOARD_APPEARANCE } from '../../components/RunEnvironment';
 import { RunItems } from '../../components/RunItems';
@@ -29,6 +30,8 @@ export function EndlessGame({ controller, active, navigate, onShare }: {
     const [source, setSource] = useState<string | null>(null);
     const [destination, setDestination] = useState<string | null>(null);
     const [orientation, setOrientation] = useState<'white' | 'black'>('white');
+    // Keep move colors tied to the starting perspective when the board is flipped.
+    const options = useMemo(() => orderMovesLeftToRight(session?.options ?? [], option => option.uci, 'white'), [session?.options]);
     const group = useRef<HTMLDivElement>(null);
     const resultTitle = useRef<HTMLHeadingElement>(null);
     useEffect(() => {
@@ -67,7 +70,7 @@ export function EndlessGame({ controller, active, navigate, onShare }: {
             const index = direction ? (current < 0 ? direction > 0 ? 0 : buttons.length - 1 : (current + direction + buttons.length) % buttons.length) : Math.max(0, current);
             if (direction) { setPending(null); setSource(null); setDestination(null); }
             buttons[index]!.focus();
-            if (activate) select(session!.options[index]!.uci);
+            if (activate) select(options[index]!.uci);
         };
         window.addEventListener('keydown', handle);
         return () => window.removeEventListener('keydown', handle);
@@ -92,14 +95,14 @@ export function EndlessGame({ controller, active, navigate, onShare }: {
     const chess = createChess(session.pgn);
     const lastMove = chess.history({ verbose: true }).at(-1);
     const highlight = pending ?? preview ?? (session.phase === 'reveal' ? session.lastMove?.uci : null);
-    const colorIndex = session.options.findIndex(option => option.uci === highlight);
+    const colorIndex = options.findIndex(option => option.uci === highlight);
     const color = pending ? CONFIRM_COLOR : OPTION_COLORS[Math.max(0, colorIndex)]!;
     const squareStyles: Record<string, CSSProperties> = {};
     if (lastMove) for (const square of [lastMove.from, lastMove.to]) squareStyles[square] = { backgroundColor: 'rgba(209,184,116,.4)' };
     if (highlight) for (const square of [highlight.slice(0, 2), highlight.slice(2, 4)]) squareStyles[square] = { boxShadow: `inset 0 0 0 5px ${color}` };
     if (source && ready) {
         squareStyles[source] = { boxShadow: `inset 0 0 0 5px ${CONFIRM_COLOR}` };
-        session.options.forEach((option, index) => {
+        options.forEach((option, index) => {
             if (option.from === source) squareStyles[option.to] = { boxShadow: `inset 0 0 0 4px ${OPTION_COLORS[index]}` };
         });
     }
@@ -121,7 +124,7 @@ export function EndlessGame({ controller, active, navigate, onShare }: {
         id: 'endless-board', position: chess.fen(), boardOrientation: orientation,
         pieces: PIECE_RENDERERS[session.set], squareStyles, onSquareClick: ({ square }) => onSquareClick(square),
         squareStyle: ready ? { cursor: 'pointer' } : undefined,
-        arrows: ready ? session.options.map((option, index) => ({ startSquare: option.from, endSquare: option.to,
+        arrows: ready ? options.map((option, index) => ({ startSquare: option.from, endSquare: option.to,
             color: pending === option.uci ? CONFIRM_COLOR : OPTION_COLORS[index]! })) : [],
     };
     const history = chess.history();
@@ -152,7 +155,7 @@ export function EndlessGame({ controller, active, navigate, onShare }: {
         <div className="options-area">
             {ready && <MoveOptions immersive groupRef={group} pending={pending} onPreview={setPreview}
                 onSelect={uci => destination && uci.slice(0, 2) === source && uci.slice(2, 4) === destination ? commit(uci) : select(uci)}
-                options={session.options.map((option, index) => {
+                options={options.map((option, index) => {
                     const choosingPromotion = !!option.promotion && source === option.from && destination === option.to;
                     const Piece = choosingPromotion ? PIECE_RENDERERS[session.set][`${chess.turn()}${option.promotion!.toUpperCase()}`] : undefined;
                     return { uci: option.uci, content: Piece && <Piece />,

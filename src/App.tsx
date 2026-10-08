@@ -20,6 +20,7 @@ import { ItemIcon, ItemLoadout, RunItems } from './components/RunItems';
 import { RunCheckpointReward } from './components/RunCheckpointReward';
 import { activateItem, canActivateItem, ITEMS, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemId, type ItemInventory } from './game/items';
 import { MoveOptions, OPTION_COLORS, CONFIRM_COLOR } from './components/MoveOptions';
+import { orderMovesLeftToRight } from './game/moveOptionOrder';
 import { RunBoardFrame, RunGate, RunHearts, RunScenery, RunScorePlaque, TERRAIN_BOARD_APPEARANCE } from './components/RunEnvironment';
 import { BOARD_APPEARANCE } from './components/boardAppearance';
 import { EndlessPage } from './features/endless/EndlessPage';
@@ -285,7 +286,9 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
     const savedDailyRun = useMemo(() => page === 'play' && daily.today?.attempt?.status === 'active' ? restoreDailyRun(daily.today) : null, [page, daily.today]);
     const level = run ? run.levels[run.levelIndex] : skillPool[0];
     const node = run?.node;
-    const choices = useMemo(() => node?.kind === 'decision' ? shuffleChoices(node.choices) : [], [node]);
+    const orientation = level?.playerColor ?? 'white';
+    const choices = useMemo(() => node?.kind === 'decision'
+        ? orderMovesLeftToRight(shuffleChoices(node.choices), choice => choice.playerMove.uci, orientation) : [], [node, orientation]);
     const fen = run ? boardFen(run) : level?.root.fen;
     const itemInteraction = run?.phase === 'decision' && !payout.sequence && !paused && !tutorial.paused;
     const playing = itemInteraction && tutorial.step !== 'item';
@@ -296,7 +299,6 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
     const checkpointReward = run?.phase === 'checkpoint'
         ? run.checkpointRewards.find(reward => reward.afterRound === run.levelIndex + 1) : undefined;
     const activeRules = run?.rules ?? rules;
-    const orientation = level?.playerColor ?? 'white';
     const rows = historyRows(run, level);
     const currentOutcome = run?.outcomes.find(outcome => outcome.id === level?.id);
     const unlockedSet = progression.pendingUnlocks[0];

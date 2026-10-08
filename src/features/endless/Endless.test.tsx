@@ -22,7 +22,7 @@ vi.mock('./engine/stockfish', () => ({ StockfishAnalyzer: class {
 } }));
 vi.mock('react-chessboard', async () => ({ ...await vi.importActual<typeof import('react-chessboard')>('react-chessboard'),
     Chessboard: ({ options }: { options: ChessboardOptions }) => <div data-testid="board"
-    data-id={options.id} data-fen={options.position} data-orientation={options.boardOrientation}>
+    data-id={options.id} data-fen={options.position} data-orientation={options.boardOrientation} data-arrows={JSON.stringify(options.arrows)}>
     {['e2', 'e4', 'e7', 'e5', 'g1', 'f3'].map(square => <button key={square} aria-label={`Square ${square}`}
         onClick={() => options.onSquareClick?.({ square, piece: null })} />)}
 </div> }));
@@ -50,9 +50,8 @@ function startHardcore() {
     fireEvent.click(screen.getByRole('button', { name: 'Start hardcore' }));
 }
 function playOption(uci: string) {
-    const session = loadSave().session!;
-    const index = session.options.findIndex(option => option.uci === uci);
-    const button = within(screen.getByRole('group', { name: 'Available moves' })).getAllByRole('button')[index]!;
+    const button = within(screen.getByRole('group', { name: 'Available moves' })).getAllByRole('button')
+        .find(button => button.getAttribute('data-move') === uci)!;
     fireEvent.click(button); fireEvent.click(button);
 }
 
@@ -65,6 +64,18 @@ describe('Endless integration', () => {
         expect(opening).toMatchObject({ phase: 'ready', pgn: '', moves: 0, health: 1, score: 0 });
         expect(engine.analyze).toHaveBeenCalledTimes(4);
         expect(engine.analyze.mock.calls.every(([fen]) => new Chess(fen).turn() === 'b')).toBe(true);
+        const moves = ['c2c4', 'd2d4', 'e2e4', 'g1f3'];
+        for (const orientation of ['white', 'black']) {
+            expect(screen.getByTestId('board')).toHaveAttribute('data-orientation', orientation);
+            const buttons = within(screen.getByRole('group', { name: 'Available moves' })).getAllByRole('button');
+            expect(buttons.map(button => button.getAttribute('data-move'))).toEqual(moves);
+            const arrows = JSON.parse(screen.getByTestId('board').getAttribute('data-arrows')!) as { startSquare: string; endSquare: string; color: string }[];
+            expect(arrows.map(arrow => arrow.startSquare + arrow.endSquare)).toEqual(moves);
+            expect(arrows.map(arrow => arrow.color)).toEqual(['#c28b26', '#477c9e', '#a95843', '#785b96']);
+            buttons.forEach((button, index) => expect(button).toHaveStyle({ '--option-color': arrows[index]!.color }));
+            fireEvent.click(screen.getByRole('button', { name: 'Flip board' }));
+        }
+        expect(loadSave().session!.options).toEqual(opening.options);
         playOption('e2e4');
         const fen = new Chess(); fen.move('e4');
         expect(loadSave().session!.phase).toBe('reveal');
