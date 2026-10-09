@@ -2,10 +2,17 @@ import { ITEMS, isItemId, isItemInventory, itemCount, LOADOUT_LIMIT } from '../.
 import { PIECE_SET_IDS } from '../../game/pieceSets';
 import { DEFAULT_RULES, QUALITY_ORDER } from '../../game/run';
 import { createChess, moveToUci } from './chess';
-import type { EndlessRecord, EndlessSave, EndlessSession, MoveOption } from './types';
+import { openingOptions, STARTING_FEN } from './options';
+import type { EndlessRecord, EndlessSave, EndlessSession, EngineScore, MoveOption } from './types';
 
 export const ENDLESS_STORAGE_KEY = 'knightfall.endless.v1';
 const integer = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0;
+function isScore(value: unknown): value is EngineScore | null {
+    if (value === null) return true;
+    if (!value || typeof value !== 'object') return false;
+    const score = value as EngineScore;
+    return ['cp', 'mate'].includes(score.kind) && Number.isSafeInteger(score.value);
+}
 function isOption(value: unknown): value is MoveOption {
     if (!value || typeof value !== 'object') return false;
     const option = value as MoveOption;
@@ -13,7 +20,7 @@ function isOption(value: unknown): value is MoveOption {
         && option.from === option.uci.slice(0, 2) && option.to === option.uci.slice(2, 4)
         && option.promotion === option.uci[4] && typeof option.san === 'string'
         && typeof option.description === 'string' && QUALITY_ORDER.includes(option.quality)
-        && !!option.score && ['cp', 'mate'].includes(option.score.kind) && Number.isSafeInteger(option.score.value);
+        && isScore(option.score);
 }
 
 export function isSession(value: unknown): value is EndlessSession {
@@ -34,6 +41,7 @@ export function isSession(value: unknown): value is EndlessSession {
             || !Array.isArray(session.activeEffects) || !Array.isArray(session.options)
             || session.options.length > 4 || !session.options.every(isOption)
             || (session.lastMove !== null && !isOption(session.lastMove))
+            || (session.lastBestScore !== undefined && !isScore(session.lastBestScore))
             || !session.rules || !integer(session.rules.startingHealth) || !session.rules.startingHealth
             || !QUALITY_ORDER.every(quality => session.rules.points[quality] === DEFAULT_RULES.points[quality]
                 && session.rules.damage[quality] === DEFAULT_RULES.damage[quality])) return false;
@@ -71,6 +79,19 @@ function isRecord(value: unknown): value is EndlessRecord {
         && record.longestStreak <= record.moves && record.gamesCompleted <= record.moves;
 }
 export const initialSave = (): EndlessSave => ({ version: 1, session: null, records: [] });
+
+/** Older preset openings used unevaluated zero scores. Keep the attempt and its categories. */
+function restoreEvaluations(session: EndlessSession): EndlessSession {
+    if (session.lastBestScore !== undefined) return session;
+    const presets = new Set(openingOptions().map(option => option.uci));
+    const restoreOpening = (option: MoveOption): MoveOption => option.quality === 'good' && presets.has(option.uci)
+        && option.score?.kind === 'cp' && option.score.value === 0 ? { ...option, score: null } : option;
+    return { ...session, lastBestScore: null,
+        options: session.optionsFen === STARTING_FEN ? session.options.map(restoreOpening) : session.options,
+        lastMove: session.lastMove && createChess(session.pgn).history().length === 1
+            ? restoreOpening(session.lastMove) : session.lastMove };
+}
+
 export function loadSave(): EndlessSave {
     try {
         const value = JSON.parse(window.localStorage.getItem(ENDLESS_STORAGE_KEY) ?? 'null');
@@ -80,7 +101,7 @@ export function loadSave(): EndlessSave {
             if (!isRecord(record) || ids.has(record.id)) return false;
             ids.add(record.id); return true;
         }) : [];
-        return { version: 1, session: isSession(value.session) ? value.session : null, records };
+        return { version: 1, session: isSession(value.session) ? restoreEvaluations(value.session) : null, records };
     } catch { return initialSave(); }
 }
 export function saveState(value: EndlessSave): boolean {

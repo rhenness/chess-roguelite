@@ -5,11 +5,12 @@ import type { PieceSetId } from '../../game/pieceSets';
 import type { RunRules } from '../../game/run';
 
 export type Quality = MoveQuality;
+/** Perspective of the side making the evaluated move, including Black. */
 export type EngineScore = { kind: 'cp' | 'mate'; value: number };
 export interface EvaluatedMove { uci: string; score: EngineScore; depth: number }
 export interface MoveOption {
     uci: string; san: string; from: Square; to: Square; promotion?: PieceSymbol;
-    description: string; quality: Quality; score: EngineScore;
+    description: string; quality: Quality; score: EngineScore | null;
 }
 export interface Thresholds { goodMax: number; inaccurateMax: number }
 export const DEFAULT_THRESHOLDS: Thresholds = { goodMax: 50, inaccurateMax: 150 };
@@ -23,6 +24,8 @@ export interface EndlessSession {
     counts: Record<MoveQuality, number>;
     items: ItemInventory; activeEffects: ActiveEffect[];
     lastMove: MoveOption | null; lastResolution: MoveResolution | null; boardResult: string | null;
+    /** Captured before offered options are cleared; absent in older saves. */
+    lastBestScore?: EngineScore | null;
     startedAt: number; finishedAt: number | null;
 }
 export interface EndlessRecord {

@@ -34,8 +34,8 @@ describe('Share run preview', () => {
         const card = within(screen.getByRole('article'));
         expect(card.getByText('Castle Keeper')).toBeInTheDocument();
         expect(card.getByLabelText('Player identity')).toHaveClass('banner-celestial');
-        expect(within(card.getByLabelText('Decision counts')).getByText('Good').nextElementSibling?.textContent).toBe('10');
-        expect(within(card.getByLabelText('Decision counts')).getByText('Bad').nextElementSibling?.textContent).toBe('1');
+        expect(within(card.getByLabelText('Decision counts')).getByText('B').nextElementSibling?.textContent).toBe('10');
+        expect(within(card.getByLabelText('Decision counts')).getByText('F').nextElementSibling?.textContent).toBe('1');
         await waitFor(() => expect(screen.getByRole('button', { name: 'Save image' })).toBeEnabled());
         expect(exportImage).toHaveBeenCalledWith(screen.getByRole('article'), expect.objectContaining({ width: 540, height: 540, pixelRatio: 2 }));
         expect(screen.queryByRole('button', { name: 'Share' })).not.toBeInTheDocument();

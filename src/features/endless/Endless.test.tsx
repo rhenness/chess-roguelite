@@ -11,8 +11,9 @@ import { initialPlayerProfile, PLAYER_PROFILE_STORAGE_KEY, savePlayerProfile } f
 import { RUN_HISTORY_STORAGE_KEY } from '../../game/runHistory';
 import { loadPlayerLeveling, totalPlayerXp } from '../../game/playerLeveling';
 import { PIECE_SETS, PIECE_SET_IDS } from '../../game/pieceSets';
-import { moveToUci } from './chess';
-import { startSession } from './session';
+import { createChess, moveToUci } from './chess';
+import { playMove, startSession } from './session';
+import { buildOptions } from './options';
 import { ENDLESS_STORAGE_KEY, loadSave, saveState } from './storage';
 import { offer } from './test/fixtures';
 
@@ -56,6 +57,65 @@ function playOption(uci: string) {
 }
 
 describe('Endless integration', () => {
+    it.each(['standard', 'hardcore'] as const)('shows only the assigned grade after a preset %s opening', mode => {
+        const session = startSession(mode, 'default');
+        saveState({ version: 1, session, records: [] });
+        window.history.replaceState(null, '', '#/endless-game');
+        render(<App levels={[makeLevel()]} />);
+        const button = screen.getByRole('button', { name: /Option \d+: e4,/ });
+        fireEvent.mouseEnter(button); fireEvent.click(button);
+        expect(screen.queryByRole('status', { name: 'Move quality' })).not.toBeInTheDocument();
+        fireEvent.click(button);
+        const feedback = screen.getByRole('status', { name: 'Move quality' });
+        expect(feedback).toHaveTextContent(/^B$/);
+        expect(loadSave().session?.lastMove?.score).toBeNull();
+        expect(loadSave().session?.score).toBe(mode === 'standard' ? 75 : 1);
+    });
+
+    it.each([
+        ['standard', 'white'], ['standard', 'black'], ['hardcore', 'white'], ['hardcore', 'black'],
+    ] as const)('keeps evaluations stored and reveals only the grade after refreshing %s as %s', (mode, color) => {
+        let session = startSession(mode, 'default');
+        if (color === 'black') session = playMove(session, 'e2e4');
+        const chess = createChess(session.pgn);
+        const options = buildOptions(chess, chess.moves({ verbose: true }).slice(0, 4).map((move, index) => ({
+            uci: moveToUci(move), depth: 10, score: { kind: 'cp', value: [100, 85, 0, -100][index]! },
+        })));
+        session = { ...session, phase: 'ready', optionsFen: chess.fen(), options };
+        saveState({ version: 1, session, records: [] });
+        window.history.replaceState(null, '', '#/endless-game');
+        const view = render(<App levels={[makeLevel()]} />);
+        playOption(options.find(option => option.quality === 'good')!.uci);
+        const feedback = screen.getByRole('status', { name: 'Move quality' });
+        expect(feedback).toHaveTextContent(/^B$/);
+        expect(loadSave().session).toMatchObject({ lastMove: { score: { kind: 'cp', value: 85 } }, lastBestScore: { kind: 'cp', value: 100 } });
+        view.unmount();
+        render(<App levels={[makeLevel()]} />);
+        expect(screen.getByRole('status', { name: 'Move quality' }).querySelector('.move-grade'))
+            .toHaveTextContent(/^B$/);
+    });
+
+    it.each([
+        ['standard', 'mate', 3, 'mate', 3, 'A'],
+        ['hardcore', 'mate', 3, 'mate', 3, 'A'],
+        ['standard', 'cp', 85, 'mate', 3, 'F'],
+        ['hardcore', 'cp', 85, 'mate', 3, 'F'],
+        ['standard', 'mate', -3, 'cp', 85, 'F'],
+        ['hardcore', 'mate', -3, 'cp', 85, 'F'],
+    ] as const)('shows only the classified grade in %s with %s %i vs %s %i', (mode, kind, value, bestKind, bestValue, text) => {
+        const initial = startSession(mode, 'default');
+        const options = buildOptions(new Chess(), [
+            { uci: 'e2e4', depth: 10, score: { kind: bestKind, value: bestValue } },
+            { uci: 'd2d4', depth: 10, score: { kind, value } },
+        ]);
+        saveState({ version: 1, session: { ...initial, options }, records: [] });
+        window.history.replaceState(null, '', '#/endless-game');
+        render(<App levels={[makeLevel()]} />);
+        playOption(kind === bestKind && value === bestValue ? 'e2e4' : 'd2d4');
+        const feedback = screen.getByRole('status', { name: 'Move quality' });
+        expect(feedback).toHaveTextContent(new RegExp(`^${text}$`));
+    });
+
     it('prepares the four opening children without advancing play and immediately reuses a completed branch after the reveal', async () => {
         render(<App levels={[makeLevel()]} />);
         startHardcore();
@@ -164,6 +224,8 @@ describe('Endless integration', () => {
         const failure = loadSave().session!.options.find(option => option.quality === 'inaccuracy' || option.quality === 'bad')!;
         playOption(failure.uci);
         expect(screen.getByRole('heading', { name: 'Endless over' })).toHaveFocus();
+        expect(screen.getByRole('status', { name: 'Move quality' }).querySelector('.move-grade'))
+            .toHaveTextContent(new RegExp(`^${failure.quality === 'inaccuracy' ? 'C' : 'F'}$`));
         expect(screen.getByLabelText('Earned 3 coins')).toBeInTheDocument();
         const credited = loadUserProgression();
         expect(credited.coins).toBe(103);
@@ -237,7 +299,7 @@ describe('Endless integration', () => {
         startHardcore(); playOption('e2e4');
         fireEvent.click(screen.getByRole('button', { name: 'Help for this page' }));
         const help = screen.getByRole('dialog', { name: 'Playing Hardcore Endless' });
-        expect(help).toHaveTextContent('One Inaccuracy or Bad move ends the attempt.');
+        expect(help).toHaveTextContent('One C or F move ends the attempt.');
         expect(help).toHaveTextContent('Help changes based on the page you’re viewing.');
         expect(within(help).queryByText(/items|restore one heart|health lost/i)).not.toBeInTheDocument();
         const callsBeforePause = engine.analyze.mock.calls.length;

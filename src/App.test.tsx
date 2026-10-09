@@ -3,7 +3,7 @@ import { Chess } from 'chess.js';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChessboardOptions } from 'react-chessboard';
-import type { GeneratedLevel, MoveQuality } from './types/level';
+import type { EvaluationScore, GeneratedLevel, MoveQuality } from './types/level';
 import { continueToNextRound, decision, makeLevel, makeSkillLevel } from './test/levels';
 import { advancePlayback, chooseMove, DEFAULT_RULES } from './game/run';
 import { ITEMS } from './game/items';
@@ -139,6 +139,92 @@ function openProfileEditor() {
     fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
 }
 
+describe('move grades', () => {
+    it.each([
+        ['regular', 'white'], ['regular', 'black'], ['daily', 'white'], ['daily', 'black'],
+    ] as const)('reveals only the grade after committing a %s move as %s', (mode, color) => {
+        vi.useFakeTimers();
+        const level = makeLevel(`${mode}-${color}-feedback`, 50, 2, color);
+        const node = decision(level);
+        node.bestEvaluation = { ...node.bestEvaluation, score: { type: 'cp', value: 100 } };
+        const choice = node.choices.find(choice => choice.quality === 'inaccuracy')!;
+        choice.evaluation = { ...choice.evaluation, score: { type: 'cp', value: 85 } };
+        const view = render(<App levels={[level]} />);
+        if (mode === 'regular') startRegular();
+        else { openDaily(); fireEvent.click(screen.getByRole('button', { name: 'Enter dungeon' })); }
+        const button = screen.getByRole('button', { name: name => name.startsWith('Option ') && name.includes(`: ${choice.playerMove.san},`) });
+        fireEvent.mouseEnter(button);
+        expect(screen.queryByRole('status', { name: 'Move quality' })).not.toBeInTheDocument();
+        expect(screen.queryByText(/cp/)).not.toBeInTheDocument();
+        fireEvent.click(button);
+        expect(screen.queryByRole('status', { name: 'Move quality' })).not.toBeInTheDocument();
+        fireEvent.click(button);
+        const feedback = screen.getByRole('status', { name: 'Move quality' });
+        expect(feedback).toHaveTextContent(/^C$/);
+        expect(screen.getByLabelText('Score: 25')).toBeInTheDocument();
+        expect(screen.getByLabelText('Health: 2')).toBeInTheDocument();
+        view.unmount();
+        render(<App levels={[level]} />);
+        if (mode === 'regular') resumeRegularFromHome();
+        else { openDaily(); fireEvent.click(screen.getByRole('button', { name: 'Resume dungeon' })); }
+        expect(screen.getByRole('status', { name: 'Move quality' }).querySelector('.move-grade'))
+            .toHaveTextContent(/^C$/);
+        act(() => vi.advanceTimersByTime(1400));
+        expect(screen.getByRole('status', { name: 'Move quality' }).querySelector('.move-grade'))
+            .toHaveTextContent(/^C$/);
+        act(() => vi.advanceTimersByTime(1000));
+        expect(screen.queryByRole('status', { name: 'Move quality' })).not.toBeInTheDocument();
+    });
+
+    it.each([
+        ['beginner', 0, 'A'], ['beginner', 1, 'F'],
+        ['expert', 0, 'A'], ['expert', 1, 'B'], ['expert', 2, 'C'], ['expert', 3, 'C'],
+    ] as const)('preserves %s recipe choice %i as grade %s', (tier, index, grade) => {
+        vi.useFakeTimers();
+        const level = makeSkillLevel(tier);
+        if (tier === 'expert') level.generation.profileId = '4-options-4-depth-40';
+        const node = decision(level);
+        node.bestEvaluation = { ...node.bestEvaluation, score: { type: 'cp', value: 100 } };
+        const choice = node.choices[index]!;
+        choice.evaluation = { ...choice.evaluation, score: { type: 'cp', value: 100 - index * 5 } };
+        savePlayerProfile({ ...initialPlayerProfile(), preferredSkillTier: tier });
+        renderGame(<App levels={[level]} />);
+        const button = screen.getByRole('button', { name: name => name.startsWith('Option ') && name.includes(`: ${choice.playerMove.san},`) });
+        fireEvent.click(button); fireEvent.click(button);
+        expect(screen.getByRole('status', { name: 'Move quality' }).querySelector('.move-grade'))
+            .toHaveTextContent(new RegExp(`^${grade}$`));
+    });
+
+    it.each([
+        ['best', { type: 'mate', value: 3 }, { type: 'mate', value: 3 }, 'A'],
+        ['good', { type: 'cp', value: 85 }, { type: 'mate', value: 3 }, 'B'],
+        ['bad', { type: 'mate', value: -4 }, { type: 'cp', value: -85 }, 'F'],
+    ] as const)('preserves the assigned grade for mate evaluations (%s)', (quality, score, best, text) => {
+        vi.useFakeTimers();
+        const level = makeLevel();
+        const node = decision(level);
+        node.bestEvaluation = { ...node.bestEvaluation, score: best as EvaluationScore };
+        const choice = node.choices.find(choice => choice.quality === quality)!;
+        choice.evaluation = { ...choice.evaluation, score: score as EvaluationScore };
+        renderGame(<App levels={[level]} />);
+        selectQuality(level, quality);
+        const feedback = screen.getByRole('status', { name: 'Move quality' });
+        expect(feedback).toHaveTextContent(new RegExp(`^${text}$`));
+    });
+
+    it('reveals a fatal move while the death notice is visible', () => {
+        vi.useFakeTimers();
+        const level = makeLevel();
+        const node = decision(level);
+        node.bestEvaluation = { ...node.bestEvaluation, score: { type: 'cp', value: 100 } };
+        node.choices[3]!.evaluation = { ...node.choices[3]!.evaluation, score: { type: 'cp', value: -85 } };
+        renderGame(<App levels={[level]} rules={{ ...DEFAULT_RULES, startingHealth: 1 }} />);
+        selectQuality(level, 'bad');
+        expect(screen.getByRole('status', { name: 'Move quality' }).querySelector('.move-grade'))
+            .toHaveTextContent(/^F$/);
+    });
+});
+
 describe('skill selection', () => {
     const tierPool = () => [makeSkillLevel('beginner'), makeSkillLevel('intermediate'), makeSkillLevel('expert')];
 
@@ -231,8 +317,7 @@ describe('skill selection', () => {
         savePlayerProfile({ ...initialPlayerProfile(), preferredSkillTier: 'expert' });
         renderGame(<App levels={pool} />);
         selectQuality(pool[0]!, 'inaccuracy');
-        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent('-25 points');
-        expect(screen.getByRole('status', { name: 'Move quality' })).not.toHaveTextContent('+-25');
+        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent(/^C$/);
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
         expect(screen.getByLabelText('Health: 2')).toBeInTheDocument();
     });
@@ -316,7 +401,7 @@ describe('first play tutorial', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     }
     function continueLessons(keepItem = true) {
-        for (const title of ['Read your move', 'Keep an eye on your hearts', 'Build a Best streak']) {
+        for (const title of ['Read your move', 'Keep an eye on your hearts', 'Build an A streak']) {
             expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
             fireEvent.click(screen.getByRole('button', { name: 'Next' }));
         }
@@ -1009,7 +1094,7 @@ describe('run supplies', () => {
         expect(screen.getByLabelText('Score: 0')).toBeInTheDocument();
         fireEvent.click(option);
         expect(screen.getByLabelText('Score: 300')).toBeInTheDocument();
-        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent('+300 points');
+        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent(/^A$/);
         expect(screen.getByLabelText(/Triple Crown: 2 moves remaining/)).toBeInTheDocument();
     });
     it('announces prevented damage without reporting a health loss or ending the run', () => {
@@ -2226,7 +2311,7 @@ describe('gameplay interface', () => {
         expect(screen.getAllByRole('button', { name: /^Promote to / })).toHaveLength(4);
         fireEvent.click(screen.getByRole('button', { name: /^Promote to knight:/ }));
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', choices[3]!.fenAfterPlayerMove);
-        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent('Bad');
+        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent('F');
     });
 
     it.each(['obsidian', 'gilded'] as const)('selects %s without starting until Start run is pressed', set => {
@@ -2444,7 +2529,7 @@ describe('gameplay interface', () => {
         fireEvent.click(secondButton);
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', good.fenAfterPlayerMove);
         expect(screen.getByLabelText('Score: 75')).toBeInTheDocument();
-        expect(screen.getByRole('status')).toHaveTextContent('Good');
+        expect(screen.getByRole('status')).toHaveTextContent('B');
     });
 
     it('keeps the board oriented to the player’s side across runs', () => {
@@ -2453,7 +2538,7 @@ describe('gameplay interface', () => {
         expect(screen.getByTestId('board')).toHaveAttribute('data-orientation', 'black');
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', level.root.fen);
         selectQuality(level, 'good');
-        expect(screen.getByRole('status')).toHaveTextContent('Good');
+        expect(screen.getByRole('status')).toHaveTextContent('B');
         openRegular();
         startRegular('Default');
         expect(screen.getByTestId('board')).toHaveAttribute('data-orientation', 'black');
@@ -2519,8 +2604,7 @@ describe('gameplay interface', () => {
         renderGame(<StrictMode><App levels={[level]} /></StrictMode>);
         const choice = selectQuality(level, 'inaccuracy');
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.fenAfterPlayerMove);
-        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent('Inaccuracy');
-        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent('+25 points');
+        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent(/^C$/);
         expect(screen.getByRole('status', { name: 'Move quality' })).not.toHaveTextContent('HP');
         expect(screen.getByRole('status', { name: '−1 health' })).toHaveTextContent('−1');
         expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
@@ -2530,7 +2614,7 @@ describe('gameplay interface', () => {
         act(() => { vi.advanceTimersByTime(1400); });
         expect(screen.getByTestId('board')).toHaveAttribute('data-position', choice.next.fen);
         expect(screen.getByRole('status', { name: 'Move quality' })).not.toHaveTextContent('Reply');
-        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent('+25 points');
+        expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent(/^C$/);
         expect(screen.getByLabelText('Move history')).toHaveTextContent(choice.opponentReply!.san);
         act(() => { vi.advanceTimersByTime(1000); });
         expect(screen.queryByRole('status')).not.toBeInTheDocument();
@@ -2580,7 +2664,7 @@ describe('gameplay interface', () => {
         expect(summaryValue('Total decisions')).toBe('2');
         expect(screen.getByRole('region', { name: 'Run complete' })).toBeInTheDocument();
         expect(document.body).not.toHaveTextContent(/difficulty/i);
-        expect(screen.getByLabelText('Move counts')).toHaveTextContent('0Best1Good1Inaccuracy0Bad');
+        expect(screen.getByLabelText('Move counts')).toHaveTextContent('0A1B1C0F');
         fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
         startRegular('Default');
         const restartedProgress = screen.getByRole('progressbar', { name: 'Run progress' });
@@ -2616,7 +2700,7 @@ describe('gameplay interface', () => {
         expect(screen.getByRole('region', { name: 'Run over' })).toBeInTheDocument();
         expect(window.localStorage.getItem(MULTIPLIER_STORAGE_KEY)).toBeNull();
         expect(document.body).not.toHaveTextContent(/difficulty/i);
-        expect(screen.getByLabelText('Move counts')).toHaveTextContent('0Best0Good0Inaccuracy1Bad');
+        expect(screen.getByLabelText('Move counts')).toHaveTextContent('0A0B0C1F');
         act(() => { vi.runOnlyPendingTimers(); });
         expect(screen.queryByTestId('board')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Play again' }));
@@ -2660,7 +2744,7 @@ describe('gameplay interface', () => {
         expect(screen.queryByRole('status', { name: 'Floor 2' })).not.toBeInTheDocument();
         expect(screen.getByLabelText('Score: 400')).toBeInTheDocument();
         expect(screen.getByLabelText('Health: 3')).toBeInTheDocument();
-        expect(screen.getByLabelText('Best streak: 1')).toBeInTheDocument();
+        expect(screen.getByLabelText('A streak: 1')).toBeInTheDocument();
         act(() => { vi.advanceTimersByTime(1500); });
         expect(screen.queryByRole('status', { name: 'Checkmate' })).not.toBeInTheDocument();
         const floorNotice = screen.getByRole('status', { name: 'Floor 2' });
@@ -2760,7 +2844,8 @@ describe('gameplay interface', () => {
             selectQuality(level, 'best');
             if (index === 3) {
                 expect(screen.getByRole('status', { name: '+1 health' })).toHaveTextContent('+1');
-                expect(screen.getByText('+100 points')).toBeInTheDocument();
+                expect(screen.getByRole('status', { name: 'Move quality' })).toHaveTextContent(/^A$/);
+                expect(screen.getByLabelText('Score: 400')).toBeInTheDocument();
                 expect(screen.getByLabelText('Health: 4')).toBeInTheDocument();
             }
             act(() => { vi.advanceTimersByTime(1400); });

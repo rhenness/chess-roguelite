@@ -4,11 +4,12 @@ import { Coins, Flame, RotateCw, Trophy } from 'lucide-react';
 import { MoveOptions, OPTION_COLORS, CONFIRM_COLOR } from '../../components/MoveOptions';
 import { orderMovesLeftToRight } from '../../game/moveOptionOrder';
 import { BOARD_APPEARANCE } from '../../components/boardAppearance';
+import { usePointerBoard } from '../../game/usePointerBoard';
 import { RunBoardFrame, RunGate, RunHearts, RunScenery, RunScorePlaque, TERRAIN_BOARD_APPEARANCE } from '../../components/RunEnvironment';
 import { RunItems } from '../../components/RunItems';
 import { PIECE_RENDERERS } from '../../components/pieces/pieceRenderers';
 import { BoardNotification } from '../../components/BoardNotification';
-import { QUALITY_LABELS } from '../../game/run';
+import { MoveFeedback, MoveGrade } from '../../components/MoveFeedback';
 import { endlessMoveXp } from '../../game/playerLeveling';
 import { ShareRunButton } from '../../components/ShareRunButton';
 import { shareEndlessRun, type ShareRunHandler } from '../../game/shareRun';
@@ -33,6 +34,7 @@ export function EndlessGame({ controller, active, navigate, onShare }: {
     // Keep move colors tied to the starting perspective when the board is flipped.
     const options = useMemo(() => orderMovesLeftToRight(session?.options ?? [], option => option.uci, 'white'), [session?.options]);
     const group = useRef<HTMLDivElement>(null);
+    const pointerBoard = usePointerBoard();
     const resultTitle = useRef<HTMLHeadingElement>(null);
     useEffect(() => {
         setPending(null); setPreview(null); setSource(null); setDestination(null);
@@ -87,7 +89,7 @@ export function EndlessGame({ controller, active, navigate, onShare }: {
             <div><dt>Longest streak</dt><dd>{session.longestStreak}</dd></div>
             <div><dt>Moves played</dt><dd>{session.moves}</dd></div>
         </dl>
-        {session.lastMove && <p className="endless-final-move">{session.lastMove.san} · {QUALITY_LABELS[session.lastMove.quality]}</p>}
+        {session.lastMove && <p className="endless-final-move" role="status" aria-label="Move quality"><MoveGrade quality={session.lastMove.quality} /></p>}
         <div className="result-actions"><button className="primary-small" onClick={() => navigate({ page: 'endless' })}>Play again</button>
             <ShareRunButton result={shareEndlessRun(session)} onShare={onShare} /></div>
     </section>;
@@ -136,7 +138,7 @@ export function EndlessGame({ controller, active, navigate, onShare }: {
                 <div className="endless-game-controls">
                     <button className="text-button" aria-label="Flip board" onClick={() => setOrientation(value => value === 'white' ? 'black' : 'white')}><RotateCw size={16} aria-hidden="true" /></button></div>
             </div>
-            <div className="board-wrap"><RunBoardFrame /><Chessboard options={boardOptions} />
+            <div className="board-wrap" ref={pointerBoard}><RunBoardFrame /><Chessboard options={boardOptions} />
                 {session.phase === 'between-games' && <BoardNotification key={`${session.id}-${session.gamesCompleted}`} onComplete={completeNotice}
                     notice={{ id: `${session.id}-${session.gamesCompleted}`, visual: <Trophy />, label: session.boardResult?.startsWith('Checkmate') ? 'Checkmate' : 'Draw',
                         caption: `Game ${session.gamesCompleted + 1} starting`, announcement: `${session.boardResult}. Game ${session.gamesCompleted + 1} starting.`, durationMs: 1500 }} />}
@@ -166,12 +168,7 @@ export function EndlessGame({ controller, active, navigate, onShare }: {
             {session.phase === 'analyzing' && !error && <div className="endless-thinking" role="status">Finding your moves…</div>}
             {session.phase === 'analyzing' && error && <div className="endless-engine-error" role="alert"><strong>Engine unavailable</strong><p>{error}</p>
                 <button className="primary-small" onClick={controller.retry}>Retry analysis</button></div>}
-            {session.phase === 'reveal' && session.lastMove && <div className={`reveal-card quality-${session.lastMove.quality}`} role="status" aria-label="Move quality">
-                <span className="reveal-kicker">{session.lastMove.san}</span><strong>{QUALITY_LABELS[session.lastMove.quality]}</strong>
-                {session.mode === 'standard' && <span>+{session.lastResolution?.awardedPoints} points</span>}
-                {session.lastResolution?.shieldSpent && <span>{session.lastResolution.damagePrevented ? 'Damage blocked' : 'Guard spent'}</span>}
-                {!!session.lastResolution?.healthBonus && <span>+1 health</span>}
-            </div>}
+            {session.phase === 'reveal' && session.lastMove && <MoveFeedback quality={session.lastMove.quality} />}
             {session.phase === 'between-games' && <div className="endless-thinking" role="status">Starting game {session.gamesCompleted + 1}…</div>}
         </div><section className="history-section"><div className="section-title">Move history</div><div className="history-list" tabIndex={0} aria-label="Move history">
             {history.filter((_, index) => index % 2 === 0).map((move, index) => <div className="history-row" key={index}><span>{index + 1}.</span><strong>{move}</strong><strong>{history[index * 2 + 1]}</strong></div>)}

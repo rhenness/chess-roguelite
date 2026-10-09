@@ -24,6 +24,7 @@ describe('Endless session', () => {
         expect(initial.items).toEqual({});
         expect(initial.options.map(option => option.san)).toEqual(['c4', 'd4', 'e4', 'Nf3']);
         expect(initial.options.every(option => option.quality === 'good')).toBe(true);
+        expect(initial.options.every(option => option.score === null)).toBe(true);
         const white = playMove(initial, 'e2e4');
         expect(createChess(white.pgn).turn()).toBe('b');
         expect(createChess(white.pgn).history()).toEqual(['e4']);
@@ -121,6 +122,48 @@ describe('Endless session', () => {
 });
 
 describe('Endless classification and persistence', () => {
+    it('captures the best evaluated option before clearing choices, without changing categories', () => {
+        const initial = startSession('standard', 'default');
+        const options = buildOptions(new Chess(), [
+            { uci: 'e2e4', depth: 10, score: { kind: 'cp', value: 100 } },
+            { uci: 'd2d4', depth: 10, score: { kind: 'cp', value: 85 } },
+            { uci: 'g1f3', depth: 10, score: { kind: 'cp', value: 0 } },
+            { uci: 'c2c4', depth: 10, score: { kind: 'cp', value: -100 } },
+        ]);
+        const played = playMove({ ...initial, options }, 'd2d4');
+        expect(played.options).toEqual([]);
+        expect(played.lastMove).toMatchObject({ quality: 'good', score: { kind: 'cp', value: 85 } });
+        expect(played.lastBestScore).toEqual({ kind: 'cp', value: 100 });
+        expect(played).toMatchObject({ score: 75, health: 3, streak: 1 });
+        saveState({ version: 1, session: played, records: [] });
+        expect(loadSave().session).toEqual(played);
+    });
+
+    it('restores old preset opening placeholders as unavailable without losing progress', () => {
+        const initial = startSession('hardcore', 'default');
+        const { lastBestScore: _best, ...legacy } = initial;
+        const opening = { ...legacy, options: legacy.options.map(option => ({ ...option, score: { kind: 'cp' as const, value: 0 } })) };
+        saveState({ version: 1, session: opening, records: [] });
+        expect(loadSave().session).toEqual(initial);
+        const played = playMove(opening, 'e2e4');
+        const { lastBestScore: _playedBest, ...legacyReveal } = played;
+        saveState({ version: 1, session: legacyReveal, records: [] });
+        expect(loadSave().session).toMatchObject({ phase: 'reveal', score: 1, streak: 1, moves: 1,
+            lastMove: { quality: 'good', score: null }, lastBestScore: null });
+    });
+
+    it('retains evaluated zeroes outside the preset opening in older saves', () => {
+        const white = playMove(startSession('standard', 'default'), 'e2e4');
+        const ready = offer(advanceReveal(white), 'e5', 'good');
+        const { lastBestScore: _best, ...legacy } = ready;
+        saveState({ version: 1, session: legacy, records: [] });
+        expect(loadSave().session?.options[0]?.score).toEqual({ kind: 'cp', value: 0 });
+        const black = playMove(ready, 'e7e5');
+        const { lastBestScore: _blackBest, ...legacyReveal } = black;
+        saveState({ version: 1, session: legacyReveal, records: [] });
+        expect(loadSave().session?.lastMove?.score).toEqual({ kind: 'cp', value: 0 });
+    });
+
     it('preserves Fourced Move thresholds, mate handling, and category selection', () => {
         const cp = (value: number) => ({ kind: 'cp' as const, value });
         expect(classifyScore(cp(0), cp(0), true)).toBe('best');
@@ -159,6 +202,8 @@ describe('Endless classification and persistence', () => {
             { ...session, phase: 'unknown' }, { ...session, optionsFen: 'bad fen' },
             { ...session, options: [{ ...session.options[0], uci: 'e2e5' }] },
             { ...session, rules: { ...DEFAULT_RULES, points: { ...DEFAULT_RULES.points, good: 999 } } },
+            { ...session, lastBestScore: { kind: 'cp', value: '100' } },
+            { ...session, options: [{ ...session.options[0], score: undefined }] },
             { ...session, activeEffects: [{ sourceItemId: 'triple-crown', effect: ITEMS['triple-crown'].effect, remainingMoves: 99 }] },
         ]) {
             localStorage.setItem(ENDLESS_STORAGE_KEY, JSON.stringify({ version: 1, session: corrupted, records: [] }));

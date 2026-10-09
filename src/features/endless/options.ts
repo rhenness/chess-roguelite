@@ -20,6 +20,6 @@ export function openingOptions(): MoveOption[] {
     return ['c2c4', 'd2d4', 'e2e4', 'g1f3'].map(uci => {
         const move = chess.moves({ verbose: true }).find(move => moveToUci(move) === uci)!;
         return { uci, san: move.san, from: move.from, to: move.to,
-            description: describeMove(move), quality: 'good', score: { kind: 'cp', value: 0 } };
+            description: describeMove(move), quality: 'good', score: null };
     });
 }

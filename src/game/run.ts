@@ -5,7 +5,7 @@ import { createCheckpointRewards, validCheckpointRewards, type CheckpointReward 
 import { isItemInventory, itemCount, LOADOUT_LIMIT, resolveItemEffects, type ActiveEffect, type ItemId, type ItemInventory, type ItemUse, type MoveResolution } from './items';
 
 export const QUALITY_LABELS: Record<MoveQuality, string> = {
-    best: 'Best', good: 'Good', inaccuracy: 'Inaccuracy', bad: 'Bad',
+    best: 'A', good: 'B', inaccuracy: 'C', bad: 'F',
 };
 export const QUALITY_ORDER: MoveQuality[] = ['best', 'good', 'inaccuracy', 'bad'];
 export const BEST_MOVE_STREAK_LENGTH = 4;

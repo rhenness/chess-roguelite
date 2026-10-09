@@ -17,7 +17,7 @@ export function startSession(mode: EndlessMode, set: PieceSetId, items: ItemInve
         moves: 0, successfulMoves: 0, gamesCompleted: 0,
         counts: { best: 0, good: 0, inaccuracy: 0, bad: 0 },
         items: mode === 'hardcore' ? {} : { ...items }, activeEffects: [],
-        lastMove: null, lastResolution: null, boardResult: null, startedAt: now, finishedAt: null,
+        lastMove: null, lastBestScore: null, lastResolution: null, boardResult: null, startedAt: now, finishedAt: null,
     };
 }
 
@@ -53,7 +53,8 @@ export function playMove(session: EndlessSession, uci: string, now = Date.now())
         moves: session.moves + 1, successfulMoves: session.successfulMoves + Number(successful),
         counts: { ...session.counts, [option.quality]: session.counts[option.quality] + 1 },
         activeEffects: failed ? [] : activeEffects, items: failed ? {} : session.items,
-        lastMove: option, lastResolution: resolution, boardResult,
+        lastMove: option, lastBestScore: session.options.find(candidate => candidate.quality === 'best')?.score ?? null,
+        lastResolution: resolution, boardResult,
         gamesCompleted: session.gamesCompleted + Number(!!boardResult && !failed), finishedAt: failed ? now : null,
     };
 }
@@ -66,7 +67,7 @@ export function advanceReveal(session: EndlessSession): EndlessSession {
 export function nextBoard(session: EndlessSession): EndlessSession {
     if (session.phase !== 'between-games') return session;
     return { ...session, pgn: '', optionsFen: STARTING_FEN, options: openingOptions(), phase: 'ready',
-        boardResult: null, lastMove: null, lastResolution: null };
+        boardResult: null, lastMove: null, lastBestScore: null, lastResolution: null };
 }
 
 export function canUseItem(session: EndlessSession, id: ItemId): boolean {

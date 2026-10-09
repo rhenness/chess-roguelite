@@ -155,13 +155,14 @@
 .run-move-panel { transition: transform .18s; }
 .run-move-picker .move-option:hover .run-move-panel, .run-move-picker .move-option:focus-visible .run-move-panel, .run-move-picker .move-option.pending .run-move-panel { transform: translateY(-3px); }
 .run-stage .run-move-picker .move-option { min-width: 0; height: auto; aspect-ratio: 4 / 5; }
-.run-move-picker .move-option:focus-visible { outline-offset: -9px; border-radius: 15px; }
+.run-move-picker .move-option:focus-visible { outline: none; }
 .run-move-picker .run-move-art { display: block; width: 100%; height: 100%; }
 .run-move-picker .move-option > svg:not(.run-move-art) { position: absolute; top: 7%; left: 21%; width: 58%; height: 47%; }
 .run-move-picker .selection-check { top: 19% !important; left: 34% !important; width: 32% !important; height: 27% !important; }
 .run-stage .reveal-card, .run-stage .finished-card, .run-stage .payout-card { height: 105px; min-height: 0; padding: 10px; border-color: #5d7b64; background: #183c32; color: #f1e7c9; box-shadow: 0 6px 18px #041d1566; }
-.run-stage .reveal-card { gap: 3px; }
-.run-stage .reveal-card strong { font-size: 30px; }
+.run-stage .options-area:has(> .reveal-card) { height: auto; min-height: 60px; }
+.run-stage .options-area > .reveal-card { height: auto; min-height: 60px; padding: 8px 12px; gap: 0; }
+.run-stage .reveal-card strong { font-size: 32px; }
 .run-stage .reveal-card.quality-bad { background: #582e30; border-color: #a35e59; }
 .run-stage .reveal-card.quality-inaccuracy { background: #51462d; border-color: #9c8954; }
 .run-stage .run-items { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin-top: 8px; color: #b9cfb8; }

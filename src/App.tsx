@@ -20,9 +20,11 @@ import { ItemIcon, ItemLoadout, RunItems } from './components/RunItems';
 import { RunCheckpointReward } from './components/RunCheckpointReward';
 import { activateItem, canActivateItem, ITEMS, itemCount, loadoutCost, LOADOUT_LIMIT, type ItemId, type ItemInventory } from './game/items';
 import { MoveOptions, OPTION_COLORS, CONFIRM_COLOR } from './components/MoveOptions';
+import { MoveFeedback } from './components/MoveFeedback';
 import { orderMovesLeftToRight } from './game/moveOptionOrder';
 import { RunBoardFrame, RunGate, RunHearts, RunScenery, RunScorePlaque, TERRAIN_BOARD_APPEARANCE } from './components/RunEnvironment';
 import { BOARD_APPEARANCE } from './components/boardAppearance';
+import { usePointerBoard } from './game/usePointerBoard';
 import { EndlessPage } from './features/endless/EndlessPage';
 import { useEndlessSession } from './features/endless/useEndlessSession';
 import { usePageNavigation } from './game/usePageNavigation';
@@ -136,13 +138,7 @@ function moveDescription(choice: PlayerChoice, fen: string): string {
 function Feedback({ run }: { run: RunState }) {
     const choice = run.lastChoice;
     if (!choice) return null;
-    return <div className={`reveal-card quality-${choice.quality}`} role="status" aria-label="Move quality">
-        <span className="reveal-kicker">{choice.playerMove.san}</span>
-        <strong>{QUALITY_LABELS[choice.quality]}</strong>
-        <span>{(run.lastMoveResolution?.awardedPoints ?? run.rules.points[choice.quality]) >= 0 ? '+' : ''}{run.lastMoveResolution?.awardedPoints ?? run.rules.points[choice.quality]} points</span>
-        {run.lastMoveResolution && run.lastMoveResolution.awardedPoints !== run.lastMoveResolution.normalPoints
-            && <small>{run.lastMoveResolution.normalPoints} ×{run.lastMoveResolution.awardedPoints / run.lastMoveResolution.normalPoints} · Score boost</small>}
-    </div>;
+    return <MoveFeedback quality={choice.quality} />;
 }
 
 function RunSummary({ run, payout, restart, onShare, finishedAt }: {
@@ -238,6 +234,7 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
     const [pendingChoice, setPendingChoice] = useState<string | null>(null);
     const moveOptions = useRef<HTMLDivElement>(null);
     const keyboardOption = useRef<number | null>(null);
+    const pointerBoard = usePointerBoard();
     const [boardSelection, setBoardSelection] = useState<{ from: string; to: string | null } | null>(null);
     const [showRules, setShowRules] = useState(false);
     const [boardNotice, setBoardNoticeState] = useState<BoardNotice | null>(null);
@@ -923,7 +920,7 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
                 {run?.daily && <div className="daily-run-label"><div className="daily-run-heading"><span className="daily-run-banner"><DoorOpen size={14} aria-hidden="true" />DAILY DUNGEON</span>
                     {!immersiveRun && <SkillTierBadge skillTier={run.skillTier} />}</div>
                     <time aria-label="Time until dungeon resets"><Clock3 size={14} aria-hidden="true" />{formatCountdown(run.daily.expiresAt, daily.now)}</time></div>}
-                <div className="board-wrap">
+                <div className="board-wrap" ref={pointerBoard}>
                     {immersiveRun && <RunBoardFrame />}
                     {fen && level ? <Chessboard options={boardOptions} /> : <div className="empty-board">No playable floors</div>}
                     {checkpointReward && run && <RunCheckpointReward key={`${run.id}-${checkpointReward.afterRound}`}
@@ -954,7 +951,7 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
                         <div className="health-stats">
                             {immersiveRun ? <RunHearts health={run?.health ?? rules.startingHealth} maxHealth={activeRules.startingHealth} />
                                 : <span className="health-count" aria-label={`Health: ${run?.health ?? rules.startingHealth}`}><Heart size={15} fill="currentColor" aria-hidden="true" /><strong>{run?.health ?? rules.startingHealth}</strong></span>}
-                            {run && run.bestMoveStreak > 0 && <span className="streak-count" aria-label={`Best streak: ${run.bestMoveStreak}`}><Flame size={15} fill="currentColor" aria-hidden="true" /><strong>{run.bestMoveStreak}</strong></span>}
+                            {run && run.bestMoveStreak > 0 && <span className="streak-count" aria-label={`${QUALITY_LABELS.best} streak: ${run.bestMoveStreak}`}><Flame size={15} fill="currentColor" aria-hidden="true" /><strong>{run.bestMoveStreak}</strong></span>}
                         </div>
                         <span className="move-count" aria-label={`Score: ${displayScore}`}>{immersiveRun && <RunScorePlaque />}<span>Score</span><strong>{displayScore.toLocaleString()}</strong></span>
                     </div>
@@ -983,7 +980,7 @@ export default function App({ levels, levelWarnings = [], rules: rulesOverride }
                         <span>Score bonus</span>
                         <strong>{payout.sequence.phase === 'spinning' ? '…' : formatMultiplier(payout.sequence.outcome.multiplier)}</strong>
                     </div>}
-                    {!payout.sequence && run && (run.phase === 'reveal' || run.phase === 'reply') && <Feedback run={run} />}
+                    {!showBonusBoard && run && (run.phase === 'reveal' || run.phase === 'reply' || run.result === 'defeat') && <Feedback run={run} />}
                     {!payout.sequence && run?.phase === 'level-ended' && <div className="finished-card"><h2>{currentOutcome?.status === 'completed' ? 'Floor completed' : 'Floor lost'}</h2></div>}
                 </div>}
                 {!checkpointReward && <section className="history-section">

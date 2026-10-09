@@ -57,7 +57,7 @@ const pageCopy = {
         lines: [
             'Play both sides. Checkmate or a draw starts a new board without ending the attempt.',
             'Standard: use health and optional items to build your score.',
-            'Hardcore: no items. One Inaccuracy or Bad move ends the attempt; each Best or Good move adds one point.',
+            `Hardcore: no items. One ${QUALITY_LABELS.inaccuracy} or ${QUALITY_LABELS.bad} move ends the attempt; each ${QUALITY_LABELS.best} or ${QUALITY_LABELS.good} move adds one point.`,
         ],
     },
     leaderboards: {
@@ -72,7 +72,7 @@ const pageCopy = {
         title: 'Your profile',
         lines: [
             'Your card shows personal bests for Regular, Dungeon, Endless, and Hardcore.',
-            'Endless uses your Standard score. Hardcore counts Best and Good moves before your first mistake.',
+            `Endless uses your Standard score. Hardcore counts ${QUALITY_LABELS.best} and ${QUALITY_LABELS.good} moves before your first mistake.`,
             'Use the pencil beside your name to edit your name, avatar, and banner.',
         ],
     },
@@ -93,7 +93,7 @@ export function PageHelp({ page, rules, result, dailyRun, dailyStatus, dailyClos
             'Clear every floor to permanently upgrade one square for the set you used.',
         ] : [
             'Tap a piece, then an offered destination. Or tap a colored option twice. Colors identify options, not move quality.',
-            `Start with ${rules.startingHealth} health. Health and score carry across floors. Mistakes cost health; ${BEST_MOVE_STREAK_LENGTH} Best moves in a row restore one heart.`,
+            `Start with ${rules.startingHealth} health. Health and score carry across floors. Mistakes cost health; ${BEST_MOVE_STREAK_LENGTH} ${QUALITY_LABELS.best} moves in a row restore one heart.`,
             dailyRun ? 'The dungeon resets at 00:00 UTC each day. Activate supplies before confirming a move.'
                 : `Reach the end of up to ${floorCount} floors. Activate any items before confirming a move.`,
             'After rounds 3 and 6, choose one of two free items. Your choice goes into your inventory for later use.',
@@ -118,13 +118,13 @@ export function PageHelp({ page, rules, result, dailyRun, dailyStatus, dailyClos
         lines = !endless ? [
             'Choose a difficulty and set on the Endless page to start an attempt.',
         ] : endless.phase === 'finished' ? [
-            hardcore ? 'Your score counts Best and Good moves made before the attempt ended.' : 'Your score adds up move points, including item boosts.',
-            'Your longest streak counts consecutive Best and Good moves.',
+            hardcore ? `Your score counts ${QUALITY_LABELS.best} and ${QUALITY_LABELS.good} moves made before the attempt ended.` : 'Your score adds up move points, including item boosts.',
+            `Your longest streak counts consecutive ${QUALITY_LABELS.best} and ${QUALITY_LABELS.good} moves.`,
             'Coins come from unboosted points. Your result is saved in your profile.',
         ] : [
             'Play both sides. Tap a piece and an offered destination, or tap a colored option twice.',
-            hardcore ? 'Best and Good moves add one point. One Inaccuracy or Bad move ends the attempt.'
-                : `Best and Good moves extend your streak. Mistakes break it and cost health; ${BEST_MOVE_STREAK_LENGTH} Best moves in a row restore one heart.`,
+            hardcore ? `${QUALITY_LABELS.best} and ${QUALITY_LABELS.good} moves add one point. One ${QUALITY_LABELS.inaccuracy} or ${QUALITY_LABELS.bad} move ends the attempt.`
+                : `${QUALITY_LABELS.best} and ${QUALITY_LABELS.good} moves extend your streak. Mistakes break it and cost health; ${BEST_MOVE_STREAK_LENGTH} ${QUALITY_LABELS.best} moves in a row restore one heart.`,
             'Checkmate and draws start a new board. Your streak carries over.',
         ];
         gameDetails = !!endless && endless.phase !== 'finished';
@@ -141,6 +141,7 @@ export function PageHelp({ page, rules, result, dailyRun, dailyStatus, dailyClos
         {gameDetails && <div className="help-details">
             <h3>{hardcore ? 'Controls' : 'Controls and scoring'}</h3>
             <p>Use arrow keys to switch colored options. Press Enter or Space once to select, then again to confirm.</p>
+            <p>Move grades: {QUALITY_ORDER.map(quality => QUALITY_LABELS[quality]).join(' → ')}. Your score and hearts update after each move.</p>
             {!hardcore && <ul>{QUALITY_ORDER.filter(quality => !moveQualities || moveQualities.includes(quality)).map(quality => <li key={quality}>
                 <strong>{QUALITY_LABELS[quality]}</strong>
                 <span>{rules.points[quality] >= 0 ? '+' : ''}{rules.points[quality]} points / {rules.damage[quality]} health lost</span>

@@ -16,7 +16,7 @@ describe('share run results', () => {
         expect(result).toMatchObject({ mode: 'regular', score: 175, outcome: 'Run over' });
         expect(result.stats.map(stat => stat.value)).toEqual(['0 / 1', '3', '+4']);
         expect(result.decisionCounts).toEqual({ best: 1, good: 1, inaccuracy: 0, bad: 1 });
-        expect(shareRunText(result, 'Knight', 'https://example.com/')).toContain('Best: 1 · Good: 1 · Inaccuracy: 0 · Bad: 1');
+        expect(shareRunText(result, 'Knight', 'https://example.com/')).toContain('A: 1 · B: 1 · C: 0 · F: 1');
     });
 
     it('uses the dungeon day, including archived runs, and daily coin bonuses', () => {
