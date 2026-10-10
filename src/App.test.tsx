@@ -826,7 +826,7 @@ describe('run reward checkpoints', () => {
             const heading = screen.getByRole('heading', { name: 'Choose your reward' });
             expect(heading).toHaveFocus();
             expect(heading.closest('.board-wrap')).toContainElement(screen.getByTestId('board'));
-            expect(screen.getByText(`Round ${round} cleared`)).toBeInTheDocument();
+            expect(screen.queryByText(`Round ${round} cleared`)).not.toBeInTheDocument();
             expect(screen.getByTitle(`Checkpoint after floor ${round}`)).toHaveClass('current');
             expect(screen.getByRole('progressbar', { name: 'Run progress' })).toHaveAttribute('aria-valuetext', `Checkpoint after floor ${round} of 10`);
             expect(screen.getByTestId('board')).toHaveAttribute('data-position', '{}');
