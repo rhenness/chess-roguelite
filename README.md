@@ -500,6 +500,13 @@ The score determines actual run eligibility. Increment a recipe's
 jobs from different revisions separate. Run cutoffs, health, damage, points,
 and floor counts live independently in [`difficulty.ts`](src/config/difficulty.ts).
 
+Each recipe's `commitThreshold` is an inclusive minimum difficulty score (integer
+0–100) for publication. Both `10` recipes use 0; the four-option `20`, `30`, and
+`40` recipes use 45, 58, and 68. Scores below that minimum are reported as
+filtered and removed from staging, including during `--resume`. Filtered jobs
+do not fail the batch or replace existing levels during regeneration. Threshold
+changes apply at publication without requiring a new tree or profile version.
+
 | Profile | Player choices | Opponent weights: best / good / inaccuracy / blunder |
 | --- | --- | --- |
 | `2-options-4-depth-10` | Best and worst analyzed move | 0 / 40 / 40 / 20% |

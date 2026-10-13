@@ -22,6 +22,7 @@ export interface BatchEntry {
 
 export type BatchResult = BatchEntry & (
     | { status: 'scored'; difficultyScore: number }
+    | { status: 'filtered'; difficultyScore: number; commitThreshold: number }
     | { status: 'skipped'; reason: string }
     | { status: 'failed'; stage: 'generation' | 'scoring' | 'publication'; error: string }
 );
@@ -112,6 +113,9 @@ export async function generateLevelBatch(
     if (suppliedEngine && concurrency > 1) throw new Error('A supplied engine cannot be shared by concurrent jobs. Use concurrency 1.');
     if (options.profileId !== undefined && !isGenerationProfileId(options.profileId)) throw new Error('Unknown generation profile.');
     const profiles = options.profileId ? [options.profileId] : GENERATION_PROFILE_IDS;
+    const commitThresholds = new Map(profiles.map(profileId => [profileId,
+        integerOption(`${profileId}.commitThreshold`, GENERATION_PROFILES[profileId].commitThreshold, 0, 100),
+    ]));
     const generation = {
         searchDepth: integerOption('searchDepth', options.searchDepth ?? 10, 1, 128),
         multiPv: integerOption('multiPv', options.multiPv ?? 256, 4, 256),
@@ -215,9 +219,15 @@ export async function generateLevelBatch(
                 line: entry.line, profileId: entry.profileId, stage: 'scoring', decisions }),
             }, engine);
             stage = 'publication';
+            if (await readFile(entry.file, 'utf8') !== source) throw new Error('Pending tree changed during scoring; refusing to publish it.');
+            const commitThreshold = commitThresholds.get(entry.profileId)!;
+            if (scored.difficultyScore < commitThreshold) {
+                await rm(entry.file);
+                outcome = { ...entry, status: 'filtered', difficultyScore: scored.difficultyScore, commitThreshold };
+                return outcome;
+            }
             const destination = scoredLevelPath(resolve(profileDirectory(entry.profileId), 'level.json'), scored.difficultyScore, level.id);
             const updated = replaceDifficultyScore(source, scored.difficultyScore);
-            if (await readFile(entry.file, 'utf8') !== source) throw new Error('Pending tree changed during scoring; refusing to publish it.');
             const obsolete = options.regenerate || level.generation.regenerated
                 ? previous.filter(level => level.file !== destination) : [];
             for (const old of obsolete) await requireUnchanged(old);

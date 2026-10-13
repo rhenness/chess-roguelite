@@ -17,6 +17,8 @@ export type MoveOption =
 export interface GenerationProfileConfig {
     readonly profileVersion: number;
     readonly levelFolder: `src/levels/${TargetOptionCount}-options-${number}-depth`;
+    /** Minimum scored difficulty to publish (inclusive, integer 0–100). */
+    readonly commitThreshold: number;
     readonly treeGeneration: {
         readonly decisionDepth: number; // How many moves the player must play to clear the floor.
         readonly playerOptions: readonly MoveOption[]; // How many options a player has on each turn.
@@ -35,6 +37,7 @@ export interface GenerationProfileConfig {
 export const TWO_OPTIONS_4_DEPTH_10 = {
     profileVersion: 1,
     levelFolder: 'src/levels/2-options-4-depth',
+    commitThreshold: 0,
     treeGeneration: {
         decisionDepth: 4,
         playerOptions: [
@@ -52,6 +55,7 @@ export const TWO_OPTIONS_4_DEPTH_10 = {
 export const FOUR_OPTIONS_4_DEPTH_10 = {
     profileVersion: 1,
     levelFolder: 'src/levels/4-options-4-depth',
+    commitThreshold: 0,
     treeGeneration: {
         decisionDepth: 4,
         playerOptions: [
@@ -71,6 +75,7 @@ export const FOUR_OPTIONS_4_DEPTH_10 = {
 export const FOUR_OPTIONS_4_DEPTH_20 = {
     profileVersion: 1,
     levelFolder: 'src/levels/4-options-4-depth',
+    commitThreshold: 45,
     treeGeneration: {
         decisionDepth: 4,
         playerOptions: [
@@ -90,6 +95,7 @@ export const FOUR_OPTIONS_4_DEPTH_20 = {
 export const FOUR_OPTIONS_4_DEPTH_30 = {
     profileVersion: 1,
     levelFolder: 'src/levels/4-options-4-depth',
+    commitThreshold: 58,
     treeGeneration: {
         decisionDepth: 4,
         playerOptions: [
@@ -109,6 +115,7 @@ export const FOUR_OPTIONS_4_DEPTH_30 = {
 export const FOUR_OPTIONS_4_DEPTH_40 = {
     profileVersion: 1,
     levelFolder: 'src/levels/4-options-4-depth',
+    commitThreshold: 68,
     treeGeneration: {
         decisionDepth: 4,
         playerOptions: [

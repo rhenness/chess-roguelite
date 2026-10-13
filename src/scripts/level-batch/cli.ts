@@ -26,6 +26,8 @@ Options:
 Blank lines, # comments and duplicate FENs are skipped. Without an input path, read fens.txt
 from the project root. Each job generates and scores with one Stockfish process.
 Save finished levels as <three-digit-score>-<guid>.json in <options>-options-<depth>-depth.
+Only scores at or above the recipe's commitThreshold are published. Lower scores
+are filtered and removed from staging; existing levels survive rejected replacements.
 Default folders are 2-options-4-depth and 4-options-4-depth, including in .staging.
 Depth overrides use a matching folder; the profile ID identifies the original recipe.
 Unscored trees stay in .staging for --resume using the same input file, profile and depth.
@@ -70,6 +72,7 @@ async function main(): Promise<void> {
         onResult: result => {
             updates.delete(`${result.line}:${result.profileId}`);
             if (result.status === 'scored') console.log(`Scored [${result.profileId}] ${result.file}: difficulty score ${result.difficultyScore}`);
+            else if (result.status === 'filtered') console.log(`Line ${result.line} [${result.profileId}]: filtered, difficulty score ${result.difficultyScore} below commitThreshold ${result.commitThreshold}.`);
             else if (result.status === 'skipped') console.log(`Line ${result.line} [${result.profileId}]: skipped, ${result.reason}`);
             else {
                 console.error(`Line ${result.line} [${result.profileId}]: ${result.stage} failed: ${result.error}`);
@@ -77,14 +80,15 @@ async function main(): Promise<void> {
             }
         },
     });
-    const count = (status: 'scored' | 'skipped' | 'failed') => results.filter(result => result.status === status).length;
+    const count = (status: 'scored' | 'filtered' | 'skipped' | 'failed') => results.filter(result => result.status === status).length;
     for (const profile of values.profile ? [values.profile] : GENERATION_PROFILE_IDS) {
         const entries = results.filter(result => result.profileId === profile);
         console.log(`${profile}: ${entries.filter(result => result.status === 'scored').length} scored, `
             + `${entries.filter(result => result.status === 'skipped').length} skipped, `
-            + `${entries.filter(result => result.status === 'failed').length} failed.`);
+            + `${entries.filter(result => result.status === 'failed').length} failed, `
+            + `${entries.filter(result => result.status === 'filtered').length} filtered.`);
     }
-    console.log(`${count('scored')} generated and scored, ${count('skipped')} skipped, ${count('failed')} failed.`);
+    console.log(`${count('scored')} generated and scored, ${count('skipped')} skipped, ${count('failed')} failed, ${count('filtered')} filtered.`);
     if (count('failed')) process.exitCode = 1;
 }
 

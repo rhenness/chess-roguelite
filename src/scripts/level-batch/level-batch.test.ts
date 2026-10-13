@@ -45,9 +45,99 @@ async function withDirectory(work: (directory: string) => Promise<void>): Promis
     }
 }
 
+// Keep publication fixtures above every recipe's threshold; gate tests choose their score.
+const scoringConfig = (score = 100) => ({
+    depths: [1, 2], multiPv: 4,
+    nodeWeights: { ambiguity: 0, depthToSeparation: 0, subtlety: 1, uniqueness: 0 },
+    subtlety: { quiet: score, check: score, capture: score, recapture: score, promotion: score, evasion: score },
+});
+
 const options = (directory: string): BatchOptions => ({
     outputDirectory: join(directory, 'levels'), decisionDepth: 1,
-    searchDepth: 1, multiPv: 4, config: { depths: [1, 2], multiPv: 4 }, random: () => 0,
+    searchDepth: 1, multiPv: 4, config: scoringConfig(), random: () => 0,
+});
+
+test('commit thresholds filter lower scores and publish equal or higher scores for each harder recipe', async () => {
+    for (const profileId of ['4-options-4-depth-20', '4-options-4-depth-30', '4-options-4-depth-40'] as const) {
+        const commitThreshold = GENERATION_PROFILES[profileId].commitThreshold;
+        for (const difficultyScore of [commitThreshold - 1, commitThreshold, commitThreshold + 1]) {
+            await withDirectory(async directory => {
+                const input = join(directory, 'fens.txt');
+                await writeFile(input, DEFAULT_POSITION);
+                const callbacks: unknown[] = [];
+                const settings = { ...options(directory), profileId, config: scoringConfig(difficultyScore),
+                    onResult: (result: unknown) => { callbacks.push(result); } };
+                const [result] = await generateLevelBatch(input, settings, new LegalEngine());
+                assert.deepEqual(callbacks, [result]);
+                assert.equal(result?.status, difficultyScore < commitThreshold ? 'filtered' : 'scored');
+                if (result?.status === 'filtered') {
+                    assert.equal(result.difficultyScore, difficultyScore);
+                    assert.equal(result.commitThreshold, commitThreshold);
+                    await assert.rejects(readFile(result.file), { code: 'ENOENT' });
+                    await assert.rejects(readdir(join(directory, 'levels', '4-options-1-depth')), { code: 'ENOENT' });
+                    assert.deepEqual(await readdir(dirname(result.file)), []);
+                    // A rejected tree does not block a fresh generation attempt.
+                    const [retry] = await generateLevelBatch(input, { ...settings, config: scoringConfig(commitThreshold) }, new LegalEngine());
+                    assert.equal(retry?.status, 'scored');
+                } else if (result?.status === 'scored') {
+                    assert.equal(JSON.parse(await readFile(result.file, 'utf8')).difficultyScore, difficultyScore);
+                }
+            });
+        }
+    }
+});
+
+test('rejected regeneration and resumed replacements preserve old levels and remove rejected staging trees', async () => {
+    await withDirectory(async directory => {
+        const input = join(directory, 'fens.txt');
+        await writeFile(input, DEFAULT_POSITION);
+        const settings = { ...options(directory), profileId: '4-options-4-depth-30' as const };
+        const [original] = await generateLevelBatch(input, settings, new LegalEngine());
+        assert.equal(original?.status, 'scored');
+        const oldSource = await readFile(original!.file, 'utf8');
+        const lowScore = { ...settings, config: scoringConfig(57) };
+        const [rejected] = await generateLevelBatch(input, { ...lowScore, regenerate: true }, new LegalEngine());
+        assert.equal(rejected?.status, 'filtered');
+        assert.equal(await readFile(original!.file, 'utf8'), oldSource);
+        await assert.rejects(readFile(rejected!.file), { code: 'ENOENT' });
+
+        const engine = new LegalEngine();
+        engine.failScoringOnce = true;
+        const [pending] = await generateLevelBatch(input, { ...lowScore, regenerate: true }, engine);
+        assert.equal(pending?.status, 'failed');
+        const resumedEngine = new LegalEngine();
+        const [resumed] = await generateLevelBatch(input, { ...lowScore, resume: true }, resumedEngine);
+        assert.equal(resumed?.status, 'filtered');
+        assert.ok(resumedEngine.requests.length > 0);
+        assert.ok(resumedEngine.requests.every(request => request.resetHash));
+        await assert.rejects(readFile(pending!.file), { code: 'ENOENT' });
+        assert.equal(await readFile(original!.file, 'utf8'), oldSource);
+        assert.deepEqual(await readdir(dirname(original!.file)), [basename(original!.file)]);
+    });
+});
+
+test('filtering preserves a staging tree changed during scoring', async () => {
+    await withDirectory(async directory => {
+        const input = join(directory, 'fens.txt');
+        await writeFile(input, DEFAULT_POSITION);
+        const engine = new LegalEngine();
+        const analyze = engine.analyze.bind(engine);
+        let stagingFile = '';
+        let changed = '';
+        engine.analyze = async request => {
+            if (request.resetHash && !changed) {
+                changed = await readFile(stagingFile, 'utf8') + ' ';
+                await writeFile(stagingFile, changed);
+            }
+            return analyze(request);
+        };
+        const [result] = await generateLevelBatch(input, { ...options(directory), profileId: '4-options-4-depth-20',
+            config: scoringConfig(44), onStart: entry => { stagingFile = entry.file; },
+        }, engine);
+        assert.equal(result?.status, 'failed');
+        if (result?.status === 'failed') assert.match(result.error, /Pending tree changed during scoring/);
+        assert.equal(await readFile(stagingFile, 'utf8'), changed);
+    });
 });
 
 test('every FEN produces all configured profiles, with BOM/comments, line numbers and isolated invalid input', async () => {
@@ -230,6 +320,11 @@ test('single-profile selection and config defaults keep four player decisions pe
         await writeFile(input, 'k7/1Q6/2K5/8/8/8/8/8 b - - 0 1');
         for (const profileId of GENERATION_PROFILE_IDS) {
             const [result] = await generateLevelBatch(input, { ...options(directory), decisionDepth: undefined, profileId }, new LegalEngine());
+            if (GENERATION_PROFILES[profileId].commitThreshold > 0) {
+                assert.equal(result?.status, 'filtered');
+                if (result?.status === 'filtered') assert.equal(result.difficultyScore, 0);
+                continue;
+            }
             assert.equal(result?.status, 'scored');
             const level = JSON.parse(await readFile(result!.file, 'utf8')) as GeneratedLevel;
             assert.equal(level.generation.profileId, profileId);
@@ -455,7 +550,7 @@ test('one CLI handles all profiles, profile filtering, concurrency, resume, and 
         const input = join(directory, 'fens.txt');
         const config = join(directory, 'config.json');
         await writeFile(input, `${DEFAULT_POSITION}\ninvalid\n${DEFAULT_POSITION.replace(' w ', ' b ')}`);
-        await writeFile(config, JSON.stringify({ depths: [1, 2], multiPv: 4 }));
+        await writeFile(config, JSON.stringify(scoringConfig()));
         const cli = fileURLToPath(new URL('./cli.ts', import.meta.url));
         const args = ['--import', 'tsx', cli, input, '--output-dir', join(directory, 'levels'),
             '--depth', '1', '--search-depth', '1', '--multi-pv', '4', '--config', config, '--concurrency', '2'];
@@ -489,6 +584,13 @@ test('one CLI handles all profiles, profile filtering, concurrency, resume, and 
             { encoding: 'utf8', windowsHide: true, timeout: 60_000 });
         assert.equal(regenerated.status, 0, regenerated.stderr);
         assert.match(regenerated.stdout, /1 generated and scored, 0 skipped, 0 failed/);
+        assert.equal((await readdir(join(directory, 'levels', '4-options-1-depth'))).length, 2 * (GENERATION_PROFILE_IDS.length - 1));
+        await writeFile(config, JSON.stringify(scoringConfig(67)));
+        const rejected = spawnSync(process.execPath, [...args, '--profile', '4-options-4-depth-40', '--regenerate'],
+            { encoding: 'utf8', windowsHide: true, timeout: 60_000 });
+        assert.equal(rejected.status, 0, rejected.stderr);
+        assert.match(rejected.stdout, /filtered, difficulty score 67 below commitThreshold 68/);
+        assert.match(rejected.stdout, /0 generated and scored, 0 skipped, 0 failed, 1 filtered/);
         assert.equal((await readdir(join(directory, 'levels', '4-options-1-depth'))).length, 2 * (GENERATION_PROFILE_IDS.length - 1));
         for (const flags of [['--profile', 'bad'], ['--concurrency', '0']]) {
             const invalid = spawnSync(process.execPath, ['--import', 'tsx', cli, ...flags], { encoding: 'utf8', windowsHide: true });
